@@ -68,6 +68,37 @@ if __name__ == "__main__":
     # 🚀 IMPORTANTE PARA RAILWAY
     port = int(os.environ.get("PORT", 8080))
 
+    with app.app_context():
+    from app.models import db, Usuario, Role
+    from werkzeug.security import generate_password_hash
+
+    # crear tablas si no existen
+    db.create_all()
+
+    # crear rol admin si no existe
+    admin_role = Role.query.filter_by(nombre="Administrador").first()
+    if not admin_role:
+        admin_role = Role(nombre="Administrador", descripcion="Acceso total")
+        db.session.add(admin_role)
+        db.session.commit()
+
+    # crear usuario admin si no existe
+    if not Usuario.query.filter_by(usuario="admin").first():
+        admin = Usuario(
+            usuario="admin",
+            email="admin@test.com",
+            nombre_completo="Administrador",
+            password_hash=generate_password_hash("admin123"),
+            role_id=admin_role.id,
+            activo=True
+        )
+        db.session.add(admin)
+        db.session.commit()
+        print("✅ admin creado")
+
+
+
+
     app.run(
         host="0.0.0.0",
         port=port,
