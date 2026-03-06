@@ -66,9 +66,9 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # 🚀 IMPORTANTE PARA RAILWAY
-    port = int(os.environ.get("PORT", 8080))
+port = int(os.environ.get("PORT", 8080))
 
-    with app.app_context():
+with app.app_context():
     from app.models import db, Usuario, Role
     from werkzeug.security import generate_password_hash
 
@@ -96,11 +96,8 @@ if __name__ == "__main__":
         db.session.commit()
         print("✅ admin creado")
 
-
-
-
-    app.run(
-        host="0.0.0.0",
-        port=port,
-        debug=False
-    )
+app.run(
+    host="0.0.0.0",
+    port=port,
+    debug=False
+)
