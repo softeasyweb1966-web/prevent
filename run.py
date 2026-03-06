@@ -1,6 +1,6 @@
 import os
 import mimetypes
-from dotenv import load_dotenv
+
 import platform
 
 # Evitar que `mimetypes` lea el registro de Windows
