@@ -1,0 +1,2347 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - PREVENT{% endblock %}
+
+{% block body %}
+<div class="dashboard-container">
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h2>PREVENT</h2>
+            <p id="userInfo">Cargando...</p>
+        </div>
+        
+        <ul class="menu">
+            <!-- Dashboard menu removed: initial screen shows application banner -->
+            <li><a href="#" class="menu-item" data-module="nomina">
+                <span class="icon">💰</span> Nómina
+            </a></li>
+            <li><a href="#" class="menu-item" data-module="servicios">
+                <span class="icon">🏥</span> Servicios
+            </a></li>
+            <li><a href="#" class="menu-item" data-module="bancos">
+                <span class="icon">🏦</span> Bancos
+            </a></li>
+            <li><a href="#" class="menu-item" data-module="impuestos">
+                <span class="icon">📋</span> Impuestos
+            </a></li>
+            <li><a href="#" class="menu-item" data-module="compras">
+                <span class="icon">🛒</span> Compras
+            </a></li>
+            <li><a href="#" class="menu-item" data-module="ventas">
+                <span class="icon">💵</span> Ventas
+            </a></li>
+            <li><a href="#" class="menu-item" data-module="informes">
+                <span class="icon">📈</span> Informes
+            </a></li>
+            <li><a href="#" class="menu-item" data-module="usuarios">
+                <span class="icon">👥</span> Usuarios
+            </a></li>
+            <li><a href="#" class="menu-item" data-module="tablas">
+                <span class="icon">⚙️</span> Tablas
+            </a></li>
+        </ul>
+        
+        <div class="sidebar-footer">
+            <button id="logoutBtn" class="btn btn-secondary">Cerrar Sesión</button>
+        </div>
+    </nav>
+    
+    <main class="main-content">
+        <header class="top-bar">
+            <h1 id="moduleTitle">Gestión de Servicios</h1>
+            <div class="user-menu">
+                <span id="userName">Usuario</span>
+            </div>
+        </header>
+        
+        <div class="content-area">
+            <!-- Initial Banner View (shown on app start) -->
+            <div id="appBannerView" class="module-view active">
+                <div id="appBanner" class="app-banner">
+                    Otro Software Desarrollado por SOFTEASY-WEB - Software al servicio de la gente
+                </div>
+                <div class="placeholder" style="margin-top:18px; max-width:900px;">
+                    Seleccione una opción del menú lateral para ver su dashboard específico.
+                </div>
+            </div>
+
+            <!-- Dashboard View (will show when explicitly selected, if present) -->
+            <div id="dashboardView" class="module-view">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Empleados Activos</h3>
+                        <p class="stat-number" id="totalEmpleados">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Quincena Actual</h3>
+                        <p class="stat-number" id="quincenaActual">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Usuarios</h3>
+                        <p class="stat-number" id="totalUsuarios">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Estado del Sistema</h3>
+                        <p class="stat-number">✓ OK</p>
+                    </div>
+                </div>
+                
+                <div class="recent-section">
+                    <h2>Acciones Rápidas</h2>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="switchModule('nomina')">Ir a Nómina</button>
+                        <button class="btn btn-secondary" onclick="switchModule('usuarios')">Gestionar Usuarios</button>
+                    </div>
+                </div>
+            </div>
+
+    <!-- Modal Liquidación Quincena -->
+    <div id="liquidacionModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Liquidación de Quincena</h2>
+                <span class="close" onclick="closeLiquidacionModal()">&times;</span>
+            </div>
+            <!-- Sección de Quincenas Pendientes -->
+            <div id="quincenasPendientesAlert" style="display: none; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: 15px; margin-bottom: 15px;">
+                <h4 style="margin-top: 0; color: #ff6b6b;">⚠️ Tiene pagos pendientes de finalizar</h4>
+                <p id="quincenasPendientesText" style="margin: 0 0 10px 0; font-size: 0.9rem;"></p>
+                <button type="button" class="btn btn-primary" onclick="retomarPagosGuardados()">↩️ Retomar Pagos</button>
+            </div>
+            <form id="liquidacionForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="mes_liquidacion">Mes *</label>
+                        <select id="mes_liquidacion" required>
+                            <option value="">Seleccione mes...</option>
+                            <option value="1">Enero</option>
+                            <option value="2">Febrero</option>
+                            <option value="3">Marzo</option>
+                            <option value="4">Abril</option>
+                            <option value="5">Mayo</option>
+                            <option value="6">Junio</option>
+                            <option value="7">Julio</option>
+                            <option value="8">Agosto</option>
+                            <option value="9">Septiembre</option>
+                            <option value="10">Octubre</option>
+                            <option value="11">Noviembre</option>
+                            <option value="12">Diciembre</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="quincena_liquidacion">Quincena *</label>
+                        <select id="quincena_liquidacion" required>
+                            <option value="">Seleccione...</option>
+                            <option value="1">1ª Quincena (1-15)</option>
+                            <option value="2">2ª Quincena (16-fin de mes)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeLiquidacionModal()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Liquidar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+        <!-- Modal Historial de Nómina -->
+        <div id="historialModal" class="modal">
+            <div class="modal-content" style="max-width: 1000px; width: 95%;">
+                <div class="modal-header">
+                    <h2>Historial de Movimientos</h2>
+                    <span class="close" onclick="closeHistorialModal()">&times;</span>
+                </div>
+                <form id="historialForm">
+                    <div class="form-row hist-form-grid">
+                        <div class="form-group">
+                            <label for="desde_mes_hist">Desde - Mes</label>
+                            <select id="desde_mes_hist" required>
+                                <option value="">Mes</option>
+                                <option value="1">Enero</option>
+                                <option value="2">Febrero</option>
+                                <option value="3">Marzo</option>
+                                <option value="4">Abril</option>
+                                <option value="5">Mayo</option>
+                                <option value="6">Junio</option>
+                                <option value="7">Julio</option>
+                                <option value="8">Agosto</option>
+                                <option value="9">Septiembre</option>
+                                <option value="10">Octubre</option>
+                                <option value="11">Noviembre</option>
+                                <option value="12">Diciembre</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="desde_numero_quincena_hist">Quincena</label>
+                            <select id="desde_numero_quincena_hist" required>
+                                <option value="">Quincena</option>
+                                <option value="1">1ª (1-15)</option>
+                                <option value="2">2ª (16-fin)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="desde_anio_hist">Año</label>
+                            <input id="desde_anio_hist" type="number" min="2000" style="width:110px;" required />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="hasta_mes_hist">Hasta - Mes</label>
+                            <select id="hasta_mes_hist" required>
+                                <option value="">Mes</option>
+                                <option value="1">Enero</option>
+                                <option value="2">Febrero</option>
+                                <option value="3">Marzo</option>
+                                <option value="4">Abril</option>
+                                <option value="5">Mayo</option>
+                                <option value="6">Junio</option>
+                                <option value="7">Julio</option>
+                                <option value="8">Agosto</option>
+                                <option value="9">Septiembre</option>
+                                <option value="10">Octubre</option>
+                                <option value="11">Noviembre</option>
+                                <option value="12">Diciembre</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="hasta_numero_quincena_hist">Quincena</label>
+                            <select id="hasta_numero_quincena_hist" required>
+                                <option value="">Quincena</option>
+                                <option value="1">1ª (1-15)</option>
+                                <option value="2">2ª (16-fin)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="hasta_anio_hist">Año</label>
+                            <input id="hasta_anio_hist" type="number" min="2000" style="width:110px;" required />
+                        </div>
+
+                        <div class="form-group" style="flex: 1 1 260px;">
+                            <label for="historial_empleado_select">Empleado (opcional)</label>
+                            <select id="historial_empleado_select">
+                                <option value="">Todos</option>
+                            </select>
+                        </div>
+
+                        <div style="align-self:flex-end; display:flex; gap:8px;">
+                            <button type="button" class="btn btn-secondary" onclick="closeHistorialModal()">Cerrar</button>
+                            <button type="submit" class="btn btn-primary">Consultar</button>
+                        </div>
+                    </div>
+                </form>
+
+                <div id="historialResults" class="hist-results" style="margin-top:16px; max-height:60vh; overflow:auto;">
+                    <!-- Resultados se muestran aquí -->
+                </div>
+            </div>
+        </div>
+
+                <!-- Modal selección de período de Nómina (Año-Mes-Quincena) -->
+                <div id="nominaQuincenaSeleccionModal" class="modal">
+                    <div class="modal-content" style="max-width: 520px; width: 95%;">
+                        <div class="modal-header">
+                            <h2>Seleccionar Período de Nómina</h2>
+                            <span class="close" onclick="closeNominaQuincenaSeleccion()">&times;</span>
+                        </div>
+                        <form id="nominaQuincenaSeleccionForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="nomina_quincena_anio">Año *</label>
+                                    <input id="nomina_quincena_anio" type="number" min="2000" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="nomina_quincena_mes">Mes *</label>
+                                    <select id="nomina_quincena_mes" required>
+                                        <option value="">Seleccione mes...</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="nomina_quincena_numero">Quincena *</label>
+                                    <select id="nomina_quincena_numero" required>
+                                        <option value="">Seleccione...</option>
+                                        <option value="1">1ª Quincena (1-15)</option>
+                                        <option value="2">2ª Quincena (16-fin de mes)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeNominaQuincenaSeleccion()">Cancelar</button>
+                                <button type="submit" class="btn btn-primary">Confirmar período</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div id="nominaView" class="module-view">
+                <!-- Encabezado principal del módulo Nómina (inicio del módulo) -->
+                <div id="nominaHomeHeader" class="module-header">
+                    <div class="button-group module-actions">
+                        <button class="btn btn-primary" onclick="showNewEmpleadoForm()" aria-label="Nuevo Empleado">
+                            <span class="btn-icon">＋</span><span class="btn-label">Nuevo Empleado</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="openNominaQuincenaView()" aria-label="Quincena">
+                            <span class="btn-icon">📅</span><span class="btn-label">Quincena</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="showHistorialModal()" aria-label="Ver Historial">
+                            <span class="btn-icon">📜</span><span class="btn-label">Ver Historial</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Dashboard resumido de Nómina (solo en inicio del módulo) -->
+                <div id="nominaDashboardResumen" class="stats-grid" style="margin-bottom: 16px;">
+                    <div class="stat-card">
+                        <h3>Empleados activos</h3>
+                        <p class="stat-number" id="nominaTotalEmpleados">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>En planilla</h3>
+                        <p class="stat-number" id="nominaEmpleadosPlanilla">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Nómina pagada mes</h3>
+                        <p class="stat-number" id="nominaPagadaMes">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Pendiente por pagar</h3>
+                        <p class="stat-number" id="nominaPendientePagar">-</p>
+                    </div>
+                </div>
+
+                <div class="recent-section" style="margin-bottom: 16px;">
+                    <h2 style="margin-bottom: 4px;">Quincena en proceso</h2>
+                    <p id="nominaQuincenaActual" style="margin:0; color:#555; font-size:0.95rem;">Cargando información de quincena...</p>
+                </div>
+
+                <!-- Resumen mensual por quincena (solo en inicio del módulo) -->
+                <div id="nominaResumenMensual" class="table-container" style="margin-bottom: 20px; max-width: 800px;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Quincena</th>
+                                <th>Total a pagar</th>
+                                <th>Total pagado</th>
+                                <th>Saldo pendiente</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>1ª Quincena</td>
+                                <td id="nominaQ1Total">-</td>
+                                <td id="nominaQ1Pagado">-</td>
+                                <td id="nominaQ1Saldo">-</td>
+                            </tr>
+                            <tr>
+                                <td>2ª Quincena</td>
+                                <td id="nominaQ2Total">-</td>
+                                <td id="nominaQ2Pagado">-</td>
+                                <td id="nominaQ2Saldo">-</td>
+                            </tr>
+                            <tr>
+                                <td style="font-weight:700;">Total mes</td>
+                                <td id="nominaTotalMes" style="font-weight:700;" colspan="3">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Vista de trabajo por Quincena en Nómina -->
+                <div id="nominaQuincenaPanel" class="module-header" style="margin-bottom: 16px; display: none; flex-direction: column; align-items: stretch;">
+                    <div class="period-aux period-aux-center">
+                        <h3 class="quincena-title">Gestión de Quincena</h3>
+                        <p id="nominaQuincenaSeleccionadaLabel" style="margin-top:0; margin-bottom:4px; color:#555; font-size:0.9rem; display:none;"></p>
+                        <div class="period-workflow">
+                            <div class="period-workflow-steps">
+                                <button type="button" class="btn btn-step active" data-module="nomina" data-step="resumen" onclick="setNominaWorkflowStep('resumen')">1. Pre-Liquidación</button>
+                                <button type="button" class="btn btn-step" data-module="nomina" data-step="novedades" onclick="setNominaWorkflowStep('novedades')">2. Novedades</button>
+                                <button type="button" class="btn btn-step" data-module="nomina" data-step="pagos" onclick="setNominaWorkflowStep('pagos')">3. Pagos</button>
+                            </div>
+                            <div class="period-workflow-actions">
+                                <button id="btnNominaFinalizarNovedadesPanel" type="button" class="btn btn-outline btn-step" style="display:none;" onclick="notImplemented('Nómina: FINALIZAR NOVEDADES quincena')">Finalizar Novedades</button>
+                                <button id="btnNominaFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="notImplemented('Nómina: FINALIZAR PAGO quincena')">Finalizar Pago Quincena</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="nominaEmpleadosPanel" class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Cédula</th>
+                                <th>Nombre Completo</th>
+                                <th>Cargo</th>
+                                <th>Sueldo Quincenal</th>
+                                <th>Planilla</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="empleadosTable">
+                            <tr>
+                                <td colspan="7" class="loading">Cargando empleados...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="nominaNovedadesPanel" style="margin-top: 20px; display: none;">
+                    <div class="module-header">
+                        <div class="button-group module-actions">
+                            <button class="btn btn-primary" onclick="showNewNovedadForm()" aria-label="Nueva Novedad">
+                                <span class="btn-icon">＋</span><span class="btn-label">+ Nueva Novedad</span>
+                            </button>
+                        </div>
+                        <h3 id="nominaNovedadesSection">Novedades de la Quincena Seleccionada</h3>
+                    </div>
+                    <div id="nominaNovedadesFiltroRow" class="form-row">
+                        <div class="form-group">
+                            <label for="novedades_mes">Mes *</label>
+                            <select id="novedades_mes" required>
+                                <option value="">Seleccione mes...</option>
+                                <option value="1">Enero</option>
+                                <option value="2">Febrero</option>
+                                <option value="3">Marzo</option>
+                                <option value="4">Abril</option>
+                                <option value="5">Mayo</option>
+                                <option value="6">Junio</option>
+                                <option value="7">Julio</option>
+                                <option value="8">Agosto</option>
+                                <option value="9">Septiembre</option>
+                                <option value="10">Octubre</option>
+                                <option value="11">Noviembre</option>
+                                <option value="12">Diciembre</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="novedades_quincena">Quincena *</label>
+                            <select id="novedades_quincena" required>
+                                <option value="">Seleccione...</option>
+                                <option value="1">1ª Quincena (1-15)</option>
+                                <option value="2">2ª Quincena (16-fin de mes)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="align-self: flex-end;">
+                            <button class="btn btn-info" onclick="loadNovedadesPeriodo()">Ver Novedades</button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Empleado</th>
+                                    <th>Cédula</th>
+                                    <th>Tipo</th>
+                                    <th>Movimiento</th>
+                                    <th>Valor</th>
+                                    <th>Descripción</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="novedadesTable">
+                                <tr>
+                                    <td colspan="9" class="loading">No hay novedades cargadas para este período</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Resultados de Liquidación -->
+                <div id="liquidacionResultados" class="liquidacion-resultados" style="display: none;">
+                    <h3>Resultado de Liquidación</h3>
+                    <div class="liquidacion-info">
+                        <div>Período: <strong id="liquidacionPeriodo"></strong></div>
+                        <div>Total Empleados: <strong id="liquidacionEmpleados"></strong></div>
+                        <div>Total a Pagar: <strong id="liquidacionTotal"></strong></div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Empleado</th>
+                                    <th>Sueldo Base</th>
+                                    <th>Sueldo</th>
+                                    <th>Saldo Anterior</th>
+                                    <th>Ingresos Extra</th>
+                                    <th>Otros Desc.</th>
+                                    <th>Anticipos</th>
+                                    <th>Préstamos</th>
+                                    <th>Total Deduc.</th>
+                                    <th>Neto a Pagar</th>
+                                </tr>
+                            </thead>
+                            <tbody id="liquidacionTable">
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="button-group" style="margin-top: 15px; justify-content: center; flex-wrap: wrap;">
+                        <button class="btn btn-success" onclick="guardarLiquidacion()">✅ Guardar Liquidación</button>
+                        <button id="btnProcederPago" class="btn btn-primary" onclick="mostrarSeccionPagos()" style="display: none;">💸 Proceder a Pagar Nómina</button>
+                    </div>
+                </div>
+                
+                <!-- Sección Pagar Nómina de la Liquidación Actual -->
+                <div id="pagarNominaLiquidada" style="display: none; margin-top: 30px;">
+                    <div class="module-header">
+                        <h3>💸 Pagar Nómina - <span id="pagoQuincenaTitulo"></span></h3>
+                        <div class="button-group">
+                            <button class="btn btn-success" onclick="procesarPagoMasivoLiquidacion()">💸 Pagar Todos</button>
+                            <button class="btn btn-primary" onclick="guardarPagosQuincena()">💾 Guardar Pagos</button>
+                            <button id="btnFinalizarPagosQuincena" class="btn btn-danger" onclick="finalizarPagosQuincena()" style="display: inline-block; font-size: 1.1em; font-weight: bold; padding: 12px 20px;" title="Bloquea la quincena y transfiere saldos pendientes a la siguiente. Los empleados sin pagar complete verán sus saldos pendientes en la próxima quincena.">🔒 FINALIZAR PAGO QUINCENA</button>
+                            <button class="btn btn-secondary" onclick="ocultarSeccionPagos()">❌ Cancelar</button>
+                        </div>
+                    </div>
+                    
+                        <!-- Workflow Status Alert -->
+                        <div id="workflowAlert" style="background-color: #fff3cd; border: 2px solid #ff6b6b; border-radius: 8px; padding: 15px; margin-bottom: 20px; display: none;">
+                            <div style="display: flex; align-items: flex-start; gap: 15px;">
+                                <div style="font-size: 2em; min-width: fit-content;">⚠️</div>
+                                <div>
+                                    <h4 style="margin: 0 0 8px 0; color: #d32f2f;">PAGO EN PROCESO</h4>
+                                    <p id="workflowStatus" style="margin: 0 0 8px 0; color: #333;"></p>
+                                    <p style="margin: 0; color: #d32f2f; font-weight: bold;">
+                                        ⚠️ IMPORTANTE: Después de registrar todos los pagos DEBE hacer click en 
+                                        <span style="background-color: #d32f2f; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">🔒 FINALIZAR PAGO QUINCENA</span>
+                                        para bloquear esta quincena y poder liquidar la siguiente.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox" id="selectAllPagosLiq" onchange="toggleSelectAllPagosLiq()" checked></th>
+                                    <th>Empleado</th>
+                                    <th>Saldo Anterior</th>
+                                    <th>Ingresos</th>
+                                    <th>Deducciones</th>
+                                    <th>Total a Pagar</th>
+                                    <th>Estado</th>
+                                    <th>Banco/Cuenta</th>
+                                    <th>Pagos Realizados</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaPagosLiquidacion">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Servicios View -->
+            <div id="serviciosView" class="module-view">
+                <div id="serviciosHomeHeader" class="module-header">
+                    <div class="button-group module-actions">
+                        <button class="btn btn-primary" onclick="showNewServicioModal()" aria-label="Nuevo Servicio">
+                            <span class="btn-icon">＋</span><span class="btn-label">Nuevo Servicio</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="toggleServiciosMesPanel()" aria-label="Mes">
+                            <span class="btn-icon">📅</span><span class="btn-label">Mes</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="showHistServiciosModal()" aria-label="Ver Historial">
+                            <span class="btn-icon">📜</span><span class="btn-label">Ver Historial</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mes en proceso (similar a "Quincena en proceso" en Nómina) -->
+                <div id="serviciosMesActualPanel" class="recent-section" style="margin-bottom: 16px;">
+                    <h2 style="margin-bottom: 4px;">Mes en proceso</h2>
+                    <p id="serviciosMesActual" style="margin:0; color:#555; font-size:0.95rem;">No hay mes en proceso registrado.</p>
+                </div>
+
+                <!-- Resumen rápido de Servicios (dashboard del módulo) -->
+                <div id="serviciosDashboardResumen" class="stats-grid" style="margin-bottom: 16px;">
+                    <div class="stat-card">
+                        <h3>Servicios activos</h3>
+                        <p class="stat-number" id="serviciosTotalActivos">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Servicios con cargo este mes</h3>
+                        <p class="stat-number" id="serviciosConCargoMes">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total a pagar mes</h3>
+                        <p class="stat-number" id="serviciosTotalMes">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Período actual</h3>
+                        <p class="stat-number" id="serviciosPeriodoResumen">-</p>
+                    </div>
+                </div>
+
+                <!-- Modal selección de período de Servicios (Año-Mes) -->
+                <div id="serviciosPeriodoSeleccionModal" class="modal">
+                    <div class="modal-content" style="max-width: 520px; width: 95%;">
+                        <div class="modal-header">
+                            <h2>Seleccionar Período de Servicios</h2>
+                            <span class="close" onclick="closeServiciosPeriodoSeleccion()">&times;</span>
+                        </div>
+                        <form id="serviciosPeriodoSeleccionForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="servicios_periodo_anio">Año *</label>
+                                    <input id="servicios_periodo_anio" type="number" min="2000" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="servicios_periodo_mes">Mes *</label>
+                                    <select id="servicios_periodo_mes" required>
+                                        <option value="">Seleccione mes...</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeServiciosPeriodoSeleccion()">Cancelar</button>
+                                <button type="submit" class="btn btn-primary">Confirmar período</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Opciones internas de Mes para Servicios -->
+                <div id="serviciosMesPanel" class="module-header" style="margin-bottom: 16px; display: none;">
+                    <div class="period-aux period-aux-center">
+                        <h3 class="quincena-title">Gestión de Mes</h3>
+                        <p id="serviciosMesSeleccionadoLabel" style="margin-top:0; margin-bottom:4px; color:#555; font-size:0.9rem;">Período Servicios (Mes/Año) · selección pendiente</p>
+                        <div class="period-workflow">
+                            <div class="period-workflow-steps">
+                                <button type="button" class="btn btn-step active" data-module="servicios" data-step="resumen" onclick="setServiciosWorkflowStep('resumen')">1. Pre-Liquidación</button>
+                                <button type="button" class="btn btn-step" data-module="servicios" data-step="novedades" onclick="setServiciosWorkflowStep('novedades')">2. Novedades</button>
+                                <button type="button" class="btn btn-step" data-module="servicios" data-step="pagos" onclick="setServiciosWorkflowStep('pagos')">3. Pagos</button>
+                            </div>
+                            <div class="period-workflow-actions">
+                                <button id="btnServiciosFinalizarNovedadesPanel" type="button" class="btn btn-outline btn-step" style="display:none;" onclick="notImplemented('Servicios: FINALIZAR NOVEDADES mes')">Finalizar Novedades</button>
+                                <button id="btnServiciosFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="notImplemented('Servicios: FINALIZAR PAGO mes')">Finalizar Pago Mes</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panel de Novedades del Mes (similar a Nómina) -->
+                <div id="serviciosNovedadesPanel" style="margin-top: 20px; display: none;">
+                    <div class="module-header">
+                        <div class="button-group module-actions">
+                            <button class="btn btn-primary" onclick="showNewServicioNovedadModal()" aria-label="Nueva Novedad">
+                                <span class="btn-icon">＋</span><span class="btn-label">+ Nueva Novedad</span>
+                            </button>
+                        </div>
+                        <h3 id="serviciosNovedadesSection">Novedades del Mes Seleccionado</h3>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Servicio</th>
+                                    <th>Fecha recibo</th>
+                                    <th>Valor</th>
+                                    <th>Saldo pendiente</th>
+                                    <th>Referencia</th>
+                                    <th>Descripción</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="serviciosNovedadesInlineBody">
+                                <tr>
+                                    <td colspan="8" class="loading">No hay novedades cargadas para este mes</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="serviciosCatalogo" class="content-area">
+                    <div id="serviciosCatalogoPlaceholder" class="placeholder">Cargando catálogo de servicios... Si no se actualiza, abra la consola del navegador para errores.</div>
+                </div>
+
+                <!-- Modal: Novedades por Mes (Servicios) -->
+                <div id="serviciosNovedadesMesModal" class="modal">
+                    <div class="modal-content" style="max-width: 900px; width: 95%;">
+                        <div class="modal-header">
+                            <h2>Novedades por Mes</h2>
+                            <span class="close" onclick="closeServiciosNovedadesMesModal()">&times;</span>
+                        </div>
+                        <form id="serviciosNovedadesMesForm">
+                            <div class="form-row" id="serviciosNovedadesPeriodoRow">
+                                <div class="form-group">
+                                    <label for="serv_nov_mes">Mes *</label>
+                                    <select id="serv_nov_mes" name="mes" required>
+                                        <option value="">Seleccione mes...</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="serv_nov_anio">Año *</label>
+                                    <input id="serv_nov_anio" name="anio" type="number" min="2000" required />
+                                </div>
+                                <div class="form-group" style="flex:1 1 260px;">
+                                    <label for="serv_nov_servicio">Servicio (opcional)</label>
+                                    <select id="serv_nov_servicio" name="servicio_id"></select>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeServiciosNovedadesMesModal()">Cerrar</button>
+                                <button type="submit" class="btn btn-primary">Consultar</button>
+                            </div>
+                        </form>
+                        <div class="table-container" style="margin-top:16px; max-height:60vh; overflow:auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Servicio</th>
+                                        <th>Fecha recibo</th>
+                                        <th>Valor</th>
+                                        <th>Saldo pendiente</th>
+                                        <th>Referencia</th>
+                                        <th>Descripción</th>
+                                        <th>Estado</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="serviciosNovedadesMesBody">
+                                    <tr><td colspan="8" class="loading">No hay novedades cargadas para este período.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal: Liquidación Mensual Servicios -->
+                <div id="serviciosLiquidacionModal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2>Liquidación Mensual de Servicios</h2>
+                            <span class="close" onclick="closeServiciosLiquidacionModal()">&times;</span>
+                        </div>
+                        <form id="serviciosLiquidacionForm">
+                            <div class="form-row" id="serviciosLiquidacionPeriodoRow">
+                                <div class="form-group">
+                                    <label for="serv_liq_mes">Mes *</label>
+                                    <select id="serv_liq_mes" name="mes" required>
+                                        <option value="">Seleccione mes...</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="serv_liq_anio">Año *</label>
+                                    <input id="serv_liq_anio" name="anio" type="number" min="2000" required />
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeServiciosLiquidacionModal()">Cerrar</button>
+                                <button type="submit" class="btn btn-primary">Consultar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Resultados Liquidación Mensual Servicios -->
+                <div id="serviciosLiquidacionResultados" class="content-area" style="display:none; margin-top:20px;">
+                    <div class="module-header" style="margin-bottom:10px;">
+                        <h3>Servicios a pagar en <span id="serviciosLiquidacionTitulo">el mes seleccionado</span></h3>
+                        <div class="liquidacion-info">
+                            <div>Período: <strong id="serviciosLiquidacionPeriodo"></strong></div>
+                            <div>Total a Pagar: <strong id="serviciosLiquidacionTotal">0,00</strong></div>
+                        </div>
+                        <div class="button-group" id="serviciosLiquidacionAcciones">
+                            <button class="btn btn-primary" onclick="showNewPagoModal()" aria-label="Registrar Pago">
+                                <span class="btn-icon">💼</span><span class="btn-label">Registrar Pago</span>
+                            </button>
+                            <button class="btn btn-danger" onclick="finalizarPeriodoServicios()" aria-label="Finalizar Mes">
+                                <span class="btn-icon">🔒</span><span class="btn-label">Finalizar Mes</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Servicio</th>
+                                    <th>Referencia</th>
+                                    <th>Saldo anterior</th>
+                                    <th>Cargo del mes</th>
+                                    <th>Total a pagar</th>
+                                </tr>
+                            </thead>
+                            <tbody id="serviciosLiquidacionBody">
+                                <tr><td colspan="5" class="loading">No hay datos de liquidación para este período.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Modal: Gestion Servicio (crear/editar) -->
+                <div id="servicioModal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2>Gestionar Servicio</h2>
+                            <span class="close" onclick="closeServicioModal()">&times;</span>
+                        </div>
+                        <form id="servicioForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="servicio_nombre">Nombre</label>
+                                    <input id="servicio_nombre" name="nombre" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="servicio_referencia_pago">Referencia de Pago</label>
+                                    <input id="servicio_referencia_pago" name="referencia_pago" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="servicio_dia_pago">Día de Pago</label>
+                                    <input id="servicio_dia_pago" name="dia_pago" type="number" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="servicio_valor_aproximado">Valor aproximado</label>
+                                    <input id="servicio_valor_aproximado" name="valor_aproximado" type="number" step="0.01" />
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="servicio_modalidad_pago_meses">Modalidad de pago (meses)</label>
+                                    <select id="servicio_modalidad_pago_meses" name="modalidad_pago_meses">
+                                        <option value="1">Mensual (cada 1 mes)</option>
+                                        <option value="2">Bimestral (cada 2 meses)</option>
+                                        <option value="3">Trimestral (cada 3 meses)</option>
+                                        <option value="6">Semestral (cada 6 meses)</option>
+                                        <option value="12">Anual (cada 12 meses)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="servicio_mes_inicio_pago">Primer mes de pago</label>
+                                    <select id="servicio_mes_inicio_pago" name="mes_inicio_pago">
+                                        <option value="">Seleccione mes...</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeServicioModal()">Cerrar</button>
+                                <button type="submit" class="btn btn-primary">Guardar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Modal: Nueva Novedad (Servicios) -->
+                <div id="servicioNovedadModal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2>Registrar Novedad</h2>
+                            <span class="close" onclick="closeServicioNovedadModal()">&times;</span>
+                        </div>
+                        <form id="servicioNovedadForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="novedad_servicio">Servicio</label>
+                                    <select id="novedad_servicio" name="servicio_id"></select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="novedad_valor_real">Valor real</label>
+                                    <input id="novedad_valor_real" name="valor_real" type="number" step="0.01" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="novedad_mes">Mes *</label>
+                                    <select id="novedad_mes" name="novedad_mes" required>
+                                        <option value="">Seleccione mes...</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="novedad_anio">Año *</label>
+                                    <input id="novedad_anio" name="novedad_anio" type="number" min="2000" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="novedad_fecha_recibo">Fecha recibo</label>
+                                    <input id="novedad_fecha_recibo" name="fecha_recibo" type="date" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="novedad_fecha_limite_primer_pago">Fecha límite primer pago</label>
+                                    <input id="novedad_fecha_limite_primer_pago" name="fecha_limite_primer_pago" type="date" />
+                                </div>
+                                <div class="form-group" style="flex:1 1 100%">
+                                    <label for="novedad_referencia">Referencia</label>
+                                    <input id="novedad_referencia" name="referencia" />
+                                </div>
+                                <div class="form-group" style="flex:1 1 100%">
+                                    <label for="novedad_descripcion">Descripción</label>
+                                    <textarea id="novedad_descripcion" name="descripcion"></textarea>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeServicioNovedadModal()">Cerrar</button>
+                                <button type="submit" class="btn btn-primary">Registrar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Modal: Nuevo Pago -->
+                <div id="pagoModal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2>Registrar Pago</h2>
+                            <span class="close" onclick="closePagoModal()">&times;</span>
+                        </div>
+                        <form id="pagoForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="pago_servicio">Servicio</label>
+                                    <select id="pago_servicio" name="servicio_id"></select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="pago_fecha">Fecha pago</label>
+                                    <input id="pago_fecha" name="fecha_pago" type="date" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="pago_forma">Forma de pago</label>
+                                    <input id="pago_forma" name="forma_pago" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="pago_valor_pagado">Valor pagado</label>
+                                    <input id="pago_valor_pagado" name="valor_pagado" type="number" step="0.01" required />
+                                </div>
+                                <div class="form-group" style="flex:1 1 100%">
+                                    <label for="pago_observaciones">Observaciones</label>
+                                    <textarea id="pago_observaciones" name="observaciones"></textarea>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closePagoModal()">Cerrar</button>
+                                <button type="submit" class="btn btn-primary">Registrar Pago</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Modal: Historial Servicios -->
+                <div id="histServiciosModal" class="modal">
+                    <div class="modal-content" style="max-width: 1000px; width: 95%;">
+                        <div class="modal-header">
+                            <h2>Historial de Servicios</h2>
+                            <span class="close" onclick="closeHistServiciosModal()">&times;</span>
+                        </div>
+                        <form id="histServiciosForm">
+                            <div class="form-row hist-form-grid">
+                                <div class="form-group">
+                                    <label for="desde_mes_hist">Desde - Mes</label>
+                                    <select id="desde_mes_hist" required>
+                                        <option value="">Mes</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="desde_anio_hist">Año</label>
+                                    <input id="desde_anio_hist" type="number" min="2000" style="width:110px;" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="hasta_mes_hist">Hasta - Mes</label>
+                                    <select id="hasta_mes_hist" required>
+                                        <option value="">Mes</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="hasta_anio_hist">Año</label>
+                                    <input id="hasta_anio_hist" type="number" min="2000" style="width:110px;" required />
+                                </div>
+
+                                <div class="form-group" style="flex: 1 1 260px;">
+                                    <label for="hist_servicio_select">Servicio (opcional)</label>
+                                    <select id="hist_servicio_select">
+                                        <option value="">Todos</option>
+                                    </select>
+                                </div>
+
+                                <div style="align-self:flex-end; display:flex; gap:8px;">
+                                    <button type="button" class="btn btn-secondary" onclick="closeHistServiciosModal()">Cerrar</button>
+                                    <button type="submit" class="btn btn-primary">Consultar</button>
+                                </div>
+                            </div>
+                        </form>
+
+                        <div id="histServiciosResults" class="hist-results" style="margin-top:16px; max-height:60vh; overflow:auto;"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="usuariosView" class="module-view">
+                <div id="usuariosHomeHeader" class="module-header">
+                    <div class="button-group module-actions">
+                        <button class="btn btn-primary" onclick="showNewUserForm()" aria-label="Nuevo Usuario">
+                            <span class="btn-icon">＋</span><span class="btn-label">Nuevo Usuario</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="recent-section" style="margin-bottom: 16px;">
+                    <h2 style="margin-bottom: 4px;">Gestión de Usuarios</h2>
+                    <p style="margin:0; color:#555; font-size:0.95rem;">Cree, edite y administre los usuarios del sistema.</p>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Usuario</th>
+                                <th>Email</th>
+                                <th>Rol</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usuariosTable">
+                            <tr>
+                                <td colspan="5" class="loading">Cargando usuarios...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Tablas - Parametros View -->
+            <div id="tablasView" class="module-view">
+                <div class="module-header">
+                    <h2>Tablas de Configuración</h2>
+                    <div class="button-group module-actions">
+                        <button class="btn btn-primary" onclick="mostrarAgregarDescuento()" aria-label="Nuevo Parámetro">
+                            <span class="btn-icon">＋</span><span class="btn-label">Nuevo Parámetro</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <h3>Descuentos de Nómina</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Concepto</th>
+                                <th>Porcentaje</th>
+                                <th>Descripción</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="descuentosTable">
+                            <tr>
+                                <td colspan="5" class="loading">Cargando descuentos...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="table-container">
+                    <h3>Clases de Novedad de Nómina</h3>
+                    <div style="text-align:right; margin-bottom:8px;">
+                        <button class="btn btn-secondary" onclick="mostrarAgregarTipoNovedad()">+ Nueva Clase de Novedad</button>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Movimiento</th>
+                                <th>Categoría</th>
+                                <th>Tipo Funcional</th>
+                                <th>Requiere Autorización</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tiposNovedadTable">
+                            <tr>
+                                <td colspan="7" class="loading">Cargando tipos de novedad...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Módulo Bancos / Préstamos de Empresa -->
+            <div id="bancosView" class="module-view">
+                <div class="module-header" id="bancosHomeHeader">
+                    <div class="button-group module-actions">
+                        <button class="btn btn-primary" onclick="showNewPrestamoModal()" aria-label="Nuevo Préstamo">
+                            <span class="btn-icon">＋</span><span class="btn-label">Nuevo Préstamo</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="toggleBancosMesPanel()" aria-label="Mes">
+                            <span class="btn-icon">📅</span><span class="btn-label">Mes</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="showBancosHistorialPanel && showBancosHistorialPanel()" aria-label="Ver Historial">
+                            <span class="btn-icon">📜</span><span class="btn-label">Ver Historial</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mes en proceso (similar a Servicios) -->
+                <div id="bancosMesActualPanel" class="recent-section" style="margin-bottom: 16px;">
+                    <h2 style="margin-bottom: 4px;">Mes en proceso</h2>
+                    <p id="bancosMesActual" style="margin:0; color:#555; font-size:0.95rem;">No hay mes en proceso registrado.</p>
+                </div>
+
+                <!-- Resumen rápido de Bancos (dashboard del módulo) -->
+                <div id="bancosDashboardResumen" class="stats-grid" style="margin-bottom: 16px;">
+                    <div class="stat-card">
+                        <h3>Préstamos activos</h3>
+                        <p class="stat-number" id="bancosTotalActivos">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Préstamos con cuota este mes</h3>
+                        <p class="stat-number" id="bancosConCargoMes">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total programado mes</h3>
+                        <p class="stat-number" id="bancosTotalProgramadoMes">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total pagado mes</h3>
+                        <p class="stat-number" id="bancosTotalPagadoMes">-</p>
+                    </div>
+                </div>
+
+                <!-- Modal selección de período de Bancos (Año-Mes) -->
+                <div id="bancosPeriodoSeleccionModal" class="modal">
+                    <div class="modal-content" style="max-width: 520px; width: 95%;">
+                        <div class="modal-header">
+                            <h2>Seleccionar Período de Préstamos</h2>
+                            <span class="close" onclick="closeBancosPeriodoSeleccion()">&times;</span>
+                        </div>
+                        <form id="bancosPeriodoSeleccionForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="bancos_periodo_anio">Año *</label>
+                                    <input id="bancos_periodo_anio" type="number" min="2000" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="bancos_periodo_mes">Mes *</label>
+                                    <select id="bancos_periodo_mes" required>
+                                        <option value="">Seleccione mes...</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeBancosPeriodoSeleccion()">Cancelar</button>
+                                <button type="submit" class="btn btn-primary">Confirmar período</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Opciones internas de Mes para Bancos -->
+                <div id="bancosMesPanel" class="module-header" style="margin-bottom: 16px; display: none;">
+                    <div class="button-group module-actions" style="display:none;">
+                        <button class="btn btn-primary" onclick="reloadPrestamosResumen()" aria-label="Actualizar">
+                            <span class="btn-icon">🔄</span><span class="btn-label">Actualizar</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="showNewPrestamoNovedadModal()" aria-label="Nueva Novedad">
+                            <span class="btn-icon">＋</span><span class="btn-label">+ Nueva Novedad</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="showNewPrestamoPagoModal()" aria-label="Nuevo Pago">
+                            <span class="btn-icon">＋</span><span class="btn-label">Nuevo Pago</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="showPrestamosNovedadesModal()" aria-label="Ver Novedades y Pagos">
+                            <span class="btn-icon">📄</span><span class="btn-label">Novedades / Pagos</span>
+                        </button>
+                    </div>
+                    <div class="period-aux period-aux-center">
+                        <h3 class="quincena-title">Gestión de Mes</h3>
+                        <p id="bancosMesSeleccionadoLabel" style="margin-top:0; margin-bottom:4px; color:#555; font-size:0.9rem;">Período Préstamos (Mes/Año) · selección pendiente</p>
+                        <div class="period-workflow">
+                            <div class="period-workflow-steps">
+                                <button type="button" class="btn btn-step active" data-module="bancos" data-step="resumen" onclick="setBancosWorkflowStep('resumen')">1. Pre-Liquidación</button>
+                                <button type="button" class="btn btn-step" data-module="bancos" data-step="novedades" onclick="setBancosWorkflowStep('novedades')">2. Novedades</button>
+                                <button type="button" class="btn btn-step" data-module="bancos" data-step="pagos" onclick="setBancosWorkflowStep('pagos')">3. Pagos</button>
+                            </div>
+                            <div class="period-workflow-actions">
+                                <button id="btnBancosFinalizarNovedadesPanel" type="button" class="btn btn-outline btn-step" style="display:none;" onclick="notImplemented('Bancos: FINALIZAR NOVEDADES mes')">Finalizar Novedades</button>
+                                <button id="btnBancosFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="notImplemented('Bancos: FINALIZAR PAGO mes')">Finalizar Pago Mes</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Panel de Novedades del Mes (similar a Nómina/Servicios) -->
+                <div id="bancosNovedadesPanel" style="margin-top: 20px; display: none;">
+                    <div class="module-header">
+                        <div class="button-group module-actions">
+                            <button class="btn btn-primary" onclick="showNewPrestamoNovedadModal()" aria-label="Nueva Novedad">
+                                <span class="btn-icon">＋</span><span class="btn-label">+ Nueva Novedad</span>
+                            </button>
+                        </div>
+                        <h3 id="bancosNovedadesSection">Novedades del Mes Seleccionado</h3>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Préstamo</th>
+                                    <th>Fecha límite pago</th>
+                                    <th>Valor a pagar</th>
+                                    <th>Descripción</th>
+                                    <th>Cumplida</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bancosNovedadesInlineBody">
+                                <tr>
+                                    <td colspan="6" class="loading">No hay novedades cargadas para este mes</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Entidad / Persona</th>
+                                <th>Fecha Inicio</th>
+                                <th>Fecha Final</th>
+                                <th>Cant. Cuotas</th>
+                                <th>Valor Préstamo</th>
+                                <th>% Interés</th>
+                                <th>Valor Cuota</th>
+                                <th>Día de Pago</th>
+                                <th>Modalidad</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prestamosTable">
+                            <tr>
+                                <td colspan="9" class="loading">No hay préstamos de empresa registrados. Use "Nuevo Préstamo" o "Actualizar".</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div id="impuestosView" class="module-view">
+                <div class="module-header" id="impuestosHomeHeader">
+                    <div class="button-group module-actions">
+                        <button class="btn btn-primary" onclick="notImplemented('Impuestos: Nuevo Impuesto')" aria-label="Nuevo Impuesto">
+                            <span class="btn-icon">＋</span><span class="btn-label">Nuevo Impuesto</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="toggleImpuestosMesPanel()" aria-label="Mes">
+                            <span class="btn-icon">📅</span><span class="btn-label">Mes</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="notImplemented('Impuestos: Historial')" aria-label="Ver Historial">
+                            <span class="btn-icon">📜</span><span class="btn-label">Ver Historial</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mes en proceso (similar a Servicios) -->
+                <div id="impuestosMesActualPanel" class="recent-section" style="margin-bottom: 16px;">
+                    <h2 style="margin-bottom: 4px;">Mes en proceso</h2>
+                    <p id="impuestosMesActual" style="margin:0; color:#555; font-size:0.95rem;">No hay mes en proceso registrado.</p>
+                </div>
+
+                <!-- Modal selección de período de Impuestos (Año-Mes) -->
+                <div id="impuestosPeriodoSeleccionModal" class="modal">
+                    <div class="modal-content" style="max-width: 520px; width: 95%;">
+                        <div class="modal-header">
+                            <h2>Seleccionar Período de Impuestos</h2>
+                            <span class="close" onclick="closeImpuestosPeriodoSeleccion()">&times;</span>
+                        </div>
+                        <form id="impuestosPeriodoSeleccionForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="impuestos_periodo_anio">Año *</label>
+                                    <input id="impuestos_periodo_anio" type="number" min="2000" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="impuestos_periodo_mes">Mes *</label>
+                                    <select id="impuestos_periodo_mes" required>
+                                        <option value="">Seleccione mes...</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeImpuestosPeriodoSeleccion()">Cancelar</button>
+                                <button type="submit" class="btn btn-primary">Confirmar período</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div id="impuestosMesPanel" class="module-header" style="margin-bottom: 16px; display: none;">
+                    <div class="button-group module-actions" style="display:none;">
+                        <button class="btn btn-primary" onclick="notImplemented('Impuestos: Nueva Novedad')" aria-label="Nueva Novedad">
+                            <span class="btn-icon">＋</span><span class="btn-label">+ Nueva Novedad</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="notImplemented('Impuestos: Liquidar Mes')" aria-label="Liquidar Mes">
+                            <span class="btn-icon">📅</span><span class="btn-label">Liquidar Mes</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="notImplemented('Impuestos: Pagos')" aria-label="Pagos">
+                            <span class="btn-icon">💸</span><span class="btn-label">Pagos</span>
+                        </button>
+                    </div>
+                    <div class="period-aux period-aux-center">
+                        <h3 class="quincena-title">Gestión de Mes</h3>
+                        <p id="impuestosMesSeleccionadoLabel" style="margin-top:0; margin-bottom:4px; color:#555; font-size:0.9rem;">Período Impuestos (Mes/Año) · selección pendiente</p>
+                        <div class="period-workflow">
+                            <div class="period-workflow-steps">
+                                <button type="button" class="btn btn-step active" data-module="impuestos" data-step="resumen" onclick="setGenericWorkflowStep('impuestos', 'resumen')">1. Pre-Liquidación</button>
+                                <button type="button" class="btn btn-step" data-module="impuestos" data-step="novedades" onclick="setGenericWorkflowStep('impuestos', 'novedades')">2. Novedades</button>
+                                <button type="button" class="btn btn-step" data-module="impuestos" data-step="pagos" onclick="setGenericWorkflowStep('impuestos', 'pagos')">3. Pagos</button>
+                            </div>
+                            <div class="period-workflow-actions">
+                                <button id="btnImpuestosFinalizarNovedadesPanel" type="button" class="btn btn-outline btn-step" style="display:none;" onclick="notImplemented('Impuestos: FINALIZAR NOVEDADES mes')">Finalizar Novedades</button>
+                                <button id="btnImpuestosFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="notImplemented('Impuestos: FINALIZAR PAGO mes')">Finalizar Pago Mes</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h2>Módulo Impuestos</h2>
+                <p class="placeholder">Este módulo está en desarrollo. La barra de botones ya sigue la filosofía de períodos (Mes / Historial).</p>
+            </div>
+            
+            <div id="comprasView" class="module-view">
+                <div class="module-header" id="comprasHomeHeader">
+                    <div class="button-group module-actions">
+                        <button class="btn btn-primary" onclick="notImplemented('Compras: Nueva Compra')" aria-label="Nueva Compra">
+                            <span class="btn-icon">＋</span><span class="btn-label">Nueva Compra</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="toggleComprasMesPanel()" aria-label="Mes">
+                            <span class="btn-icon">📅</span><span class="btn-label">Mes</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="notImplemented('Compras: Historial')" aria-label="Ver Historial">
+                            <span class="btn-icon">📜</span><span class="btn-label">Ver Historial</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mes en proceso (similar a Servicios) -->
+                <div id="comprasMesActualPanel" class="recent-section" style="margin-bottom: 16px;">
+                    <h2 style="margin-bottom: 4px;">Mes en proceso</h2>
+                    <p id="comprasMesActual" style="margin:0; color:#555; font-size:0.95rem;">No hay mes en proceso registrado.</p>
+                </div>
+
+                <!-- Modal selección de período de Compras (Año-Mes) -->
+                <div id="comprasPeriodoSeleccionModal" class="modal">
+                    <div class="modal-content" style="max-width: 520px; width: 95%;">
+                        <div class="modal-header">
+                            <h2>Seleccionar Período de Compras</h2>
+                            <span class="close" onclick="closeComprasPeriodoSeleccion()">&times;</span>
+                        </div>
+                        <form id="comprasPeriodoSeleccionForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="compras_periodo_anio">Año *</label>
+                                    <input id="compras_periodo_anio" type="number" min="2000" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="compras_periodo_mes">Mes *</label>
+                                    <select id="compras_periodo_mes" required>
+                                        <option value="">Seleccione mes...</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeComprasPeriodoSeleccion()">Cancelar</button>
+                                <button type="submit" class="btn btn-primary">Confirmar período</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div id="comprasMesPanel" class="module-header" style="margin-bottom: 16px; display: none;">
+                    <div class="button-group module-actions" style="display:none;">
+                        <button class="btn btn-primary" onclick="notImplemented('Compras: Nueva Novedad')" aria-label="Nueva Novedad">
+                            <span class="btn-icon">＋</span><span class="btn-label">+ Nueva Novedad</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="notImplemented('Compras: Liquidar Mes')" aria-label="Liquidar Mes">
+                            <span class="btn-icon">📅</span><span class="btn-label">Liquidar Mes</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="notImplemented('Compras: Pagos')" aria-label="Pagos">
+                            <span class="btn-icon">💸</span><span class="btn-label">Pagos</span>
+                        </button>
+                    </div>
+                    <div class="period-aux period-aux-center">
+                        <h3 class="quincena-title">Gestión de Mes</h3>
+                        <p id="comprasMesSeleccionadoLabel" style="margin-top:0; margin-bottom:4px; color:#555; font-size:0.9rem;">Período Compras (Mes/Año) · selección pendiente</p>
+                        <div class="period-workflow">
+                            <div class="period-workflow-steps">
+                                <button type="button" class="btn btn-step active" data-module="compras" data-step="resumen" onclick="setGenericWorkflowStep('compras', 'resumen')">1. Pre-Liquidación</button>
+                                <button type="button" class="btn btn-step" data-module="compras" data-step="novedades" onclick="setGenericWorkflowStep('compras', 'novedades')">2. Novedades</button>
+                                <button type="button" class="btn btn-step" data-module="compras" data-step="pagos" onclick="setGenericWorkflowStep('compras', 'pagos')">3. Pagos</button>
+                            </div>
+                            <div class="period-workflow-actions">
+                                <button id="btnComprasFinalizarNovedadesPanel" type="button" class="btn btn-outline btn-step" style="display:none;" onclick="notImplemented('Compras: FINALIZAR NOVEDADES mes')">Finalizar Novedades</button>
+                                <button id="btnComprasFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="notImplemented('Compras: FINALIZAR PAGO mes')">Finalizar Pago Mes</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h2>Módulo Compras</h2>
+                <p class="placeholder">Este módulo está en desarrollo. La barra de botones ya sigue la filosofía de períodos (Mes / Historial).</p>
+            </div>
+            
+            <div id="ventasView" class="module-view">
+                <div class="module-header" id="ventasHomeHeader">
+                    <div class="button-group module-actions">
+                        <button class="btn btn-primary" onclick="notImplemented('Ventas: Nueva Venta')" aria-label="Nueva Venta">
+                            <span class="btn-icon">＋</span><span class="btn-label">Nueva Venta</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="toggleVentasMesPanel()" aria-label="Mes">
+                            <span class="btn-icon">📅</span><span class="btn-label">Mes</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="notImplemented('Ventas: Historial')" aria-label="Ver Historial">
+                            <span class="btn-icon">📜</span><span class="btn-label">Ver Historial</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mes en proceso (similar a Servicios) -->
+                <div id="ventasMesActualPanel" class="recent-section" style="margin-bottom: 16px;">
+                    <h2 style="margin-bottom: 4px;">Mes en proceso</h2>
+                    <p id="ventasMesActual" style="margin:0; color:#555; font-size:0.95rem;">No hay mes en proceso registrado.</p>
+                </div>
+
+                <!-- Modal selección de período de Ventas (Año-Mes) -->
+                <div id="ventasPeriodoSeleccionModal" class="modal">
+                    <div class="modal-content" style="max-width: 520px; width: 95%;">
+                        <div class="modal-header">
+                            <h2>Seleccionar Período de Ventas</h2>
+                            <span class="close" onclick="closeVentasPeriodoSeleccion()">&times;</span>
+                        </div>
+                        <form id="ventasPeriodoSeleccionForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="ventas_periodo_anio">Año *</label>
+                                    <input id="ventas_periodo_anio" type="number" min="2000" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="ventas_periodo_mes">Mes *</label>
+                                    <select id="ventas_periodo_mes" required>
+                                        <option value="">Seleccione mes...</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeVentasPeriodoSeleccion()">Cancelar</button>
+                                <button type="submit" class="btn btn-primary">Confirmar período</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div id="ventasMesPanel" class="module-header" style="margin-bottom: 16px; display: none;">
+                    <div class="button-group module-actions" style="display:none;">
+                        <button class="btn btn-primary" onclick="notImplemented('Ventas: Nueva Novedad')" aria-label="Nueva Novedad">
+                            <span class="btn-icon">＋</span><span class="btn-label">+ Nueva Novedad</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="notImplemented('Ventas: Liquidar Mes')" aria-label="Liquidar Mes">
+                            <span class="btn-icon">📅</span><span class="btn-label">Liquidar Mes</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="notImplemented('Ventas: Pagos')" aria-label="Pagos">
+                            <span class="btn-icon">💸</span><span class="btn-label">Pagos</span>
+                        </button>
+                    </div>
+                    <div class="period-aux period-aux-center">
+                        <h3 class="quincena-title">Gestión de Mes</h3>
+                        <p id="ventasMesSeleccionadoLabel" style="margin-top:0; margin-bottom:4px; color:#555; font-size:0.9rem;">Período Ventas (Mes/Año) · selección pendiente</p>
+                        <div class="period-workflow">
+                            <div class="period-workflow-steps">
+                                <button type="button" class="btn btn-step active" data-module="ventas" data-step="resumen" onclick="setGenericWorkflowStep('ventas', 'resumen')">1. Pre-Liquidación</button>
+                                <button type="button" class="btn btn-step" data-module="ventas" data-step="novedades" onclick="setGenericWorkflowStep('ventas', 'novedades')">2. Novedades</button>
+                                <button type="button" class="btn btn-step" data-module="ventas" data-step="pagos" onclick="setGenericWorkflowStep('ventas', 'pagos')">3. Pagos</button>
+                            </div>
+                            <div class="period-workflow-actions">
+                                <button id="btnVentasFinalizarNovedadesPanel" type="button" class="btn btn-outline btn-step" style="display:none;" onclick="notImplemented('Ventas: FINALIZAR NOVEDADES mes')">Finalizar Novedades</button>
+                                <button id="btnVentasFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="notImplemented('Ventas: FINALIZAR PAGO mes')">Finalizar Pago Mes</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h2>Módulo Ventas</h2>
+                <p class="placeholder">Este módulo está en desarrollo. La barra de botones ya sigue la filosofía de períodos (Mes / Historial).</p>
+            </div>
+            
+            <div id="informesView" class="module-view">
+                <h2>Módulo Informes</h2>
+                <p class="placeholder">Este módulo está en desarrollo.</p>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Modal: Crear/Editar Empleado -->
+<div id="empleadoModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="empleadoModalTitle">Nuevo Empleado</h2>
+            <span class="close" onclick="closeEmpleadoModal()">&times;</span>
+        </div>
+        <form id="empleadoForm">
+            <input type="hidden" id="empleadoId">
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="nro_documento">Cédula *</label>
+                    <input type="text" id="nro_documento" required>
+                </div>
+                <div class="form-group">
+                    <label for="cargo">Cargo *</label>
+                    <input type="text" id="cargo" required>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="nombres">Nombres *</label>
+                    <input type="text" id="nombres" required>
+                </div>
+                <div class="form-group">
+                    <label for="apellidos">Apellidos *</label>
+                    <input type="text" id="apellidos" required>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="sueldo_base">Sueldo Base *</label>
+                    <input type="number" id="sueldo_base" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="forma_pago">Forma de Pago *</label>
+                    <select id="forma_pago" required>
+                        <option value="QUINCENAL">Quincenal</option>
+                        <option value="MENSUAL">Mensual</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="fecha_inicio">Fecha Ingreso *</label>
+                    <input type="date" id="fecha_inicio" required>
+                </div>
+                <div class="form-group">
+                    <label for="dia_pago">Día de Pago</label>
+                    <input type="number" id="dia_pago" min="1" max="31" placeholder="Ej: 5 o 20">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="banco">Banco</label>
+                    <input type="text" id="banco" placeholder="Opcional">
+                </div>
+                <div class="form-group">
+                    <label for="numero_cuenta">Número de Cuenta</label>
+                    <input type="text" id="numero_cuenta" placeholder="Opcional">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input type="checkbox" id="planilla_afiliado" checked>
+                        Afiliado a planilla (pensión, salud, caja)
+                    </label>
+                </div>
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input type="checkbox" id="activo" checked>
+                        Empleado activo
+                    </label>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeEmpleadoModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Ver Pagos Detalle -->
+<div id="verPagosModal" class="modal">
+    <div class="modal-content" style="max-width:600px;">
+        <div class="modal-header">
+            <h2>📑 Historial de Pagos</h2>
+            <span class="close" onclick="closeVerPagosModal()">&times;</span>
+        </div>
+        <div style="padding: 15px;">
+            <div id="verPagosInfo" style="margin-bottom: 10px;"></div>
+            <table class="data-table" style="width:100%;">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Valor</th>
+                        <th>Forma</th>
+                        <th>Comprobante</th>
+                        <th>Observaciones</th>
+                    </tr>
+                </thead>
+                <tbody id="verPagosTable">
+                </tbody>
+            </table>
+            <div style="text-align:right; margin-top:10px;">
+                <button class="btn btn-secondary" onclick="closeVerPagosModal()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="novedadModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Nueva Novedad</h2>
+            <span class="close" onclick="closeNovedadModal()">&times;</span>
+        </div>
+        <form id="novedadForm">
+            <div class="form-group">
+                <label for="novedad_empleado_id">Empleado *</label>
+                <select id="novedad_empleado_id" required>
+                    <option value="">Seleccione un empleado...</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="tipo_novedad_id">Clase de Novedad *</label>
+                <select id="tipo_novedad_id" required onchange="updateNovedadFields()">
+                    <option value="">Seleccione tipo...</option>
+                </select>
+            </div>
+            
+            <!-- Campos dinámicos según el tipo -->
+            <div id="novedadDynamicFields">
+                <!-- Se llenará dinámicamente -->
+            </div>
+            
+            <div class="form-group">
+                <label for="descripcion_novedad">Descripción</label>
+                <textarea id="descripcion_novedad" rows="3"></textarea>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeNovedadModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Ver/Editar Novedad -->
+<div id="verNovedadModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Detalle de Novedad</h2>
+            <span class="close" onclick="closeVerNovedadModal()">&times;</span>
+        </div>
+        <form id="verNovedadForm">
+            <input type="hidden" id="detalle_novedad_id">
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="detalle_empleado_nombre">Empleado</label>
+                    <input type="text" id="detalle_empleado_nombre" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="detalle_nro_documento">Cédula</label>
+                    <input type="text" id="detalle_nro_documento" readonly>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="detalle_tipo">Tipo de Novedad</label>
+                    <input type="text" id="detalle_tipo" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="detalle_movimiento">Movimiento</label>
+                    <input type="text" id="detalle_movimiento" readonly>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="detalle_valor">Valor</label>
+                    <input type="number" id="detalle_valor" step="0.01" min="0">
+                </div>
+                <div class="form-group">
+                    <label for="detalle_fecha">Fecha de Novedad</label>
+                    <input type="date" id="detalle_fecha">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="detalle_descripcion">Descripción</label>
+                <textarea id="detalle_descripcion" rows="2"></textarea>
+            </div>
+            
+            <div id="detalleExtended" style="display: none;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="detalle_cuotas">Número de Cuotas</label>
+                        <input type="text" id="detalle_cuotas" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label for="detalle_quincena_inicio">Quincena Inicio Descuento</label>
+                        <input type="text" id="detalle_quincena_inicio" readonly>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="detalle_activa">Estado</label>
+                <select id="detalle_activa">
+                    <option value="true">Activa</option>
+                    <option value="false">Inactiva</option>
+                </select>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeVerNovedadModal()">Cerrar</button>
+                <button type="button" class="btn btn-danger" onclick="deleteNovedadConfirm()">Eliminar</button>
+                <button type="submit" class="btn btn-primary">Actualizar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Pago Individual con Discriminación -->
+<div id="pagoIndividualDetailModal" class="modal">
+    <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+            <h2>💸 Pagar Empleado</h2>
+            <span class="close" onclick="closePagoIndividualDetailModal()">&times;</span>
+        </div>
+        <form id="pagoIndividualDetailForm" onsubmit="procesarPagoIndividual(event)">
+            <input type="hidden" id="pago_ind_liquido_id">
+            <input type="hidden" id="pago_ind_empleado_id">
+            <input type="hidden" id="pago_ind_saldo_ant_original">
+            <input type="hidden" id="pago_ind_total_quincena">
+            
+            <div class="alert-info" style="padding: 15px; margin: 10px 0; background: #e3f2fd; border-left: 4px solid #2196F3;">
+                <h3 id="pago_ind_empleado_nombre" style="margin-top: 0;"></h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                    <div><strong>Salario Base:</strong> $<span id="pago_ind_salario_base">0</span></div>
+                    <div><strong>Sueldo Quincena:</strong> $<span id="pago_ind_sueldo_quincena">0</span></div>
+                    <div><strong>Saldo Anterior:</strong> <span style="color: #f44336;">$<span id="pago_ind_saldo_anterior">0</span></span></div>
+                    <div><strong>Ingresos:</strong> <span style="color: #4caf50;">$<span id="pago_ind_ingresos">0</span></span></div>
+                    <div><strong>Deducciones:</strong> <span style="color: #ff9800;">$<span id="pago_ind_deducciones">0</span></span></div>
+                    <div><strong>Total a Pagar:</strong> <span style="color: #2196F3; font-size: 1.2em;">$<span id="pago_ind_total">0</span></span></div>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="pago_ind_fecha">Fecha de Pago *</label>
+                    <input type="date" id="pago_ind_fecha" required>
+                </div>
+                <div class="form-group">
+                    <label for="pago_ind_valor_total">Valor a Pagar *</label>
+                    <input type="number" id="pago_ind_valor_total" step="0.01" min="0" required onchange="calcularDistribucionPago(); sugerirDistribucionAutomatica()">
+                </div>
+            </div>
+            
+            <!-- Discriminación del Pago -->
+            <div id="discriminacionPago" style="border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px;">
+                <h4 style="margin-top: 0;">Discriminación del Pago</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="pago_ind_saldo_ant_pago">Pago a Saldo Anterior</label>
+                        <input type="number" id="pago_ind_saldo_ant_pago" step="0.01" min="0" value="0" onchange="validarDistribucion()">
+                    </div>
+                    <div class="form-group">
+                        <label for="pago_ind_quincena_pago">Pago a Quincena Actual</label>
+                        <input type="number" id="pago_ind_quincena_pago" step="0.01" min="0" value="0" onchange="validarDistribucion()">
+                    </div>
+                </div>
+                <div id="saldoPendiente" style="padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; margin-top: 10px; display: none;">
+                    <strong>Nuevo Saldo Pendiente:</strong> $<span id="nuevoSaldoPendiente">0</span>
+                </div>
+            </div>
+            
+            <!-- Forma de Pago -->
+            <div style="border: 2px solid #2196F3; padding: 15px; margin: 10px 0; border-radius: 5px; background: #f0f8ff;">
+                <h4 style="margin-top: 0; color: #2196F3;">💳 Forma de Pago</h4>
+                <div class="form-group">
+                    <label for="pago_ind_tipo" style="font-weight: bold;">Tipo de Pago *</label>
+                    <select id="pago_ind_tipo" required onchange="toggleFormaPago()" style="font-size: 1.1em; padding: 8px;">
+                        <option value="">--- Seleccione forma de pago ---</option>
+                        <option value="TRANSFERENCIA">🏦 Transferencia Bancaria</option>
+                        <option value="EFECTIVO">💵 Efectivo</option>
+                        <option value="MIXTO">🔀 MIXTO (Efectivo + Transferencia)</option>
+                    </select>
+                </div>
+                
+                <!-- Campos para pago MIXTO -->
+                <div id="pagoMixtoFields" style="display: none; margin-top: 15px; padding: 15px; background: white; border-radius: 5px; border-left: 4px solid #ff9800;">
+                    <h5 style="margin-top: 0; color: #ff9800;">⚠️ Distribuir el pago entre dos formas</h5>
+                    <p style="margin: 5px 0; font-size: 0.9em; color: #666;">La suma de ambos debe ser igual al valor total a pagar: $<span id="pagoMixtoTotal">0</span></p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="pago_ind_efectivo" style="font-weight: bold;">💵 Efectivo</label>
+                            <input type="number" id="pago_ind_efectivo" step="0.01" min="0" value="0" onchange="validarPagoMixto()" style="background: #e8f5e9;">
+                            <small style="color: #666;">Monto en efectivo</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="pago_ind_transferencia" style="font-weight: bold;">🏦 Transferencia</label>
+                            <input type="number" id="pago_ind_transferencia" step="0.01" min="0" value="0" onchange="validarPagoMixto()" style="background: #e3f2fd;">
+                            <small style="color: #666;">Monto por transferencia</small>
+                        </div>
+                    </div>
+                    <div id="pagoMixtoValidation" style="padding: 10px; margin-top: 10px; background: #f5f5f5; border-radius: 3px; display: none;">
+                        <span id="pagoMixtoValidationMsg" style="color: #d32f2f; font-weight: bold;"></span>
+                    </div>
+                </div>
+                
+                <!-- Info para pago único -->
+                <div id="pagoUnicoInfo" style="margin-top: 10px; padding: 10px; background: white; border-radius: 3px; display: none;">
+                    <span style="color: #666; font-size: 0.9em;">Se pagará el monto total por <strong id="pagoUnicoTipo"></strong></span>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="pago_ind_comprobante">Número de Comprobante</label>
+                <input type="text" id="pago_ind_comprobante" placeholder="Ej: TRANS-12345">
+            </div>
+            
+            <div class="form-group">
+                <label for="pago_ind_observaciones">Observaciones</label>
+                <textarea id="pago_ind_observaciones" rows="2" placeholder="Observaciones adicionales..."></textarea>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closePagoIndividualDetailModal()">Cancelar</button>
+                <button type="submit" class="btn btn-success">💸 Registrar Pago</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Crear/Editar Parámetro de Descuento -->
+<div id="descuentoModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="descuentoModalTitle">Nuevo Parámetro de Descuento</h2>
+            <span class="close" onclick="closeDescuentoModal()">&times;</span>
+        </div>
+        <form id="descuentoForm" onsubmit="guardarDescuento(event)">
+            <input type="hidden" id="descuentoId">
+            
+            <div class="form-group">
+                <label for="descuentoNombre">Concepto *</label>
+                <input type="text" id="descuentoNombre" placeholder="Ej: SALUD, PENSION, CAJA_COMPENSACION" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="descuentoPorcentaje">Porcentaje (%)*</label>
+                <input type="number" id="descuentoPorcentaje" step="0.01" min="0" max="100" placeholder="Ej: 8.5" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="descuentoDescripcion">Descripción</label>
+                <textarea id="descuentoDescripcion" rows="2" placeholder="Descripción del descuento..."></textarea>
+            </div>
+            
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" id="descuentoActivo" checked>
+                    Parámetro activo
+                </label>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeDescuentoModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Crear/Editar Clase de Novedad de Nómina -->
+<div id="tipoNovedadModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="tipoNovedadModalTitle">Nueva Clase de Novedad</h2>
+            <span class="close" onclick="closeTipoNovedadModal()">&times;</span>
+        </div>
+        <form id="tipoNovedadForm" onsubmit="guardarTipoNovedad(event)">
+            <input type="hidden" id="tipoNovedadId">
+
+            <div class="form-group">
+                <label for="tipoNovedadNombre">Nombre *</label>
+                <input type="text" id="tipoNovedadNombre" required placeholder="Ej: Hora Extra Nocturna">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="tipoNovedadMovimiento">Tipo de Movimiento *</label>
+                    <select id="tipoNovedadMovimiento" required>
+                        <option value="DEBITO">DEBITO (suma al pago)</option>
+                        <option value="CREDITO">CREDITO (descuenta del pago)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="tipoNovedadCategoria">Categoría *</label>
+                    <select id="tipoNovedadCategoria" required>
+                        <option value="ANTICIPO">ANTICIPO</option>
+                        <option value="PRESTAMO">PRESTAMO</option>
+                        <option value="INGRESO_EXTRA">INGRESO_EXTRA</option>
+                        <option value="INCAPACIDAD">INCAPACIDAD</option>
+                        <option value="LICENCIA">LICENCIA</option>
+                        <option value="AUTOMATICO">AUTOMATICO</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="tipoNovedadFuncional">Tipo Funcional *</label>
+                    <select id="tipoNovedadFuncional" required>
+                        <option value="PERIODO">PERIODO (solo este período)</option>
+                        <option value="RECURRENTE">RECURRENTE (se repite en períodos futuros)</option>
+                        <option value="ESTRUCTURAL">ESTRUCTURAL (cambia condiciones de base)</option>
+                    </select>
+                </div>
+                <div class="form-group checkbox-group" style="margin-top: 28px;">
+                    <label>
+                        <input type="checkbox" id="tipoNovedadRequiereAutorizacion">
+                        Requiere autorización
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="tipoNovedadDescripcion">Descripción</label>
+                <textarea id="tipoNovedadDescripcion" rows="2" placeholder="Descripción de la clase de novedad..."></textarea>
+            </div>
+
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" id="tipoNovedadActivo" checked>
+                    Clase de novedad activa
+                </label>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeTipoNovedadModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+    
+</div>
+
+<!-- Modal: Crear/Editar Préstamo de Empresa (Bancos) -->
+<div id="prestamoEmpresaModal" class="modal">
+    <div class="modal-content" style="max-width: 720px;">
+        <div class="modal-header">
+            <h2>Nuevo Préstamo de Empresa</h2>
+            <span class="close" onclick="closePrestamoEmpresaModal()">&times;</span>
+        </div>
+        <form id="prestamoEmpresaForm">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="nombre">Entidad / Persona *</label>
+                    <input type="text" id="nombre" name="nombre" required>
+                </div>
+                <div class="form-group">
+                    <label for="tipo_prestatario">Tipo</label>
+                    <select id="tipo_prestatario" name="tipo_prestatario">
+                        <option value="">(Sin especificar)</option>
+                        <option value="ENTIDAD">Entidad</option>
+                        <option value="PERSONA">Persona</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="fecha_inicio">Fecha Inicio *</label>
+                    <input type="date" id="fecha_inicio" name="fecha_inicio" required>
+                </div>
+                <div class="form-group">
+                    <label for="fecha_final">Fecha Final</label>
+                    <input type="date" id="fecha_final" name="fecha_final">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="cantidad_cuotas">Cantidad de Cuotas</label>
+                    <input type="number" id="cantidad_cuotas" name="cantidad_cuotas" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="valor_prestamo">Valor Préstamo *</label>
+                    <input type="number" id="valor_prestamo" name="valor_prestamo" step="0.01" min="0" required>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="porcentaje_interes">% Interés</label>
+                    <input type="number" id="porcentaje_interes" name="porcentaje_interes" step="0.01" min="0">
+                </div>
+                <div class="form-group">
+                    <label for="valor_cuota">Valor Cuota</label>
+                    <input type="number" id="valor_cuota" name="valor_cuota" step="0.01" min="0">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="dia_pago">Día de Pago</label>
+                    <input type="number" id="dia_pago" name="dia_pago" min="1" max="31">
+                </div>
+                <div class="form-group">
+                    <label for="modalidad_pago">Modalidad de Pago *</label>
+                    <select id="modalidad_pago" name="modalidad_pago" required>
+                        <option value="INTERESES">Solo intereses + capital al final</option>
+                        <option value="CADENA">Cadena (quincenal o mensual)</option>
+                        <option value="BANCARIO" selected>Préstamo Bancario</option>
+                        <option value="PERSONAL">Préstamo Personal</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="frecuencia_cadena">Frecuencia Cadena</label>
+                    <select id="frecuencia_cadena" name="frecuencia_cadena">
+                        <option value="">(No aplica)</option>
+                        <option value="QUINCENAL">Quincenal</option>
+                        <option value="MENSUAL">Mensual</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="fecha_recibe_cadena">Fecha recibe cadena</label>
+                    <input type="date" id="fecha_recibe_cadena" name="fecha_recibe_cadena">
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closePrestamoEmpresaModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+    </div>
+
+<!-- Modal: Nueva Novedad de Préstamo (Bancos) -->
+<div id="prestamoNovedadModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-header">
+            <h2>Nueva Novedad de Préstamo</h2>
+            <span class="close" onclick="closePrestamoNovedadModal()">&times;</span>
+        </div>
+        <form id="prestamoNovedadForm">
+            <div class="form-group">
+                <label for="prestamo_nov_prestamo_id">Préstamo *</label>
+                <select id="prestamo_nov_prestamo_id" name="prestamo_id" required></select>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="prestamo_nov_valor">Valor a pagar *</label>
+                    <input type="number" id="prestamo_nov_valor" name="valor_a_pagar" step="0.01" min="0" required>
+                </div>
+                <div class="form-group">
+                    <label for="prestamo_nov_fecha_limite">Fecha límite de pago *</label>
+                    <input type="date" id="prestamo_nov_fecha_limite" name="fecha_limite_pago" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="prestamo_nov_desc">Descripción</label>
+                <textarea id="prestamo_nov_desc" name="descripcion" rows="2"></textarea>
+            </div>
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" id="prestamo_nov_cumplida" name="cumplida">
+                    Novedad cumplida
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closePrestamoNovedadModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Ver Novedades y Pagos de Préstamos (Bancos) -->
+<div id="prestamosNovedadesModal" class="modal">
+    <div class="modal-content" style="max-width: 900px; width: 95%;">
+        <div class="modal-header">
+            <h2>Novedades y Pagos de Préstamos</h2>
+            <span class="close" onclick="closePrestamosNovedadesModal()">&times;</span>
+        </div>
+        <form id="prestamosNovedadesForm">
+            <div class="form-row" id="prestamosPeriodoRow">
+                <div class="form-group">
+                    <label for="prest_nov_mes">Mes *</label>
+                    <select id="prest_nov_mes" name="mes" required>
+                        <option value="">Seleccione mes...</option>
+                        <option value="1">Enero</option>
+                        <option value="2">Febrero</option>
+                        <option value="3">Marzo</option>
+                        <option value="4">Abril</option>
+                        <option value="5">Mayo</option>
+                        <option value="6">Junio</option>
+                        <option value="7">Julio</option>
+                        <option value="8">Agosto</option>
+                        <option value="9">Septiembre</option>
+                        <option value="10">Octubre</option>
+                        <option value="11">Noviembre</option>
+                        <option value="12">Diciembre</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="prest_nov_anio">Año *</label>
+                    <input id="prest_nov_anio" name="anio" type="number" min="2000" required />
+                </div>
+                <div class="form-group" style="flex:1 1 260px;">
+                    <label for="prest_nov_prestamo_select">Préstamo (opcional)</label>
+                    <select id="prest_nov_prestamo_select" name="prestamo_id"></select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closePrestamosNovedadesModal()">Cerrar</button>
+                <button type="submit" class="btn btn-primary">Consultar</button>
+            </div>
+        </form>
+        <div class="table-container" style="margin-top:16px; max-height:30vh; overflow:auto;">
+            <h3 style="margin-top:0;">Novedades del periodo</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Préstamo</th>
+                        <th>Fecha límite</th>
+                        <th>Valor a pagar</th>
+                        <th>Descripción</th>
+                        <th>Cumplida</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="prestamosNovedadesBody">
+                    <tr><td colspan="6" class="loading">Seleccione mes y año para ver novedades.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="prestamosPagosSection" class="table-container" style="margin-top:16px; max-height:30vh; overflow:auto;">
+            <h3 style="margin-top:0;">Pagos del periodo</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Préstamo</th>
+                        <th>Fecha pago</th>
+                        <th>Valor pagado</th>
+                        <th>Forma pago</th>
+                        <th>Observaciones</th>
+                    </tr>
+                </thead>
+                <tbody id="prestamosPagosBody">
+                    <tr><td colspan="5" class="loading">Seleccione mes y año para ver pagos.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Nuevo Pago de Préstamo (Bancos) -->
+<div id="prestamoPagoModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-header">
+            <h2>Nuevo Pago de Préstamo</h2>
+            <span class="close" onclick="closePrestamoPagoModal()">&times;</span>
+        </div>
+        <form id="prestamoPagoForm">
+            <div class="form-group">
+                <label for="prestamo_pago_prestamo_id">Préstamo *</label>
+                <select id="prestamo_pago_prestamo_id" name="prestamo_id" required></select>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="prestamo_pago_fecha">Fecha de pago *</label>
+                    <input type="date" id="prestamo_pago_fecha" name="fecha_pago" required>
+                </div>
+                <div class="form-group">
+                    <label for="prestamo_pago_forma">Forma de pago</label>
+                    <input type="text" id="prestamo_pago_forma" name="forma_pago" placeholder="Consignación, transferencia, efectivo, etc.">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="prestamo_pago_valor">Valor pagado *</label>
+                <input type="number" id="prestamo_pago_valor" name="valor_pagado" step="0.01" min="0" required>
+            </div>
+            <div class="form-group">
+                <label for="prestamo_pago_obs">Observaciones</label>
+                <textarea id="prestamo_pago_obs" name="observaciones" rows="2"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closePrestamoPagoModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/servicios.js') }}"></script>
+<script src="{{ url_for('static', filename='js/prestamos.js') }}"></script>
+<script>
+// Auto-load services list when serviciosView is active (debug helper)
+document.addEventListener('DOMContentLoaded', function(){
+    try{
+        const sv = document.getElementById('serviciosView');
+        if (sv && sv.classList.contains('active') && typeof loadServicesList === 'function') {
+            // remove placeholder once loading
+            const ph = document.getElementById('serviciosCatalogoPlaceholder');
+            if (ph) ph.style.display = 'none';
+            loadServicesList();
+        }
+    }catch(e){ console.error('Auto-load servicios failed', e); }
+});
+</script>
+{% endblock %}
+
+
