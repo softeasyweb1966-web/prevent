@@ -2,6 +2,6 @@ Flask==2.3.3
 Flask-SQLAlchemy==3.0.5
 Flask-Migrate==4.0.5
 Flask-Login==0.6.2
-gunicorn==21.2.0
+
 numpy==1.26.4
 pandas==2.1.4
