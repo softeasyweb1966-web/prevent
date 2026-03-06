@@ -19,7 +19,7 @@ if os.name == 'nt':
         pass
 
 # Cargar variables de entorno
-load_dotenv()
+
 
 
 if __name__ == "__main__":
