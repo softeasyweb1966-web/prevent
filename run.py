@@ -24,13 +24,8 @@ if __name__ == "__main__":
     # Importar app aquí (evita problemas en Railway)
     from app import create_app
 
-    # 🔥 Crear aplicación
+    # ✅ Crear aplicación (SIN migración automática)
     app = create_app(os.getenv("FLASK_ENV", "production"))
-
-    # 🔥🔥 MIGRAR AUTOMÁTICO (AQUÍ VA)
-    from migra_todo import migrar_todo
-    with app.app_context():
-        migrar_todo()
 
     # Importar db y modelos después de crear la app
     from app.models import db, Usuario, Role, Permiso, Empleado, TipoNovedad, ConceptoAutomatico
