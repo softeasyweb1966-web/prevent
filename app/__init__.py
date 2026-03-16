@@ -1,6 +1,18 @@
 from app.config import config
 import logging
 import os
+from sqlalchemy.engine import make_url
+
+
+def _safe_database_url(raw_url):
+    """Oculta la contraseña al registrar la URL de base de datos."""
+    if not raw_url:
+        return "(sin DATABASE_URL)"
+
+    try:
+        return make_url(raw_url).render_as_string(hide_password=True)
+    except Exception:
+        return "(url invalida)"
 
 
 def create_app(config_name='development'):
@@ -45,6 +57,10 @@ def create_app(config_name='development'):
 
     # Configurar logging
     setup_logging()
+    app.logger.info(
+        "[DB] DATABASE_URL configurada: %s",
+        _safe_database_url(os.environ.get("DATABASE_URL"))
+    )
 
     # Registrar rutas y blueprints
     register_blueprints(app)
@@ -54,6 +70,11 @@ def create_app(config_name='development'):
         try:
             db.create_all()
             app.logger.info("[OK] Tablas de base de datos creadas/verificadas")
+            app.logger.info(
+                "[DB] Conexion activa: %s",
+                db.engine.url.render_as_string(hide_password=True)
+            )
+            app.logger.info("[DB] Dialecto activo: %s", db.engine.dialect.name)
         except Exception as e:
             app.logger.warning(f"[WARN] No se pudieron crear tablas automáticamente: {str(e)}")
             app.logger.warning("Ejecuta: flask init-db")

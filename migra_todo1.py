@@ -4,13 +4,15 @@ import os
 import sqlite3
 from datetime import datetime
 
-from sqlalchemy import inspect, text
+from sqlalchemy import MetaData, Table, inspect, text
 from sqlalchemy.sql import sqltypes
 
 
 DEFAULT_SQLITE_PATH = os.path.join("instance", "prevent.db")
 SKIP_TABLES = {"sqlite_sequence", "alembic_version"}
 REPORT_PATH = "migration_report.txt"
+TARGET_SCHEMA = "public"
+
 TABLE_ORDER = [
     "roles",
     "permisos",
@@ -69,7 +71,11 @@ def get_source_tables(sqlite_conn):
     cursor = sqlite_conn.cursor()
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
     tables = [row[0] for row in cursor.fetchall()]
-    return [table for table in tables if table not in SKIP_TABLES and not table.startswith("sqlite_")]
+    return [
+        table
+        for table in tables
+        if table not in SKIP_TABLES and not table.startswith("sqlite_")
+    ]
 
 
 def get_sqlite_row_count(sqlite_conn, table):
@@ -97,17 +103,18 @@ def truncate_tables(session, tables):
     session.commit()
 
 
-def reset_sequences(session, inspector, tables):
+def reset_sequences(session, inspector, tables, schema=TARGET_SCHEMA):
     for table in tables:
-        pk = inspector.get_pk_constraint(table).get("constrained_columns") or []
+        pk = inspector.get_pk_constraint(table, schema=schema).get("constrained_columns") or []
         if len(pk) != 1 or pk[0] != "id":
             continue
 
+        qualified_table_for_sequence = f'{schema}."{table}"'
         session.execute(
             text(
                 f"""
                 SELECT setval(
-                    pg_get_serial_sequence('{table}', 'id'),
+                    pg_get_serial_sequence('{qualified_table_for_sequence}', 'id'),
                     COALESCE(MAX(id), 1),
                     MAX(id) IS NOT NULL
                 )
@@ -136,7 +143,7 @@ def coerce_value(value, column_type):
                 return False
 
     if isinstance(column_type, (sqltypes.DateTime, sqltypes.Date)):
-        if isinstance(value, (datetime, )):
+        if isinstance(value, datetime):
             return value
         if isinstance(value, str):
             normalized = value.strip()
@@ -161,7 +168,7 @@ def coerce_value(value, column_type):
     return value
 
 
-def migrate_table(sqlite_conn, session, inspector, table):
+def migrate_table(sqlite_conn, session, engine, inspector, table, schema=TARGET_SCHEMA):
     source_cursor = sqlite_conn.cursor()
     source_cursor.execute(f'SELECT * FROM "{table}"')
     rows = source_cursor.fetchall()
@@ -172,12 +179,15 @@ def migrate_table(sqlite_conn, session, inspector, table):
         return 0, detail
 
     source_columns = [desc[0] for desc in source_cursor.description]
-    target_columns_info = inspector.get_columns(table)
+
+    target_columns_info = inspector.get_columns(table, schema=schema)
     target_columns = {column["name"] for column in target_columns_info}
     common_columns = [column for column in source_columns if column in target_columns]
+
     detail = (
         f" - {table}: origen={len(rows)} filas, "
         f"columnas_origen={source_columns}, "
+        f"columnas_destino={sorted(target_columns)}, "
         f"columnas_comunes={common_columns}"
     )
     print(detail)
@@ -187,25 +197,27 @@ def migrate_table(sqlite_conn, session, inspector, table):
         print(f" - {table}: sin columnas compatibles, omitida")
         return 0, detail
 
-    target_column_map = {column["name"]: column for column in target_columns_info}
+    reflected_table = Table(
+        table,
+        MetaData(),
+        schema=schema,
+        autoload_with=engine,
+    )
+    target_column_map = {column.name: column for column in reflected_table.columns}
+
     payload = []
     for row in rows:
         row_dict = dict(zip(source_columns, row))
         payload.append(
             {
-                column: coerce_value(row_dict[column], target_column_map[column]["type"])
+                column: coerce_value(row_dict[column], target_column_map[column].type)
                 for column in common_columns
             }
         )
 
-    quoted_columns = ", ".join(f'"{column}"' for column in common_columns)
-    bind_columns = ", ".join(f":{column}" for column in common_columns)
-    insert_sql = text(
-        f'INSERT INTO "{table}" ({quoted_columns}) VALUES ({bind_columns})'
-    )
-
-    session.execute(insert_sql, payload)
+    session.execute(reflected_table.insert(), payload)
     session.commit()
+
     migrated_detail = f" - {table}: {len(payload)} registros migrados"
     print(migrated_detail)
     return len(payload), detail + f" -> migrados={len(payload)}"
@@ -224,100 +236,114 @@ def main():
     os.environ["DATABASE_URL"] = target_url
 
     sqlite_conn = sqlite3.connect(args.source)
-    source_tables = get_source_tables(sqlite_conn)
-    ordered_tables = order_tables(source_tables)
-    source_counts = {table: get_sqlite_row_count(sqlite_conn, table) for table in ordered_tables}
-    tables_with_rows = [table for table, count in source_counts.items() if count > 0]
+    try:
+        source_tables = get_source_tables(sqlite_conn)
+        ordered_tables = order_tables(source_tables)
+        source_counts = {
+            table: get_sqlite_row_count(sqlite_conn, table) for table in ordered_tables
+        }
+        tables_with_rows = [table for table, count in source_counts.items() if count > 0]
 
-    print("SQLite origen:", args.source)
-    print("Tablas detectadas:", ", ".join(ordered_tables) or "(ninguna)")
-    print("Tablas con registros en SQLite:", ", ".join(tables_with_rows) or "(ninguna)")
+        print("SQLite origen:", args.source)
+        print("Tablas detectadas:", ", ".join(ordered_tables) or "(ninguna)")
+        print("Tablas con registros en SQLite:", ", ".join(tables_with_rows) or "(ninguna)")
 
-    from app import create_app
-    from app.models import db
+        from app import create_app
+        from app.models import db
 
-    app = create_app("production")
-    app.config["SQLALCHEMY_ECHO"] = False
+        app = create_app("production")
+        app.config["SQLALCHEMY_ECHO"] = False
 
-    with app.app_context():
-        db.engine.echo = False
-        db.create_all()
-        engine_name = db.engine.dialect.name
-        engine_url = db.engine.url.render_as_string(hide_password=True)
-        print("Base destino:", engine_url)
+        with app.app_context():
+            db.engine.echo = False
+            db.create_all()
 
-        if engine_name == "sqlite":
-            raise RuntimeError(
-                "La base destino activa sigue siendo SQLite. "
-                "Define una URL valida de PostgreSQL en --target-url o DATABASE_URL "
-                "antes de ejecutar la migracion."
-            )
+            engine_name = db.engine.dialect.name
+            engine_url = db.engine.url.render_as_string(hide_password=True)
+            print("Base destino:", engine_url)
 
-        if engine_name != "postgresql":
-            raise RuntimeError(
-                f"La base destino activa es '{engine_name}', no PostgreSQL. "
-                "Revisa la URL enviada en --target-url o DATABASE_URL."
-            )
-
-        inspector = inspect(db.engine)
-        target_tables = set(inspector.get_table_names())
-        tables_to_migrate = [table for table in ordered_tables if table in target_tables]
-        print("Tablas destino en PostgreSQL:", ", ".join(sorted(target_tables)) or "(ninguna)")
-        print("Tablas a migrar:", ", ".join(tables_to_migrate) or "(ninguna)")
-
-        missing_in_target = [table for table in ordered_tables if table not in target_tables]
-        if missing_in_target:
-            print("Tablas no presentes en PostgreSQL:", ", ".join(missing_in_target))
-
-        if not tables_to_migrate:
-            raise RuntimeError(
-                "No hay tablas compatibles para migrar en PostgreSQL. "
-                "Revisa si el esquema destino se creo correctamente."
-            )
-
-        if args.clean_target:
-            print("Limpiando tablas destino...")
-            truncate_tables(db.session, list(reversed(tables_to_migrate)))
-        else:
-            occupied_tables = [
-                table for table in tables_to_migrate if get_row_count(db.session, table) > 0
-            ]
-            if occupied_tables:
+            if engine_name == "sqlite":
                 raise RuntimeError(
-                    "La base destino ya tiene datos en: "
-                    + ", ".join(occupied_tables)
-                    + ". Ejecuta otra vez con --clean-target si quieres reemplazarlos."
+                    "La base destino activa sigue siendo SQLite. "
+                    "Define una URL valida de PostgreSQL en --target-url o DATABASE_URL "
+                    "antes de ejecutar la migracion."
                 )
 
-        total_rows = 0
-        report_lines = [
-            f"SQLite origen: {args.source}",
-            f"Base destino: {engine_url}",
-            "Tablas con registros en SQLite: " + (", ".join(tables_with_rows) or "(ninguna)"),
-            "Tablas a migrar: " + (", ".join(tables_to_migrate) or "(ninguna)"),
-            "",
-            "Detalle por tabla:",
-        ]
-        for table in tables_to_migrate:
-            migrated_rows, detail = migrate_table(sqlite_conn, db.session, inspector, table)
-            total_rows += migrated_rows
-            report_lines.append(detail)
+            if engine_name != "postgresql":
+                raise RuntimeError(
+                    f"La base destino activa es '{engine_name}', no PostgreSQL. "
+                    "Revisa la URL enviada en --target-url o DATABASE_URL."
+                )
 
-        reset_sequences(db.session, inspector, tables_to_migrate)
-        with open(REPORT_PATH, "w", encoding="utf-8") as report_file:
-            report_file.write("\n".join(report_lines) + "\n")
+            inspector = inspect(db.engine)
+            target_tables = set(inspector.get_table_names(schema=TARGET_SCHEMA))
+            tables_to_migrate = [table for table in ordered_tables if table in target_tables]
 
-        if total_rows == 0 and tables_with_rows:
-            raise RuntimeError(
-                "La migracion termino en 0 registros, pero SQLite si tiene datos en: "
-                + ", ".join(tables_with_rows)
-                + f". Revisa el detalle impreso por tabla o el archivo {REPORT_PATH}."
-            )
+            print("Tablas destino en PostgreSQL:", ", ".join(sorted(target_tables)) or "(ninguna)")
+            print("Tablas a migrar:", ", ".join(tables_to_migrate) or "(ninguna)")
 
-        print(f"\nMigracion completada. Total de registros migrados: {total_rows}")
-        print(f"Reporte guardado en: {REPORT_PATH}")
+            missing_in_target = [table for table in ordered_tables if table not in target_tables]
+            if missing_in_target:
+                print("Tablas no presentes en PostgreSQL:", ", ".join(missing_in_target))
 
-    sqlite_conn.close()
+            if not tables_to_migrate:
+                raise RuntimeError(
+                    "No hay tablas compatibles para migrar en PostgreSQL. "
+                    "Revisa si el esquema destino se creo correctamente."
+                )
+
+            if args.clean_target:
+                print("Limpiando tablas destino...")
+                truncate_tables(db.session, list(reversed(tables_to_migrate)))
+            else:
+                occupied_tables = [
+                    table for table in tables_to_migrate if get_row_count(db.session, table) > 0
+                ]
+                if occupied_tables:
+                    raise RuntimeError(
+                        "La base destino ya tiene datos en: "
+                        + ", ".join(occupied_tables)
+                        + ". Ejecuta otra vez con --clean-target si quieres reemplazarlos."
+                    )
+
+            total_rows = 0
+            report_lines = [
+                f"SQLite origen: {args.source}",
+                f"Base destino: {engine_url}",
+                "Tablas con registros en SQLite: " + (", ".join(tables_with_rows) or "(ninguna)"),
+                "Tablas a migrar: " + (", ".join(tables_to_migrate) or "(ninguna)"),
+                "",
+                "Detalle por tabla:",
+            ]
+
+            for table in tables_to_migrate:
+                migrated_rows, detail = migrate_table(
+                    sqlite_conn,
+                    db.session,
+                    db.engine,
+                    inspector,
+                    table,
+                    schema=TARGET_SCHEMA,
+                )
+                total_rows += migrated_rows
+                report_lines.append(detail)
+
+            reset_sequences(db.session, inspector, tables_to_migrate, schema=TARGET_SCHEMA)
+
+            with open(REPORT_PATH, "w", encoding="utf-8") as report_file:
+                report_file.write("\n".join(report_lines) + "\n")
+
+            if total_rows == 0 and tables_with_rows:
+                raise RuntimeError(
+                    "La migracion termino en 0 registros, pero SQLite si tiene datos en: "
+                    + ", ".join(tables_with_rows)
+                    + f". Revisa el detalle impreso por tabla o el archivo {REPORT_PATH}."
+                )
+
+            print(f"\nMigracion completada. Total de registros migrados: {total_rows}")
+            print(f"Reporte guardado en: {REPORT_PATH}")
+    finally:
+        sqlite_conn.close()
 
 
 if __name__ == "__main__":

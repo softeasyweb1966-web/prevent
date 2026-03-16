@@ -1,6 +1,17 @@
 import os
 from datetime import timedelta
 
+
+def _normalize_database_url(url):
+    """Normaliza URLs de Postgres compatibles con SQLAlchemy."""
+    if not url:
+        return 'sqlite:///prevent.db'
+
+    if url.startswith('postgres://'):
+        return 'postgresql://' + url[len('postgres://'):]
+
+    return url
+
 class Config:
     """Configuración base de la aplicación"""
     
@@ -9,8 +20,7 @@ class Config:
     
     # Base de datos
     # SQLite para desarrollo (lightweight), PostgreSQL para producción
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-        'sqlite:///prevent.db'
+    SQLALCHEMY_DATABASE_URI = _normalize_database_url(os.environ.get('DATABASE_URL'))
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ECHO = True  # Ver queries en desarrollo
     
