@@ -2283,9 +2283,12 @@ function renderNominaMatrizAnual(matriz, errorMessage = '') {
                 const esAccionable = tieneSaldo || tieneValorFuturo;
                 const clickableClass = esAccionable ? ' nomina-matrix-actionable' : '';
                 const clickableTitle = esAccionable
-                    ? (esFutura
-                        ? 'No corresponde al periodo actual. Clic para ver la advertencia.'
-                        : 'Clic para gestionar el pago en el periodo actual.')
+                    ? [
+                        esFutura
+                            ? 'No corresponde al periodo actual. Clic para ver la advertencia.'
+                            : 'Clic para gestionar el pago en el periodo actual.',
+                        celda.titulo || ''
+                    ].filter(Boolean).join(' | ')
                     : (celda.titulo || '');
                 const onclickAttr = esAccionable
                     ? ` onclick="handleNominaMatrixCellClick(${Number(fila.empleado_id)}, ${idx})"`

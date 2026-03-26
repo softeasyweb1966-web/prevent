@@ -166,9 +166,12 @@ function renderBancosMatrizAnual(matriz, errorMessage = '') {
                 const esAccionable = ['PENDING', 'PARTIAL'].includes(String(celda.estado || '')) || (esFuturo && Number(celda?.valor || 0) > 0);
                 const clickableClass = esAccionable ? ' nomina-matrix-actionable' : '';
                 const clickableTitle = esAccionable
-                    ? (esFuturo
-                        ? 'No corresponde al periodo actual. Clic para ver la advertencia.'
-                        : 'Clic para registrar pago de este prestamo.')
+                    ? [
+                        esFuturo
+                            ? 'No corresponde al periodo actual. Clic para ver la advertencia.'
+                            : 'Clic para registrar pago de este prestamo.',
+                        celda.titulo || ''
+                    ].filter(Boolean).join(' | ')
                     : (celda.titulo || '');
                 const onclickAttr = esAccionable
                     ? ` onclick="handlePrestamosMatrixCellClick(${Number(fila.item_id)}, ${idx})"`
