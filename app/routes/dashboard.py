@@ -77,6 +77,15 @@ def _nombre_quincena(mes, numero_quincena, anio):
     return f"{prefijo} de {meses.get(mes, mes)} {anio}"
 
 
+def _format_payment_date(value):
+    if not value:
+        return None
+    try:
+        return value.strftime('%Y-%m-%d')
+    except Exception:
+        return str(value)
+
+
 def _construir_quincena_virtual(mes, numero_quincena, anio, procesada=False, pagos_finalizados=False):
     fecha_inicio, fecha_fin = _periodo_quincena(anio, mes, numero_quincena)
     quincena = Quincena(
@@ -194,7 +203,8 @@ def _build_servicios_matrix(anio, hoy, mes_referencia=None, anio_referencia=None
     pagos_rows = db.session.query(
         ServicioPago.servicio_id,
         func.extract('month', ServicioPago.fecha_pago),
-        func.coalesce(func.sum(ServicioPago.valor_pagado), 0)
+        func.coalesce(func.sum(ServicioPago.valor_pagado), 0),
+        func.max(ServicioPago.fecha_pago)
     ).filter(
         func.extract('year', ServicioPago.fecha_pago) == anio
     ).group_by(
@@ -207,8 +217,11 @@ def _build_servicios_matrix(anio, hoy, mes_referencia=None, anio_referencia=None
         for servicio_id, mes, valor in novedades_rows
     }
     pagos_por_periodo = {
-        (servicio_id, int(mes)): Decimal(str(valor or 0))
-        for servicio_id, mes, valor in pagos_rows
+        (servicio_id, int(mes)): {
+            'total_pagado': Decimal(str(valor or 0)),
+            'ultima_fecha_pago': _format_payment_date(ultima_fecha_pago),
+        }
+        for servicio_id, mes, valor, ultima_fecha_pago in pagos_rows
     }
 
     totales_por_periodo = {periodo['key']: Decimal('0') for periodo in periodos}
@@ -261,7 +274,8 @@ def _build_servicios_matrix(anio, hoy, mes_referencia=None, anio_referencia=None
             cargo = novedades_por_periodo.get((servicio.id, periodo['mes']))
             if cargo is None or cargo <= 0:
                 cargo = valor_base
-            pagado = pagos_por_periodo.get((servicio.id, periodo['mes']), Decimal('0'))
+            pago_info = pagos_por_periodo.get((servicio.id, periodo['mes']), {})
+            pagado = pago_info.get('total_pagado', Decimal('0'))
             saldo = max(Decimal('0'), cargo - pagado)
 
             if future_to_reference and pagado <= 0:
@@ -277,6 +291,8 @@ def _build_servicios_matrix(anio, hoy, mes_referencia=None, anio_referencia=None
                 f"Pagado: {float(pagado):,.2f} | "
                 f"Saldo: {float(saldo):,.2f}"
             )
+            if pagado > 0 and pago_info.get('ultima_fecha_pago'):
+                celda['titulo'] += f" | Ultimo pago: {pago_info['ultima_fecha_pago']}"
 
             if cargo <= 0 and pagado <= 0:
                 celda['estado'] = 'NA'
@@ -354,7 +370,8 @@ def _build_bancos_matrix(anio, hoy, mes_referencia=None, anio_referencia=None):
     pagos_rows = db.session.query(
         PrestamoPago.prestamo_id,
         func.extract('month', PrestamoPago.fecha_pago),
-        func.coalesce(func.sum(PrestamoPago.valor_pagado), 0)
+        func.coalesce(func.sum(PrestamoPago.valor_pagado), 0),
+        func.max(PrestamoPago.fecha_pago)
     ).filter(
         func.extract('year', PrestamoPago.fecha_pago) == anio
     ).group_by(
@@ -367,8 +384,11 @@ def _build_bancos_matrix(anio, hoy, mes_referencia=None, anio_referencia=None):
         for prestamo_id, mes, valor in novedades_rows
     }
     pagos_por_periodo = {
-        (prestamo_id, int(mes)): Decimal(str(valor or 0))
-        for prestamo_id, mes, valor in pagos_rows
+        (prestamo_id, int(mes)): {
+            'total_pagado': Decimal(str(valor or 0)),
+            'ultima_fecha_pago': _format_payment_date(ultima_fecha_pago),
+        }
+        for prestamo_id, mes, valor, ultima_fecha_pago in pagos_rows
     }
 
     totales_por_periodo = {periodo['key']: Decimal('0') for periodo in periodos}
@@ -422,7 +442,8 @@ def _build_bancos_matrix(anio, hoy, mes_referencia=None, anio_referencia=None):
             if cargo is None or cargo <= 0:
                 cargo = Decimal(str(prestamo.valor_cuota or 0))
 
-            pagado = pagos_por_periodo.get((prestamo.id, periodo['mes']), Decimal('0'))
+            pago_info = pagos_por_periodo.get((prestamo.id, periodo['mes']), {})
+            pagado = pago_info.get('total_pagado', Decimal('0'))
             saldo = max(Decimal('0'), cargo - pagado)
 
             if future_to_reference and pagado <= 0:
@@ -445,6 +466,8 @@ def _build_bancos_matrix(anio, hoy, mes_referencia=None, anio_referencia=None):
                 f"Pagado: {float(pagado):,.2f} | "
                 f"Saldo: {float(saldo):,.2f}"
             )
+            if pagado > 0 and pago_info.get('ultima_fecha_pago'):
+                celda['titulo'] += f" | Ultimo pago: {pago_info['ultima_fecha_pago']}"
 
             if pagado > 0 and saldo > 0:
                 celda['estado'] = 'PARTIAL'
@@ -622,15 +645,19 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
     if liquido_ids:
         pagos_rows = db.session.query(
             Pago.liquido_quincena_id,
-            func.coalesce(func.sum(Pago.valor_pagado), 0)
+            func.coalesce(func.sum(Pago.valor_pagado), 0),
+            func.max(Pago.fecha_pago)
         ).filter(
             Pago.liquido_quincena_id.in_(liquido_ids)
         ).group_by(
             Pago.liquido_quincena_id
         ).all()
         pagos_por_liquido = {
-            liquido_id: Decimal(str(total_pagado or 0))
-            for liquido_id, total_pagado in pagos_rows
+            liquido_id: {
+                'total_pagado': Decimal(str(total_pagado or 0)),
+                'ultima_fecha_pago': _format_payment_date(ultima_fecha_pago),
+            }
+            for liquido_id, total_pagado, ultima_fecha_pago in pagos_rows
         }
 
     totales_por_periodo = {periodo['key']: Decimal('0') for periodo in periodos}
@@ -694,7 +721,8 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
                 continue
 
             total_a_pagar = Decimal(str(liquido.total_a_pagar or 0))
-            total_pagado = pagos_por_liquido.get(liquido.id, Decimal('0'))
+            pago_info = pagos_por_liquido.get(liquido.id, {})
+            total_pagado = pago_info.get('total_pagado', Decimal('0'))
             saldo_pendiente = Decimal(str(liquido.saldo_pendiente or 0))
 
             celda['valor'] = float(total_a_pagar)
@@ -706,6 +734,8 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
                 f"Pagado: {float(total_pagado):,.2f} | "
                 f"Saldo: {float(saldo_pendiente):,.2f}"
             )
+            if total_pagado > 0 and pago_info.get('ultima_fecha_pago'):
+                celda['titulo'] += f" | Ultimo pago: {pago_info['ultima_fecha_pago']}"
 
             if total_pagado > 0 and saldo_pendiente > 0:
                 celda['estado'] = 'PARTIAL'
