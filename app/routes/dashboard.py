@@ -278,6 +278,21 @@ def dashboard_bancos():
         return jsonify({'error': 'Error al cargar dashboard bancos'}), 500
 
 
+@dashboard_bp.route('/comisiones', methods=['GET'])
+@login_required
+def dashboard_comisiones():
+    try:
+        return jsonify({
+            'nombre': 'Comisiones',
+            'periodicidad': 'Mensual',
+            'total_registros': 0,
+            'mensaje': 'Modulo base de comisiones listo para desarrollo'
+        }), 200
+    except Exception as e:
+        logger.error(f"Error dashboard comisiones: {str(e)}")
+        return jsonify({'error': 'Error al cargar dashboard comisiones'}), 500
+
+
 @dashboard_bp.route('/impuestos', methods=['GET'])
 @login_required
 def dashboard_impuestos():

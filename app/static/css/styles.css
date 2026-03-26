@@ -550,6 +550,41 @@ body {
     padding: 40px;
 }
 
+.consulta-toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: end;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+
+.consulta-toolbar-grid {
+    display: grid;
+    grid-template-columns: minmax(280px, 1.8fr) minmax(180px, 0.8fr);
+    gap: 12px;
+    flex: 1 1 520px;
+}
+
+.consulta-toolbar-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.consulta-resumen {
+    color: var(--text-light);
+    font-size: 0.92rem;
+}
+
+@media (max-width: 768px) {
+    .consulta-toolbar-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Badges */
 .badge {
     display: inline-block;
@@ -572,6 +607,11 @@ body {
 .badge-warning {
     background-color: #fef3c7;
     color: #92400e;
+}
+
+.badge-secondary {
+    background-color: #e5e7eb;
+    color: #374151;
 }
 
 /* Action Buttons in Table */

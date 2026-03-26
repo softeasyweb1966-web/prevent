@@ -7,6 +7,7 @@ let tiposNovedadList = [];
 let nominaPeriodoSeleccionado = null;
 // Contexto de período actual por módulo (Mes/Año)
 window._bancosPeriodoActual = window._bancosPeriodoActual || null;
+window._comisionesPeriodoActual = window._comisionesPeriodoActual || null;
 window._impuestosPeriodoActual = window._impuestosPeriodoActual || null;
 window._comprasPeriodoActual = window._comprasPeriodoActual || null;
 window._ventasPeriodoActual = window._ventasPeriodoActual || null;
@@ -30,6 +31,23 @@ window._ventasPeriodoActual = window._ventasPeriodoActual || null;
     window._bancosPeriodoActual = window._bancosPeriodoActual || null;
 })();
 
+(function initComisionesPeriodoFromStorage() {
+    try {
+        if (!window._comisionesPeriodoActual && window.localStorage) {
+            const raw = localStorage.getItem('comisionesPeriodoActual');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed.mes === 'number' && typeof parsed.anio === 'number') {
+                    window._comisionesPeriodoActual = parsed;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('No se pudo recuperar periodo de comisiones desde localStorage', e);
+    }
+    window._comisionesPeriodoActual = window._comisionesPeriodoActual || null;
+})();
+
 document.addEventListener('DOMContentLoaded', () => {
     currentUser = checkAuth();
     
@@ -41,6 +59,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setupMenuNavigation();
     setupLogout();
     setupEmpleadoForm();
+    setupConsultaEmpleados();
+    setupEstructuraLaboralForms();
     setupNovedadForm();
     setupNovedadesFiltro();
     setupNominaQuincenaSeleccion();
@@ -261,6 +281,40 @@ function toggleBancosMesPanel() {
     }
 }
 
+function toggleComisionesMesPanel() {
+    const panel = document.getElementById('comisionesMesPanel');
+    if (!panel) return;
+
+    const homeHeader = document.getElementById('comisionesHomeHeader');
+    const isVisible = panel.style.display === 'block';
+    if (!isVisible && !window._comisionesPeriodoActual) {
+        if (typeof openComisionesPeriodoSeleccion === 'function') {
+            openComisionesPeriodoSeleccion();
+            return;
+        }
+    }
+
+    panel.style.display = isVisible ? 'none' : 'block';
+    if (homeHeader) {
+        homeHeader.style.display = isVisible ? '' : 'none';
+    }
+}
+
+function scrollToModuleSection(elementId) {
+    const target = document.getElementById(elementId);
+    if (!target) return;
+
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function consultarServicios() {
+    scrollToModuleSection('serviciosCatalogo');
+}
+
+function consultarBancos() {
+    scrollToModuleSection('prestamosTable');
+}
+
 function toggleImpuestosMesPanel() {
     const panel = document.getElementById('impuestosMesPanel');
     if (!panel) return;
@@ -369,6 +423,40 @@ function setupModulosPeriodoActual() {
         } catch (eDashInit) {
             console.warn('No se pudo inicializar resumen de bancos', eDashInit);
         }
+    }
+
+    // Comisiones
+    const formComisiones = document.getElementById('comisionesPeriodoSeleccionForm');
+    if (formComisiones && !formComisiones.dataset.bound) {
+        const yearInput = document.getElementById('comisiones_periodo_anio');
+        if (yearInput && !yearInput.value) yearInput.value = now.getFullYear();
+
+        formComisiones.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const anio = parseInt(document.getElementById('comisiones_periodo_anio').value, 10);
+            const mes = parseInt(document.getElementById('comisiones_periodo_mes').value, 10);
+            if (!anio || !mes) {
+                showError('Debe seleccionar mes y año para Comisiones.');
+                return;
+            }
+            window._comisionesPeriodoActual = { mes, anio };
+            try {
+                if (window.localStorage) {
+                    localStorage.setItem('comisionesPeriodoActual', JSON.stringify(window._comisionesPeriodoActual));
+                }
+            } catch (storageError) {
+                console.warn('No se pudo guardar periodo de comisiones', storageError);
+            }
+            actualizarEtiquetaComisionesPeriodo();
+            closeComisionesPeriodoSeleccion();
+
+            const panel = document.getElementById('comisionesMesPanel');
+            const homeHeader = document.getElementById('comisionesHomeHeader');
+            if (panel) panel.style.display = 'block';
+            if (homeHeader) homeHeader.style.display = 'none';
+        });
+        formComisiones.dataset.bound = 'true';
+        actualizarEtiquetaComisionesPeriodo();
     }
 
     // Impuestos
@@ -489,6 +577,45 @@ function openBancosPeriodoSeleccion() {
 
 function closeBancosPeriodoSeleccion() {
     const modal = document.getElementById('bancosPeriodoSeleccionModal');
+    if (modal) modal.classList.remove('active');
+}
+
+function actualizarEtiquetaComisionesPeriodo() {
+    const label = document.getElementById('comisionesMesSeleccionadoLabel');
+    const resumen = document.getElementById('comisionesMesActual');
+
+    if (!window._comisionesPeriodoActual) {
+        if (label) label.textContent = 'Período Comisiones (Mes/Año) · selección pendiente';
+        if (resumen) resumen.textContent = 'No hay mes en proceso registrado.';
+        return;
+    }
+
+    const { mes, anio } = window._comisionesPeriodoActual;
+    const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const mesNombre = meses[mes] || mes;
+
+    if (label) label.textContent = `Período seleccionado: ${mesNombre} ${anio}`;
+    if (resumen) resumen.textContent = `Mes en proceso: ${mesNombre} ${anio}`;
+}
+
+function openComisionesPeriodoSeleccion() {
+    const modal = document.getElementById('comisionesPeriodoSeleccionModal');
+    if (!modal) return;
+
+    const now = new Date();
+    const base = window._comisionesPeriodoActual || { mes: now.getMonth() + 1, anio: now.getFullYear() };
+
+    const anioInput = document.getElementById('comisiones_periodo_anio');
+    const mesSelect = document.getElementById('comisiones_periodo_mes');
+    if (anioInput) anioInput.value = base.anio;
+    if (mesSelect) mesSelect.value = String(base.mes);
+
+    modal.classList.add('active');
+}
+
+function closeComisionesPeriodoSeleccion() {
+    const modal = document.getElementById('comisionesPeriodoSeleccionModal');
     if (modal) modal.classList.remove('active');
 }
 
@@ -1231,6 +1358,9 @@ function switchModule(moduleName) {
         // Bancos se usa para gestionar préstamos a empleados
         displayName = 'Gestión de Préstamos';
         if (userMenu) userMenu.style.display = '';
+    } else if (moduleName === 'comisiones') {
+        displayName = 'GestiÃ³n de Comisiones';
+        if (userMenu) userMenu.style.display = '';
     } else if (moduleName === 'impuestos') {
         displayName = 'Gestión de Impuestos';
         if (userMenu) userMenu.style.display = '';
@@ -1243,6 +1373,9 @@ function switchModule(moduleName) {
     } else {
         displayName = moduleName.charAt(0).toUpperCase() + moduleName.slice(1);
         if (userMenu) userMenu.style.display = '';
+    }
+    if (moduleName === 'comisiones') {
+        displayName = 'Gestion de Comisiones';
     }
     document.getElementById('moduleTitle').textContent = displayName;
 
@@ -1263,6 +1396,16 @@ function switchModule(moduleName) {
             loadUsuarios();
         } else if (moduleName === 'dashboard') {
             loadDashboardData();
+        } else if (moduleName === 'comisiones') {
+            try {
+                const panelMes = document.getElementById('comisionesMesPanel');
+                const homeHeader = document.getElementById('comisionesHomeHeader');
+                if (panelMes) panelMes.style.display = 'none';
+                if (homeHeader) homeHeader.style.display = '';
+                actualizarEtiquetaComisionesPeriodo();
+            } catch (e) {
+                console.error('Error inicializando modulo Comisiones', e);
+            }
         } else if (moduleName === 'servicios') {
             // Módulo Servicios usa su propio JS para cargar catálogo completo
             try {
@@ -1305,6 +1448,10 @@ function switchModule(moduleName) {
         } else if (moduleName === 'bancos') {
             // Módulo Bancos se centra en préstamos de empleados
             try {
+                const panelMes = document.getElementById('bancosMesPanel');
+                const homeHeader = document.getElementById('bancosHomeHeader');
+                if (panelMes) panelMes.style.display = 'none';
+                if (homeHeader) homeHeader.style.display = '';
                 if (typeof loadPrestamosResumen === 'function') {
                     loadPrestamosResumen();
                 }
@@ -1313,6 +1460,15 @@ function switchModule(moduleName) {
                 }
             } catch (e) {
                 console.error('Error inicializando módulo Bancos/Préstamos', e);
+            }
+        } else if (moduleName === 'impuestos' || moduleName === 'compras' || moduleName === 'ventas') {
+            try {
+                const panelMes = document.getElementById(`${moduleName}MesPanel`);
+                const homeHeader = document.getElementById(`${moduleName}HomeHeader`);
+                if (panelMes) panelMes.style.display = 'none';
+                if (homeHeader) homeHeader.style.display = '';
+            } catch (e) {
+                console.error(`Error inicializando modulo ${moduleName}`, e);
             }
         } else {
             // Attempt to fetch dashboard fragment for other modules
@@ -1537,10 +1693,20 @@ function openModuleFull(moduleName) {
             document.getElementById('moduleTitle').textContent = moduleName.charAt(0).toUpperCase() + moduleName.slice(1);
             if (userMenu) userMenu.style.display = '';
         }
+        if (moduleName === 'comisiones') {
+            document.getElementById('moduleTitle').textContent = 'Gestion de Comisiones';
+        }
         // load module-specific handlers
         if (moduleName === 'nomina') loadEmpleados();
         else if (moduleName === 'usuarios') loadUsuarios();
         else if (moduleName === 'dashboard') loadDashboardData();
+        else if (moduleName === 'comisiones') {
+            const panelMes = document.getElementById('comisionesMesPanel');
+            const homeHeader = document.getElementById('comisionesHomeHeader');
+            if (panelMes) panelMes.style.display = 'none';
+            if (homeHeader) homeHeader.style.display = '';
+            actualizarEtiquetaComisionesPeriodo();
+        }
         else if (moduleName === 'bancos' && typeof loadPrestamosResumen === 'function') loadPrestamosResumen();
     } else {
         alert('No existe la vista completa para este módulo.');
@@ -1608,14 +1774,12 @@ async function loadEmpleados() {
                         ${emp.planilla_afiliado ? 'Sí' : 'No'}
                     </span>
                 </td>
-                <td>
-                    <span class="badge ${emp.activo ? 'badge-success' : 'badge-danger'}">
-                        ${emp.activo ? 'Activo' : 'Inactivo'}
-                    </span>
-                </td>
+                <td>${renderEstadoLaboralBadge(emp.estado_laboral, emp.activo)}</td>
                 <td>
                     <button class="action-btn action-btn-edit" onclick="editEmpleado(${emp.id})">Editar</button>
-                    <button class="action-btn action-btn-delete" onclick="deleteEmpleado(${emp.id}, '${emp.nombre_completo}')">Eliminar</button>
+                    ${emp.estado_laboral === 'RETIRADO'
+                        ? `<button class="action-btn" onclick="showReintegrarEmpleadoModal(${emp.id}, ${JSON.stringify(emp.nombre_completo)})">Reintegrar</button>`
+                        : `<button class="action-btn action-btn-delete" onclick="showRetiroEmpleadoModal(${emp.id}, ${JSON.stringify(emp.nombre_completo)})">Retirar</button>`}
                 </td>
             </tr>
         `).join('');
@@ -1623,6 +1787,133 @@ async function loadEmpleados() {
         console.error('Error cargando empleados:', error);
         tableBody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar empleados</td></tr>';
     }
+}
+
+function renderEstadoLaboralBadge(estadoLaboral, activo) {
+    const estado = (estadoLaboral || (activo ? 'ACTIVO' : 'INACTIVO')).toUpperCase();
+    if (estado === 'ACTIVO') return '<span class="badge badge-success">Activo</span>';
+    if (estado === 'RETIRADO') return '<span class="badge badge-danger">Retirado</span>';
+    if (estado === 'INACTIVO') return '<span class="badge badge-warning">Inactivo</span>';
+    return `<span class="badge badge-secondary">${escapeHtml(estado)}</span>`;
+}
+
+let consultaEmpleadosData = [];
+let areasConfigData = [];
+let cargosConfigData = [];
+let asignacionesLaboralesData = [];
+
+function setupConsultaEmpleados() {
+    const searchInput = document.getElementById('consultaEmpleadoSearch');
+    const estadoSelect = document.getElementById('consultaEmpleadoEstado');
+
+    if (searchInput && !searchInput.dataset.bound) {
+        searchInput.addEventListener('input', renderConsultaEmpleados);
+        searchInput.dataset.bound = 'true';
+    }
+
+    if (estadoSelect && !estadoSelect.dataset.bound) {
+        estadoSelect.addEventListener('change', renderConsultaEmpleados);
+        estadoSelect.dataset.bound = 'true';
+    }
+}
+
+function showConsultarEmpleadosModal() {
+    const modal = document.getElementById('consultarEmpleadosModal');
+    if (!modal) return;
+
+    const searchInput = document.getElementById('consultaEmpleadoSearch');
+    const estadoSelect = document.getElementById('consultaEmpleadoEstado');
+    if (searchInput) searchInput.value = '';
+    if (estadoSelect) estadoSelect.value = 'todos';
+
+    modal.classList.add('active');
+    reloadConsultaEmpleados();
+}
+
+function closeConsultarEmpleadosModal() {
+    const modal = document.getElementById('consultarEmpleadosModal');
+    if (modal) modal.classList.remove('active');
+}
+
+async function reloadConsultaEmpleados() {
+    const tbody = document.getElementById('consultaEmpleadosTable');
+    const resumen = document.getElementById('consultaEmpleadosResumen');
+
+    if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Cargando empleados...</td></tr>';
+    }
+    if (resumen) resumen.textContent = 'Consultando empleados activos e inactivos...';
+
+    try {
+        const response = await fetch('/api/nomina/empleados?activos=false', {
+            credentials: 'include'
+        });
+        const empleados = await response.json();
+        consultaEmpleadosData = Array.isArray(empleados) ? empleados : [];
+        renderConsultaEmpleados();
+    } catch (error) {
+        console.error('Error consultando empleados:', error);
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="9" class="loading">Error al cargar empleados</td></tr>';
+        }
+        if (resumen) resumen.textContent = 'No se pudo cargar la consulta de empleados.';
+    }
+}
+
+function renderConsultaEmpleados() {
+    const tbody = document.getElementById('consultaEmpleadosTable');
+    const resumen = document.getElementById('consultaEmpleadosResumen');
+    const search = (document.getElementById('consultaEmpleadoSearch')?.value || '').trim().toLowerCase();
+    const estado = document.getElementById('consultaEmpleadoEstado')?.value || 'todos';
+
+    if (!tbody) return;
+
+    let empleados = [...consultaEmpleadosData];
+    if (estado === 'activos') {
+        empleados = empleados.filter(emp => emp.activo);
+    } else if (estado === 'inactivos') {
+        empleados = empleados.filter(emp => !emp.activo);
+    }
+
+    if (search) {
+        empleados = empleados.filter(emp => {
+            const fields = [
+                emp.nro_documento,
+                emp.cedula,
+                emp.nombre_completo,
+                emp.nombres,
+                emp.apellidos,
+                emp.cargo,
+                emp.banco
+            ];
+            return fields.some(value => String(value || '').toLowerCase().includes(search));
+        });
+    }
+
+    const activos = empleados.filter(emp => emp.activo).length;
+    const inactivos = empleados.length - activos;
+    if (resumen) {
+        resumen.textContent = `${empleados.length} empleados visibles · ${activos} activos · ${inactivos} inactivos`;
+    }
+
+    if (empleados.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">No hay empleados que coincidan con la consulta</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = empleados.map(emp => `
+        <tr>
+            <td>${emp.nro_documento || emp.cedula || 'N/A'}</td>
+            <td>${emp.nombre_completo || `${emp.nombres || ''} ${emp.apellidos || ''}`.trim() || 'N/A'}</td>
+            <td>${emp.cargo || 'N/A'}</td>
+            <td>${emp.forma_pago || 'N/A'}</td>
+            <td>${formatCurrency(emp.sueldo_base || 0)}</td>
+            <td>${emp.banco || 'N/A'}</td>
+            <td>${renderEstadoLaboralBadge(emp.estado_laboral, emp.activo)}</td>
+            <td>${emp.fecha_inicio || emp.fecha_ingreso || 'N/A'}</td>
+            <td>${emp.fecha_retiro || 'N/A'}</td>
+        </tr>
+    `).join('');
 }
 
 async function loadUsuarios() {
@@ -1715,6 +2006,36 @@ async function editEmpleado(id) {
     }
 }
 
+function showRetiroEmpleadoModal(id, nombre) {
+    document.getElementById('retiroEmpleadoId').value = id;
+    document.getElementById('retiroEmpleadoNombre').value = nombre || '';
+    document.getElementById('retiroMotivo').value = '';
+    document.getElementById('retiroObservacion').value = '';
+    document.getElementById('retiroFecha').value = new Date().toISOString().split('T')[0];
+    document.getElementById('retiroEmpleadoModal').classList.add('active');
+}
+
+function closeRetiroEmpleadoModal() {
+    document.getElementById('retiroEmpleadoModal').classList.remove('active');
+}
+
+async function showReintegrarEmpleadoModal(id, nombre) {
+    document.getElementById('reintegroEmpleadoId').value = id;
+    document.getElementById('reintegroEmpleadoNombre').value = nombre || '';
+    document.getElementById('reintegroMotivo').value = '';
+    document.getElementById('reintegroObservacion').value = '';
+    document.getElementById('reintegroFecha').value = new Date().toISOString().split('T')[0];
+    await cargarAreasConfig();
+    await cargarCargosConfig();
+    fillAreasSelect('reintegroAreaId', true);
+    fillCargosSelect('reintegroCargoId', true);
+    document.getElementById('reintegroEmpleadoModal').classList.add('active');
+}
+
+function closeReintegroEmpleadoModal() {
+    document.getElementById('reintegroEmpleadoModal').classList.remove('active');
+}
+
 async function deleteEmpleado(id, nombre) {
     if (!confirm(`¿Está seguro de eliminar al empleado ${nombre}?`)) {
         return;
@@ -1800,6 +2121,401 @@ function setupEmpleadoForm() {
             showError('Error de conexión al guardar empleado');
         }
     });
+}
+
+function setupEstructuraLaboralForms() {
+    const areaForm = document.getElementById('areaForm');
+    if (areaForm && !areaForm.dataset.bound) {
+        areaForm.addEventListener('submit', guardarAreaConfig);
+        areaForm.dataset.bound = 'true';
+    }
+
+    const cargoForm = document.getElementById('cargoForm');
+    if (cargoForm && !cargoForm.dataset.bound) {
+        cargoForm.addEventListener('submit', guardarCargoConfig);
+        cargoForm.dataset.bound = 'true';
+    }
+
+    const asignacionForm = document.getElementById('asignacionLaboralForm');
+    if (asignacionForm && !asignacionForm.dataset.bound) {
+        asignacionForm.addEventListener('submit', guardarAsignacionLaboralConfig);
+        asignacionForm.dataset.bound = 'true';
+    }
+
+    const retiroForm = document.getElementById('retiroEmpleadoForm');
+    if (retiroForm && !retiroForm.dataset.bound) {
+        retiroForm.addEventListener('submit', guardarRetiroEmpleado);
+        retiroForm.dataset.bound = 'true';
+    }
+
+    const reintegroForm = document.getElementById('reintegroEmpleadoForm');
+    if (reintegroForm && !reintegroForm.dataset.bound) {
+        reintegroForm.addEventListener('submit', guardarReintegroEmpleado);
+        reintegroForm.dataset.bound = 'true';
+    }
+
+    const asignacionArea = document.getElementById('asignacionAreaId');
+    if (asignacionArea && !asignacionArea.dataset.bound) {
+        asignacionArea.addEventListener('change', () => fillCargosSelect('asignacionCargoId', true, asignacionArea.value || null));
+        asignacionArea.dataset.bound = 'true';
+    }
+
+    const reintegroArea = document.getElementById('reintegroAreaId');
+    if (reintegroArea && !reintegroArea.dataset.bound) {
+        reintegroArea.addEventListener('change', () => fillCargosSelect('reintegroCargoId', true, reintegroArea.value || null));
+        reintegroArea.dataset.bound = 'true';
+    }
+}
+
+function fillAreasSelect(selectId, includeBlank = false) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    const currentValue = select.value;
+    select.innerHTML = includeBlank ? '<option value="">Seleccione...</option>' : '';
+    areasConfigData.filter(area => area.activo !== false).forEach(area => {
+        const option = document.createElement('option');
+        option.value = area.id;
+        option.textContent = area.nombre;
+        select.appendChild(option);
+    });
+    if (currentValue) select.value = currentValue;
+}
+
+function fillCargosSelect(selectId, includeBlank = false, areaId = null) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    const currentValue = select.value;
+    select.innerHTML = includeBlank ? '<option value="">Seleccione...</option>' : '';
+
+    cargosConfigData
+        .filter(cargo => cargo.activo !== false)
+        .filter(cargo => !areaId || !cargo.area_id || String(cargo.area_id) === String(areaId))
+        .forEach(cargo => {
+            const option = document.createElement('option');
+            option.value = cargo.id;
+            option.textContent = cargo.area_nombre ? `${cargo.nombre} (${cargo.area_nombre})` : cargo.nombre;
+            select.appendChild(option);
+        });
+
+    if (currentValue) select.value = currentValue;
+}
+
+async function fillEmpleadosConfigSelect(selectId, includeRetired = true) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    try {
+        const response = await fetch(`/api/nomina/empleados?activos=${includeRetired ? 'false' : 'true'}`, {
+            credentials: 'include'
+        });
+        const empleados = await response.json();
+        select.innerHTML = '<option value="">Seleccione un empleado...</option>';
+        empleados.forEach(emp => {
+            const option = document.createElement('option');
+            option.value = emp.id;
+            option.textContent = `${emp.nro_documento} - ${emp.nombre_completo}`;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error cargando empleados para configuracion:', error);
+    }
+}
+
+async function cargarAreasConfig() {
+    const tbody = document.getElementById('areasTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/nomina/areas', { credentials: 'include' });
+        const areas = await response.json();
+        areasConfigData = Array.isArray(areas) ? areas : [];
+        fillAreasSelect('cargoAreaId', true);
+        fillAreasSelect('asignacionAreaId', true);
+        fillAreasSelect('reintegroAreaId', true);
+
+        if (areasConfigData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="loading">No hay areas configuradas</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = areasConfigData.map(area => `
+            <tr>
+                <td>${escapeHtml(area.nombre)}</td>
+                <td>${escapeHtml(area.descripcion || 'N/A')}</td>
+                <td>${area.activo ? '<span class="badge badge-success">Activa</span>' : '<span class="badge badge-danger">Inactiva</span>'}</td>
+                <td><button class="action-btn action-btn-edit" onclick="editarAreaConfig(${area.id})">Editar</button></td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando areas:', error);
+        tbody.innerHTML = '<tr><td colspan="4" class="loading">Error al cargar areas</td></tr>';
+    }
+}
+
+async function cargarCargosConfig() {
+    const tbody = document.getElementById('cargosTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/nomina/cargos', { credentials: 'include' });
+        const cargos = await response.json();
+        cargosConfigData = Array.isArray(cargos) ? cargos : [];
+        fillCargosSelect('asignacionCargoId', true, document.getElementById('asignacionAreaId')?.value || null);
+        fillCargosSelect('reintegroCargoId', true, document.getElementById('reintegroAreaId')?.value || null);
+
+        if (cargosConfigData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="loading">No hay cargos configurados</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = cargosConfigData.map(cargo => `
+            <tr>
+                <td>${escapeHtml(cargo.nombre)}</td>
+                <td>${escapeHtml(cargo.area_nombre || 'N/A')}</td>
+                <td>${escapeHtml(cargo.descripcion || 'N/A')}</td>
+                <td>${cargo.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
+                <td><button class="action-btn action-btn-edit" onclick="editarCargoConfig(${cargo.id})">Editar</button></td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando cargos:', error);
+        tbody.innerHTML = '<tr><td colspan="5" class="loading">Error al cargar cargos</td></tr>';
+    }
+}
+
+async function cargarAsignacionesLaboralesConfig() {
+    const tbody = document.getElementById('asignacionesLaboralesTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/nomina/asignaciones-laborales', { credentials: 'include' });
+        const asignaciones = await response.json();
+        asignacionesLaboralesData = Array.isArray(asignaciones) ? asignaciones : [];
+        await fillEmpleadosConfigSelect('asignacionEmpleadoId', true);
+
+        if (asignacionesLaboralesData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay asignaciones laborales registradas</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = asignacionesLaboralesData.map(asignacion => `
+            <tr>
+                <td>${escapeHtml(asignacion.empleado_nombre || 'N/A')}</td>
+                <td>${escapeHtml(asignacion.area_nombre || 'N/A')}</td>
+                <td>${escapeHtml(asignacion.cargo_nombre || 'N/A')}</td>
+                <td>${asignacion.fecha_inicio || 'N/A'}</td>
+                <td>${asignacion.fecha_fin || 'N/A'}</td>
+                <td>${asignacion.activo ? '<span class="badge badge-success">Activa</span>' : '<span class="badge badge-danger">Finalizada</span>'}</td>
+                <td><button class="action-btn action-btn-edit" onclick="editarAsignacionLaboral(${asignacion.id})">Editar</button></td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando asignaciones laborales:', error);
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar asignaciones laborales</td></tr>';
+    }
+}
+
+function mostrarAgregarArea() {
+    document.getElementById('areaForm').reset();
+    document.getElementById('areaId').value = '';
+    document.getElementById('areaModalTitle').textContent = 'Nueva Area';
+    document.getElementById('areaActivo').checked = true;
+    document.getElementById('areaModal').classList.add('active');
+}
+
+function closeAreaModal() {
+    document.getElementById('areaModal').classList.remove('active');
+}
+
+function editarAreaConfig(id) {
+    const area = areasConfigData.find(item => item.id === id);
+    if (!area) return;
+    document.getElementById('areaId').value = area.id;
+    document.getElementById('areaNombre').value = area.nombre || '';
+    document.getElementById('areaDescripcion').value = area.descripcion || '';
+    document.getElementById('areaActivo').checked = area.activo !== false;
+    document.getElementById('areaModalTitle').textContent = 'Editar Area';
+    document.getElementById('areaModal').classList.add('active');
+}
+
+async function mostrarAgregarCargo() {
+    document.getElementById('cargoForm').reset();
+    document.getElementById('cargoConfigId').value = '';
+    document.getElementById('cargoModalTitle').textContent = 'Nuevo Cargo';
+    document.getElementById('cargoActivo').checked = true;
+    await cargarAreasConfig();
+    fillAreasSelect('cargoAreaId', true);
+    document.getElementById('cargoModal').classList.add('active');
+}
+
+function closeCargoModal() {
+    document.getElementById('cargoModal').classList.remove('active');
+}
+
+function editarCargoConfig(id) {
+    const cargo = cargosConfigData.find(item => item.id === id);
+    if (!cargo) return;
+    document.getElementById('cargoConfigId').value = cargo.id;
+    document.getElementById('cargoConfigNombre').value = cargo.nombre || '';
+    document.getElementById('cargoDescripcion').value = cargo.descripcion || '';
+    document.getElementById('cargoActivo').checked = cargo.activo !== false;
+    fillAreasSelect('cargoAreaId', true);
+    document.getElementById('cargoAreaId').value = cargo.area_id || '';
+    document.getElementById('cargoModalTitle').textContent = 'Editar Cargo';
+    document.getElementById('cargoModal').classList.add('active');
+}
+
+async function mostrarAgregarAsignacionLaboral() {
+    document.getElementById('asignacionLaboralForm').reset();
+    document.getElementById('asignacionLaboralId').value = '';
+    document.getElementById('asignacionLaboralModalTitle').textContent = 'Nueva Asignacion Laboral';
+    document.getElementById('asignacionActiva').checked = true;
+    document.getElementById('asignacionFechaInicio').value = new Date().toISOString().split('T')[0];
+    await cargarAreasConfig();
+    await cargarCargosConfig();
+    fillAreasSelect('asignacionAreaId', true);
+    fillCargosSelect('asignacionCargoId', true);
+    await fillEmpleadosConfigSelect('asignacionEmpleadoId', true);
+    document.getElementById('asignacionLaboralModal').classList.add('active');
+}
+
+function closeAsignacionLaboralModal() {
+    document.getElementById('asignacionLaboralModal').classList.remove('active');
+}
+
+function editarAsignacionLaboral(id) {
+    const asignacion = asignacionesLaboralesData.find(item => item.id === id);
+    if (!asignacion) return;
+    document.getElementById('asignacionLaboralId').value = asignacion.id;
+    document.getElementById('asignacionLaboralModalTitle').textContent = 'Editar Asignacion Laboral';
+    fillEmpleadosConfigSelect('asignacionEmpleadoId', true).then(() => {
+        document.getElementById('asignacionEmpleadoId').value = asignacion.empleado_id || '';
+    });
+    fillAreasSelect('asignacionAreaId', true);
+    document.getElementById('asignacionAreaId').value = asignacion.area_id || '';
+    fillCargosSelect('asignacionCargoId', true, asignacion.area_id || null);
+    document.getElementById('asignacionCargoId').value = asignacion.cargo_id || '';
+    document.getElementById('asignacionFechaInicio').value = asignacion.fecha_inicio || '';
+    document.getElementById('asignacionFechaFin').value = asignacion.fecha_fin || '';
+    document.getElementById('asignacionMotivo').value = asignacion.motivo || '';
+    document.getElementById('asignacionActiva').checked = asignacion.activo !== false;
+    document.getElementById('asignacionLaboralModal').classList.add('active');
+}
+
+async function guardarAreaConfig(event) {
+    event.preventDefault();
+    const id = document.getElementById('areaId').value;
+    const response = await fetch(id ? `/api/nomina/areas/${id}` : '/api/nomina/areas', {
+        method: id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+            nombre: document.getElementById('areaNombre').value.trim(),
+            descripcion: document.getElementById('areaDescripcion').value.trim() || null,
+            activo: document.getElementById('areaActivo').checked
+        })
+    });
+    const data = await response.json();
+    if (!response.ok) return showError(data.error || 'Error al guardar area');
+    showSuccess(id ? 'Area actualizada' : 'Area creada');
+    closeAreaModal();
+    await cargarAreasConfig();
+    await cargarCargosConfig();
+}
+
+async function guardarCargoConfig(event) {
+    event.preventDefault();
+    const id = document.getElementById('cargoConfigId').value;
+    const response = await fetch(id ? `/api/nomina/cargos/${id}` : '/api/nomina/cargos', {
+        method: id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+            nombre: document.getElementById('cargoConfigNombre').value.trim(),
+            area_id: document.getElementById('cargoAreaId').value || null,
+            descripcion: document.getElementById('cargoDescripcion').value.trim() || null,
+            activo: document.getElementById('cargoActivo').checked
+        })
+    });
+    const data = await response.json();
+    if (!response.ok) return showError(data.error || 'Error al guardar cargo');
+    showSuccess(id ? 'Cargo actualizado' : 'Cargo creado');
+    closeCargoModal();
+    await cargarCargosConfig();
+    await cargarAsignacionesLaboralesConfig();
+}
+
+async function guardarAsignacionLaboralConfig(event) {
+    event.preventDefault();
+    const id = document.getElementById('asignacionLaboralId').value;
+    const response = await fetch(id ? `/api/nomina/asignaciones-laborales/${id}` : '/api/nomina/asignaciones-laborales', {
+        method: id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+            empleado_id: document.getElementById('asignacionEmpleadoId').value || null,
+            area_id: document.getElementById('asignacionAreaId').value || null,
+            cargo_id: document.getElementById('asignacionCargoId').value || null,
+            fecha_inicio: document.getElementById('asignacionFechaInicio').value,
+            fecha_fin: document.getElementById('asignacionFechaFin').value || null,
+            motivo: document.getElementById('asignacionMotivo').value.trim() || null,
+            activo: document.getElementById('asignacionActiva').checked
+        })
+    });
+    const data = await response.json();
+    if (!response.ok) return showError(data.error || 'Error al guardar asignacion laboral');
+    showSuccess(id ? 'Asignacion laboral actualizada' : 'Asignacion laboral creada');
+    closeAsignacionLaboralModal();
+    await cargarAsignacionesLaboralesConfig();
+    await loadEmpleados();
+}
+
+async function guardarRetiroEmpleado(event) {
+    event.preventDefault();
+    const empleadoId = document.getElementById('retiroEmpleadoId').value;
+    const response = await fetch(`/api/nomina/empleados/${empleadoId}/retirar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+            fecha_retiro: document.getElementById('retiroFecha').value,
+            motivo: document.getElementById('retiroMotivo').value.trim(),
+            observacion: document.getElementById('retiroObservacion').value.trim() || null
+        })
+    });
+    const data = await response.json();
+    if (!response.ok) return showError(data.error || 'Error al retirar empleado');
+    showSuccess('Empleado retirado correctamente');
+    closeRetiroEmpleadoModal();
+    await loadEmpleados();
+    await reloadConsultaEmpleados();
+    await cargarAsignacionesLaboralesConfig();
+}
+
+async function guardarReintegroEmpleado(event) {
+    event.preventDefault();
+    const empleadoId = document.getElementById('reintegroEmpleadoId').value;
+    const response = await fetch(`/api/nomina/empleados/${empleadoId}/reintegrar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+            fecha_reintegro: document.getElementById('reintegroFecha').value,
+            motivo: document.getElementById('reintegroMotivo').value.trim(),
+            observacion: document.getElementById('reintegroObservacion').value.trim() || null,
+            area_id: document.getElementById('reintegroAreaId').value || null,
+            cargo_id: document.getElementById('reintegroCargoId').value || null
+        })
+    });
+    const data = await response.json();
+    if (!response.ok) return showError(data.error || 'Error al reintegrar empleado');
+    showSuccess('Empleado reintegrado correctamente');
+    closeReintegroEmpleadoModal();
+    await loadEmpleados();
+    await reloadConsultaEmpleados();
+    await cargarAsignacionesLaboralesConfig();
 }
 
 async function showNewNovedadForm() {
@@ -3718,6 +4434,9 @@ switchModule = function(moduleName) {
     if (moduleName === 'tablas') {
         cargarDescuentos();
         cargarTiposNovedadConfig();
+        cargarAreasConfig();
+        cargarCargosConfig();
+        cargarAsignacionesLaboralesConfig();
     }
 };
 

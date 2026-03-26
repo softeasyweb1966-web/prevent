@@ -92,6 +92,7 @@ class Empleado(db.Model):
     fecha_inicio = db.Column(db.DateTime, nullable=False)
     fecha_retiro = db.Column(db.DateTime)
     
+    estado_laboral = db.Column(db.String(30), nullable=False, default='ACTIVO', index=True)
     activo = db.Column(db.Boolean, default=True)
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -101,9 +102,99 @@ class Empleado(db.Model):
     novedades = db.relationship('Novedad', backref='empleado', lazy='dynamic')
     liquidos_quincena = db.relationship('LiquidoQuincena', backref='empleado', lazy='dynamic')
     pagos = db.relationship('Pago', backref='empleado', lazy='dynamic')
+    asignaciones_laborales = db.relationship(
+        'EmpleadoAsignacionLaboral',
+        backref='empleado',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
+    movimientos_laborales = db.relationship(
+        'EmpleadoMovimientoLaboral',
+        backref='empleado',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
     
     def __repr__(self):
         return f'<Empleado {self.nro_documento} - {self.nombres}>'
+
+
+class Area(db.Model):
+    """Tabla maestra de areas organizacionales"""
+    __tablename__ = 'areas'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(150), unique=True, nullable=False, index=True)
+    descripcion = db.Column(db.Text)
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    cargos = db.relationship('Cargo', backref='area', lazy='dynamic')
+    asignaciones_laborales = db.relationship('EmpleadoAsignacionLaboral', backref='area', lazy='dynamic')
+    movimientos_laborales = db.relationship('EmpleadoMovimientoLaboral', backref='area_movimiento', lazy='dynamic')
+
+    def __repr__(self):
+        return f'<Area {self.nombre}>'
+
+
+class Cargo(db.Model):
+    """Tabla maestra de cargos"""
+    __tablename__ = 'cargos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(150), nullable=False, index=True)
+    area_id = db.Column(db.Integer, db.ForeignKey('areas.id'))
+    descripcion = db.Column(db.Text)
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    asignaciones_laborales = db.relationship('EmpleadoAsignacionLaboral', backref='cargo_ref', lazy='dynamic')
+    movimientos_laborales = db.relationship('EmpleadoMovimientoLaboral', backref='cargo_movimiento', lazy='dynamic')
+
+    def __repr__(self):
+        return f'<Cargo {self.nombre}>'
+
+
+class EmpleadoAsignacionLaboral(db.Model):
+    """Historial de asignaciones empleado-area-cargo"""
+    __tablename__ = 'empleado_asignaciones_laborales'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False, index=True)
+    area_id = db.Column(db.Integer, db.ForeignKey('areas.id'))
+    cargo_id = db.Column(db.Integer, db.ForeignKey('cargos.id'))
+    fecha_inicio = db.Column(db.DateTime, nullable=False)
+    fecha_fin = db.Column(db.DateTime)
+    motivo = db.Column(db.String(255))
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<EmpleadoAsignacionLaboral {self.empleado_id} - {self.cargo_id}>'
+
+
+class EmpleadoMovimientoLaboral(db.Model):
+    """Trazabilidad de movimientos laborales del empleado"""
+    __tablename__ = 'empleado_movimientos_laborales'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False, index=True)
+    tipo_movimiento = db.Column(db.String(40), nullable=False, index=True)
+    fecha_movimiento = db.Column(db.DateTime, nullable=False)
+    motivo = db.Column(db.String(255), nullable=False)
+    observacion = db.Column(db.Text)
+    estado_anterior = db.Column(db.String(30))
+    estado_nuevo = db.Column(db.String(30))
+    area_id = db.Column(db.Integer, db.ForeignKey('areas.id'))
+    cargo_id = db.Column(db.Integer, db.ForeignKey('cargos.id'))
+    usuario_responsable = db.Column(db.String(120))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<EmpleadoMovimientoLaboral {self.empleado_id} - {self.tipo_movimiento}>'
 
 
 class TipoNovedad(db.Model):

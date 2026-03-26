@@ -1,12 +1,153 @@
 from flask import request, jsonify
 from app.routes import nomina_bp
-from app.models import db, Empleado, Novedad, NovedadAplicada, TipoNovedad, Quincena, LiquidoQuincena, Pago, ConceptoAutomatico, ParametroDescuento
+from app.models import (
+    db,
+    Empleado,
+    Area,
+    Cargo,
+    EmpleadoAsignacionLaboral,
+    EmpleadoMovimientoLaboral,
+    Novedad,
+    NovedadAplicada,
+    TipoNovedad,
+    Quincena,
+    LiquidoQuincena,
+    Pago,
+    ConceptoAutomatico,
+    ParametroDescuento,
+)
 from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 from decimal import Decimal
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_datetime_value(value, field_name):
+    if value in (None, ''):
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        raise ValueError(f'Formato invalido para {field_name}')
+
+
+def _normalize_estado_laboral(activo, estado_laboral=None):
+    if estado_laboral:
+        return str(estado_laboral).upper()
+    return 'ACTIVO' if activo else 'INACTIVO'
+
+
+def _serialize_area(area):
+    return {
+        'id': area.id,
+        'nombre': area.nombre,
+        'descripcion': area.descripcion,
+        'activo': area.activo
+    }
+
+
+def _serialize_cargo(cargo):
+    return {
+        'id': cargo.id,
+        'nombre': cargo.nombre,
+        'area_id': cargo.area_id,
+        'area_nombre': cargo.area.nombre if cargo.area else None,
+        'descripcion': cargo.descripcion,
+        'activo': cargo.activo
+    }
+
+
+def _serialize_asignacion(asignacion):
+    empleado = asignacion.empleado
+    return {
+        'id': asignacion.id,
+        'empleado_id': asignacion.empleado_id,
+        'empleado_nombre': f"{empleado.nombres} {empleado.apellidos}" if empleado else None,
+        'area_id': asignacion.area_id,
+        'area_nombre': asignacion.area.nombre if asignacion.area else None,
+        'cargo_id': asignacion.cargo_id,
+        'cargo_nombre': asignacion.cargo_ref.nombre if asignacion.cargo_ref else None,
+        'fecha_inicio': asignacion.fecha_inicio.strftime('%Y-%m-%d') if asignacion.fecha_inicio else None,
+        'fecha_fin': asignacion.fecha_fin.strftime('%Y-%m-%d') if asignacion.fecha_fin else None,
+        'motivo': asignacion.motivo,
+        'activo': asignacion.activo
+    }
+
+
+def _crear_movimiento_laboral(empleado, tipo_movimiento, fecha_movimiento, motivo, observacion=None, estado_anterior=None, estado_nuevo=None, area_id=None, cargo_id=None):
+    movimiento = EmpleadoMovimientoLaboral(
+        empleado_id=empleado.id,
+        tipo_movimiento=tipo_movimiento,
+        fecha_movimiento=fecha_movimiento,
+        motivo=motivo,
+        observacion=observacion,
+        estado_anterior=estado_anterior,
+        estado_nuevo=estado_nuevo,
+        area_id=area_id,
+        cargo_id=cargo_id,
+        usuario_responsable=getattr(current_user, 'usuario', None)
+    )
+    db.session.add(movimiento)
+    return movimiento
+
+
+def _buscar_area_cargo_desde_payload(data):
+    area = None
+    cargo = None
+
+    cargo_id = data.get('cargo_id')
+    area_id = data.get('area_id')
+    cargo_nombre = (data.get('cargo') or '').strip()
+
+    if area_id:
+        area = Area.query.get(area_id)
+    if cargo_id:
+        cargo = Cargo.query.get(cargo_id)
+        if cargo and not area:
+            area = cargo.area
+    elif cargo_nombre:
+        cargo = Cargo.query.filter_by(nombre=cargo_nombre).order_by(Cargo.activo.desc(), Cargo.id.asc()).first()
+        if cargo and not area:
+            area = cargo.area
+
+    return area, cargo
+
+
+def _crear_asignacion_laboral(empleado, fecha_inicio, area=None, cargo=None, motivo=None, fecha_fin=None, activo=True):
+    if not area and not cargo:
+        return None
+
+    if activo:
+        asignaciones_activas = EmpleadoAsignacionLaboral.query.filter_by(empleado_id=empleado.id, activo=True).all()
+        for asignacion_activa in asignaciones_activas:
+            asignacion_activa.activo = False
+            asignacion_activa.fecha_fin = fecha_inicio
+
+    asignacion = EmpleadoAsignacionLaboral(
+        empleado_id=empleado.id,
+        area_id=area.id if area else None,
+        cargo_id=cargo.id if cargo else None,
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin,
+        motivo=motivo,
+        activo=activo
+    )
+    db.session.add(asignacion)
+    return asignacion
+
+
+def _obtener_ultimo_movimiento_retiro(empleado):
+    return EmpleadoMovimientoLaboral.query.filter_by(
+        empleado_id=empleado.id,
+        tipo_movimiento='RETIRO'
+    ).order_by(
+        EmpleadoMovimientoLaboral.fecha_movimiento.desc(),
+        EmpleadoMovimientoLaboral.id.desc()
+    ).first()
 
 # ==================== EMPLEADOS ====================
 
@@ -21,7 +162,7 @@ def get_empleados():
         if activos_only:
             query = query.filter_by(activo=True)
         
-        empleados = query.all()
+        empleados = query.order_by(Empleado.activo.desc(), Empleado.nombres.asc(), Empleado.apellidos.asc()).all()
         
         datos = [{
             'id': e.id,
@@ -36,10 +177,14 @@ def get_empleados():
             'sueldo_base': float(e.sueldo_base),
             'sueldo_quincena': float(e.sueldo_base) / 2 if e.forma_pago == 'QUINCENAL' else float(e.sueldo_base),
             'planilla_afiliado': e.planilla_afiliado,
+            'banco': e.banco,
+            'numero_cuenta': e.numero_cuenta,
             'activo': e.activo,
+            'estado_laboral': e.estado_laboral,
             'fecha_inicio': e.fecha_inicio.strftime('%Y-%m-%d'),
             'fecha_ingreso': e.fecha_inicio.strftime('%Y-%m-%d'),
-            'fecha_retiro': e.fecha_retiro.strftime('%Y-%m-%d') if e.fecha_retiro else None
+            'fecha_retiro': e.fecha_retiro.strftime('%Y-%m-%d') if e.fecha_retiro else None,
+            'motivo_retiro': (_obtener_ultimo_movimiento_retiro(e).motivo if _obtener_ultimo_movimiento_retiro(e) else None)
         } for e in empleados]
         
         return jsonify(datos), 200
@@ -61,7 +206,12 @@ def crear_empleado():
             return jsonify({'error': 'El documento ya está registrado'}), 409
         
         # Usar fecha_ingreso si se envía, si no fecha_inicio
-        fecha = data.get('fecha_ingreso') or data.get('fecha_inicio')
+        fecha = _parse_datetime_value(data.get('fecha_ingreso') or data.get('fecha_inicio'), 'fecha_ingreso')
+        if not fecha:
+            return jsonify({'error': 'La fecha de ingreso es obligatoria'}), 400
+
+        activo = data.get('activo', True)
+        estado_laboral = _normalize_estado_laboral(activo, data.get('estado_laboral'))
         
         empleado = Empleado(
             nro_documento=data.get('nro_documento'),
@@ -74,11 +224,34 @@ def crear_empleado():
             planilla_afiliado=data.get('planilla_afiliado', False),
             banco=data.get('banco'),
             numero_cuenta=data.get('numero_cuenta'),
-            fecha_inicio=datetime.fromisoformat(fecha) if isinstance(fecha, str) else fecha,
-            activo=data.get('activo', True)
+            fecha_inicio=fecha,
+            activo=(estado_laboral == 'ACTIVO'),
+            estado_laboral=estado_laboral
         )
         
         db.session.add(empleado)
+        db.session.flush()
+        area, cargo = _buscar_area_cargo_desde_payload(data)
+        if area or cargo:
+            _crear_asignacion_laboral(
+                empleado,
+                fecha,
+                area=area,
+                cargo=cargo,
+                motivo='ASIGNACION_INICIAL',
+                activo=(estado_laboral == 'ACTIVO')
+            )
+
+        _crear_movimiento_laboral(
+            empleado,
+            'INGRESO',
+            fecha,
+            data.get('motivo_ingreso') or 'INGRESO_INICIAL',
+            observacion=data.get('observacion_ingreso'),
+            estado_nuevo=estado_laboral,
+            area_id=area.id if area else None,
+            cargo_id=cargo.id if cargo else None
+        )
         db.session.commit()
         
         logger.info(f"Empleado creado: {empleado.nro_documento}")
@@ -112,7 +285,8 @@ def get_empleado(empleado_id):
             'fecha_inicio': empleado.fecha_inicio.strftime('%Y-%m-%d'),
             'fecha_ingreso': empleado.fecha_inicio.strftime('%Y-%m-%d'),
             'fecha_retiro': empleado.fecha_retiro.strftime('%Y-%m-%d') if empleado.fecha_retiro else None,
-            'activo': empleado.activo
+            'activo': empleado.activo,
+            'estado_laboral': empleado.estado_laboral
         }
         
         return jsonify(datos), 200
@@ -146,11 +320,13 @@ def actualizar_empleado(empleado_id):
         # Usar fecha_ingreso si se envía, si no fecha_inicio
         fecha = data.get('fecha_ingreso') or data.get('fecha_inicio')
         if fecha:
-            empleado.fecha_inicio = datetime.fromisoformat(fecha) if isinstance(fecha, str) else fecha
+            empleado.fecha_inicio = _parse_datetime_value(fecha, 'fecha_ingreso')
         
-        # Permitir actualizar estado activo
         if 'activo' in data:
-            empleado.activo = data.get('activo')
+            nuevo_activo = bool(data.get('activo'))
+            empleado.activo = nuevo_activo
+            if empleado.estado_laboral != 'RETIRADO':
+                empleado.estado_laboral = 'ACTIVO' if nuevo_activo else 'INACTIVO'
         
         db.session.commit()
         logger.info(f"Empleado actualizado: {empleado.nro_documento}")
@@ -170,9 +346,25 @@ def eliminar_empleado(empleado_id):
     try:
         empleado = Empleado.query.get_or_404(empleado_id)
         
-        # En lugar de eliminar, desactivamos el empleado
+        estado_anterior = empleado.estado_laboral
+        fecha_retiro = datetime.utcnow()
         empleado.activo = False
-        empleado.fecha_retiro = datetime.utcnow()
+        empleado.estado_laboral = 'RETIRADO'
+        empleado.fecha_retiro = fecha_retiro
+
+        asignaciones_activas = EmpleadoAsignacionLaboral.query.filter_by(empleado_id=empleado.id, activo=True).all()
+        for asignacion in asignaciones_activas:
+            asignacion.activo = False
+            asignacion.fecha_fin = fecha_retiro
+
+        _crear_movimiento_laboral(
+            empleado,
+            'RETIRO',
+            fecha_retiro,
+            'RETIRO_SIN_DETALLE',
+            estado_anterior=estado_anterior,
+            estado_nuevo='RETIRADO'
+        )
         
         db.session.commit()
         logger.info(f"Empleado desactivado: {empleado.nro_documento}")
@@ -183,6 +375,365 @@ def eliminar_empleado(empleado_id):
         db.session.rollback()
         logger.error(f"Error eliminando empleado: {str(e)}")
         return jsonify({'error': 'Error al eliminar empleado'}), 500
+
+
+@nomina_bp.route('/empleados/<int:empleado_id>/retirar', methods=['POST'])
+@login_required
+def retirar_empleado(empleado_id):
+    data = request.get_json() or {}
+
+    try:
+        empleado = Empleado.query.get_or_404(empleado_id)
+        if empleado.estado_laboral == 'RETIRADO':
+            return jsonify({'error': 'El empleado ya se encuentra retirado'}), 409
+
+        fecha_retiro = _parse_datetime_value(data.get('fecha_retiro'), 'fecha_retiro')
+        if not fecha_retiro:
+            return jsonify({'error': 'La fecha de retiro es obligatoria'}), 400
+
+        motivo = (data.get('motivo') or '').strip()
+        if not motivo:
+            return jsonify({'error': 'El motivo de retiro es obligatorio'}), 400
+
+        estado_anterior = empleado.estado_laboral
+        empleado.activo = False
+        empleado.estado_laboral = 'RETIRADO'
+        empleado.fecha_retiro = fecha_retiro
+
+        asignaciones_activas = EmpleadoAsignacionLaboral.query.filter_by(empleado_id=empleado.id, activo=True).all()
+        for asignacion in asignaciones_activas:
+            asignacion.activo = False
+            asignacion.fecha_fin = fecha_retiro
+
+        _crear_movimiento_laboral(
+            empleado,
+            'RETIRO',
+            fecha_retiro,
+            motivo,
+            observacion=data.get('observacion'),
+            estado_anterior=estado_anterior,
+            estado_nuevo='RETIRADO'
+        )
+
+        db.session.commit()
+        return jsonify({'mensaje': 'Empleado retirado correctamente'}), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error retirando empleado: {str(e)}")
+        return jsonify({'error': 'Error al retirar empleado'}), 500
+
+
+@nomina_bp.route('/empleados/<int:empleado_id>/reintegrar', methods=['POST'])
+@login_required
+def reintegrar_empleado(empleado_id):
+    data = request.get_json() or {}
+
+    try:
+        empleado = Empleado.query.get_or_404(empleado_id)
+        fecha_reintegro = _parse_datetime_value(data.get('fecha_reintegro'), 'fecha_reintegro')
+        if not fecha_reintegro:
+            return jsonify({'error': 'La fecha de reintegro es obligatoria'}), 400
+
+        motivo = (data.get('motivo') or '').strip()
+        if not motivo:
+            return jsonify({'error': 'El motivo de reintegro es obligatorio'}), 400
+
+        estado_anterior = empleado.estado_laboral
+        empleado.activo = True
+        empleado.estado_laboral = 'ACTIVO'
+        empleado.fecha_retiro = None
+
+        area, cargo = _buscar_area_cargo_desde_payload(data)
+        if not area and not cargo:
+            ultima_asignacion = EmpleadoAsignacionLaboral.query.filter_by(empleado_id=empleado.id).order_by(
+                EmpleadoAsignacionLaboral.fecha_inicio.desc(),
+                EmpleadoAsignacionLaboral.id.desc()
+            ).first()
+            if ultima_asignacion:
+                area = ultima_asignacion.area
+                cargo = ultima_asignacion.cargo_ref
+
+        if area or cargo:
+            _crear_asignacion_laboral(
+                empleado,
+                fecha_reintegro,
+                area=area,
+                cargo=cargo,
+                motivo='REINTEGRO',
+                activo=True
+            )
+
+        _crear_movimiento_laboral(
+            empleado,
+            'REINTEGRO',
+            fecha_reintegro,
+            motivo,
+            observacion=data.get('observacion'),
+            estado_anterior=estado_anterior,
+            estado_nuevo='ACTIVO',
+            area_id=area.id if area else None,
+            cargo_id=cargo.id if cargo else None
+        )
+
+        db.session.commit()
+        return jsonify({'mensaje': 'Empleado reintegrado correctamente'}), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error reintegrando empleado: {str(e)}")
+        return jsonify({'error': 'Error al reintegrar empleado'}), 500
+
+
+@nomina_bp.route('/empleados/<int:empleado_id>/movimientos', methods=['GET'])
+@login_required
+def listar_movimientos_empleado(empleado_id):
+    try:
+        Empleado.query.get_or_404(empleado_id)
+        movimientos = EmpleadoMovimientoLaboral.query.filter_by(empleado_id=empleado_id).order_by(
+            EmpleadoMovimientoLaboral.fecha_movimiento.desc(),
+            EmpleadoMovimientoLaboral.id.desc()
+        ).all()
+
+        datos = [{
+            'id': m.id,
+            'tipo_movimiento': m.tipo_movimiento,
+            'fecha_movimiento': m.fecha_movimiento.strftime('%Y-%m-%d'),
+            'motivo': m.motivo,
+            'observacion': m.observacion,
+            'estado_anterior': m.estado_anterior,
+            'estado_nuevo': m.estado_nuevo,
+            'area_nombre': m.area_movimiento.nombre if m.area_movimiento else None,
+            'cargo_nombre': m.cargo_movimiento.nombre if m.cargo_movimiento else None,
+            'usuario_responsable': m.usuario_responsable
+        } for m in movimientos]
+
+        return jsonify(datos), 200
+    except Exception as e:
+        logger.error(f"Error obteniendo movimientos laborales: {str(e)}")
+        return jsonify({'error': 'Error al obtener movimientos laborales'}), 500
+
+
+@nomina_bp.route('/areas', methods=['GET'])
+@login_required
+def get_areas():
+    try:
+        areas = Area.query.order_by(Area.activo.desc(), Area.nombre.asc()).all()
+        return jsonify([_serialize_area(area) for area in areas]), 200
+    except Exception as e:
+        logger.error(f"Error obteniendo areas: {str(e)}")
+        return jsonify({'error': 'Error al obtener areas'}), 500
+
+
+@nomina_bp.route('/areas', methods=['POST'])
+@login_required
+def crear_area():
+    data = request.get_json() or {}
+
+    try:
+        nombre = (data.get('nombre') or '').strip()
+        if not nombre:
+            return jsonify({'error': 'El nombre del area es obligatorio'}), 400
+        if Area.query.filter_by(nombre=nombre).first():
+            return jsonify({'error': 'Ya existe un area con ese nombre'}), 409
+
+        area = Area(
+            nombre=nombre,
+            descripcion=data.get('descripcion'),
+            activo=data.get('activo', True)
+        )
+        db.session.add(area)
+        db.session.commit()
+        return jsonify({'mensaje': 'Area creada', 'id': area.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error creando area: {str(e)}")
+        return jsonify({'error': 'Error al crear area'}), 500
+
+
+@nomina_bp.route('/areas/<int:area_id>', methods=['PUT'])
+@login_required
+def actualizar_area(area_id):
+    data = request.get_json() or {}
+
+    try:
+        area = Area.query.get_or_404(area_id)
+        nombre = (data.get('nombre') or area.nombre).strip()
+        existente = Area.query.filter(Area.nombre == nombre, Area.id != area_id).first()
+        if existente:
+            return jsonify({'error': 'Ya existe un area con ese nombre'}), 409
+
+        area.nombre = nombre
+        area.descripcion = data.get('descripcion', area.descripcion)
+        if 'activo' in data:
+            area.activo = bool(data.get('activo'))
+
+        db.session.commit()
+        return jsonify({'mensaje': 'Area actualizada'}), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error actualizando area: {str(e)}")
+        return jsonify({'error': 'Error al actualizar area'}), 500
+
+
+@nomina_bp.route('/cargos', methods=['GET'])
+@login_required
+def get_cargos():
+    try:
+        cargos = Cargo.query.order_by(Cargo.activo.desc(), Cargo.nombre.asc()).all()
+        return jsonify([_serialize_cargo(cargo) for cargo in cargos]), 200
+    except Exception as e:
+        logger.error(f"Error obteniendo cargos: {str(e)}")
+        return jsonify({'error': 'Error al obtener cargos'}), 500
+
+
+@nomina_bp.route('/cargos', methods=['POST'])
+@login_required
+def crear_cargo():
+    data = request.get_json() or {}
+
+    try:
+        nombre = (data.get('nombre') or '').strip()
+        if not nombre:
+            return jsonify({'error': 'El nombre del cargo es obligatorio'}), 400
+
+        cargo = Cargo(
+            nombre=nombre,
+            area_id=data.get('area_id'),
+            descripcion=data.get('descripcion'),
+            activo=data.get('activo', True)
+        )
+        db.session.add(cargo)
+        db.session.commit()
+        return jsonify({'mensaje': 'Cargo creado', 'id': cargo.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error creando cargo: {str(e)}")
+        return jsonify({'error': 'Error al crear cargo'}), 500
+
+
+@nomina_bp.route('/cargos/<int:cargo_id>', methods=['PUT'])
+@login_required
+def actualizar_cargo(cargo_id):
+    data = request.get_json() or {}
+
+    try:
+        cargo = Cargo.query.get_or_404(cargo_id)
+        cargo.nombre = (data.get('nombre') or cargo.nombre).strip()
+        cargo.area_id = data.get('area_id', cargo.area_id)
+        cargo.descripcion = data.get('descripcion', cargo.descripcion)
+        if 'activo' in data:
+            cargo.activo = bool(data.get('activo'))
+
+        db.session.commit()
+        return jsonify({'mensaje': 'Cargo actualizado'}), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error actualizando cargo: {str(e)}")
+        return jsonify({'error': 'Error al actualizar cargo'}), 500
+
+
+@nomina_bp.route('/asignaciones-laborales', methods=['GET'])
+@login_required
+def get_asignaciones_laborales():
+    try:
+        asignaciones = EmpleadoAsignacionLaboral.query.order_by(
+            EmpleadoAsignacionLaboral.activo.desc(),
+            EmpleadoAsignacionLaboral.fecha_inicio.desc(),
+            EmpleadoAsignacionLaboral.id.desc()
+        ).all()
+        return jsonify([_serialize_asignacion(a) for a in asignaciones]), 200
+    except Exception as e:
+        logger.error(f"Error obteniendo asignaciones laborales: {str(e)}")
+        return jsonify({'error': 'Error al obtener asignaciones laborales'}), 500
+
+
+@nomina_bp.route('/asignaciones-laborales', methods=['POST'])
+@login_required
+def crear_asignacion_laboral():
+    data = request.get_json() or {}
+
+    try:
+        empleado = Empleado.query.get_or_404(data.get('empleado_id'))
+        fecha_inicio = _parse_datetime_value(data.get('fecha_inicio'), 'fecha_inicio')
+        if not fecha_inicio:
+            return jsonify({'error': 'La fecha de inicio es obligatoria'}), 400
+
+        area = Area.query.get(data.get('area_id')) if data.get('area_id') else None
+        cargo = Cargo.query.get(data.get('cargo_id')) if data.get('cargo_id') else None
+        if not area and cargo:
+            area = cargo.area
+
+        asignacion = _crear_asignacion_laboral(
+            empleado,
+            fecha_inicio,
+            area=area,
+            cargo=cargo,
+            motivo=data.get('motivo'),
+            fecha_fin=_parse_datetime_value(data.get('fecha_fin'), 'fecha_fin'),
+            activo=bool(data.get('activo', True))
+        )
+        if not asignacion:
+            return jsonify({'error': 'Debe seleccionar area o cargo'}), 400
+
+        if cargo:
+            empleado.cargo = cargo.nombre
+
+        _crear_movimiento_laboral(
+            empleado,
+            'CAMBIO_ASIGNACION',
+            fecha_inicio,
+            data.get('motivo') or 'CAMBIO_ASIGNACION',
+            observacion=data.get('observacion'),
+            estado_anterior=empleado.estado_laboral,
+            estado_nuevo=empleado.estado_laboral,
+            area_id=area.id if area else None,
+            cargo_id=cargo.id if cargo else None
+        )
+
+        db.session.commit()
+        return jsonify({'mensaje': 'Asignacion laboral creada', 'id': asignacion.id}), 201
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error creando asignacion laboral: {str(e)}")
+        return jsonify({'error': 'Error al crear asignacion laboral'}), 500
+
+
+@nomina_bp.route('/asignaciones-laborales/<int:asignacion_id>', methods=['PUT'])
+@login_required
+def actualizar_asignacion_laboral(asignacion_id):
+    data = request.get_json() or {}
+
+    try:
+        asignacion = EmpleadoAsignacionLaboral.query.get_or_404(asignacion_id)
+        area = Area.query.get(data.get('area_id')) if data.get('area_id') else None
+        cargo = Cargo.query.get(data.get('cargo_id')) if data.get('cargo_id') else None
+        if not area and cargo:
+            area = cargo.area
+
+        asignacion.area_id = area.id if area else None
+        asignacion.cargo_id = cargo.id if cargo else None
+        asignacion.fecha_inicio = _parse_datetime_value(data.get('fecha_inicio'), 'fecha_inicio') or asignacion.fecha_inicio
+        asignacion.fecha_fin = _parse_datetime_value(data.get('fecha_fin'), 'fecha_fin') if 'fecha_fin' in data else asignacion.fecha_fin
+        asignacion.motivo = data.get('motivo', asignacion.motivo)
+        if 'activo' in data:
+            asignacion.activo = bool(data.get('activo'))
+
+        if asignacion.cargo_ref:
+            asignacion.empleado.cargo = asignacion.cargo_ref.nombre
+
+        db.session.commit()
+        return jsonify({'mensaje': 'Asignacion laboral actualizada'}), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error actualizando asignacion laboral: {str(e)}")
+        return jsonify({'error': 'Error al actualizar asignacion laboral'}), 500
 
 
 # ==================== NOVEDADES ====================

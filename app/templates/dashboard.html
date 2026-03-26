@@ -21,6 +21,9 @@
             <li><a href="#" class="menu-item" data-module="bancos">
                 <span class="icon">🏦</span> Bancos
             </a></li>
+            <li><a href="#" class="menu-item" data-module="comisiones">
+                <span class="icon">CM</span> Comisiones
+            </a></li>
             <li><a href="#" class="menu-item" data-module="impuestos">
                 <span class="icon">📋</span> Impuestos
             </a></li>
@@ -291,6 +294,9 @@
                         <button class="btn btn-primary" onclick="showNewEmpleadoForm()" aria-label="Nuevo Empleado">
                             <span class="btn-icon">＋</span><span class="btn-label">Nuevo Empleado</span>
                         </button>
+                        <button class="btn btn-info" onclick="showConsultarEmpleadosModal()" aria-label="Consultar Empleados">
+                            <span class="btn-icon">?</span><span class="btn-label">Consultar Empleados</span>
+                        </button>
                         <button class="btn btn-primary" onclick="openNominaQuincenaView()" aria-label="Quincena">
                             <span class="btn-icon">📅</span><span class="btn-label">Quincena</span>
                         </button>
@@ -552,6 +558,9 @@
                     <div class="button-group module-actions">
                         <button class="btn btn-primary" onclick="showNewServicioModal()" aria-label="Nuevo Servicio">
                             <span class="btn-icon">＋</span><span class="btn-label">Nuevo Servicio</span>
+                        </button>
+                        <button class="btn btn-info" onclick="consultarServicios()" aria-label="Consultar Servicios">
+                            <span class="btn-icon">?</span><span class="btn-label">Consultar Servicios</span>
                         </button>
                         <button class="btn btn-primary" onclick="toggleServiciosMesPanel()" aria-label="Mes">
                             <span class="btn-icon">📅</span><span class="btn-label">Mes</span>
@@ -1150,6 +1159,89 @@
                         </tbody>
                     </table>
                 </div>
+
+                <div class="table-container">
+                    <div class="module-header" style="margin-bottom:12px;">
+                        <h3>Areas</h3>
+                        <div class="button-group module-actions">
+                            <button class="btn btn-secondary" onclick="mostrarAgregarArea()" aria-label="Nueva Area">
+                                <span class="btn-icon">+</span><span class="btn-label">Nueva Area</span>
+                            </button>
+                        </div>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Area</th>
+                                <th>Descripcion</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="areasTable">
+                            <tr>
+                                <td colspan="4" class="loading">Pendiente de implementar CRUD de areas</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="table-container">
+                    <div class="module-header" style="margin-bottom:12px;">
+                        <h3>Cargos</h3>
+                        <div class="button-group module-actions">
+                            <button class="btn btn-secondary" onclick="mostrarAgregarCargo()" aria-label="Nuevo Cargo">
+                                <span class="btn-icon">+</span><span class="btn-label">Nuevo Cargo</span>
+                            </button>
+                        </div>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Cargo</th>
+                                <th>Area</th>
+                                <th>Descripcion</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cargosTable">
+                            <tr>
+                                <td colspan="5" class="loading">Pendiente de implementar CRUD de cargos</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="table-container">
+                    <div class="module-header" style="margin-bottom:12px;">
+                        <h3>Asignaciones Laborales</h3>
+                        <div class="button-group module-actions">
+                            <button class="btn btn-secondary" onclick="mostrarAgregarAsignacionLaboral()" aria-label="Nueva Asignacion Laboral">
+                                <span class="btn-icon">+</span><span class="btn-label">Nueva Asignacion</span>
+                            </button>
+                        </div>
+                    </div>
+                    <p style="margin-top:0; color:#666;">Relacion historica empleado-area-cargo con fecha de inicio y fecha final para soportar trazabilidad y analisis por area.</p>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Empleado</th>
+                                <th>Area</th>
+                                <th>Cargo</th>
+                                <th>Fecha Inicio</th>
+                                <th>Fecha Final</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="asignacionesLaboralesTable">
+                            <tr>
+                                <td colspan="7" class="loading">Pendiente de implementar historial de asignaciones laborales</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
             
             <!-- Módulo Bancos / Préstamos de Empresa -->
@@ -1158,6 +1250,9 @@
                     <div class="button-group module-actions">
                         <button class="btn btn-primary" onclick="showNewPrestamoModal()" aria-label="Nuevo Préstamo">
                             <span class="btn-icon">＋</span><span class="btn-label">Nuevo Préstamo</span>
+                        </button>
+                        <button class="btn btn-info" onclick="consultarBancos()" aria-label="Consultar Obligaciones">
+                            <span class="btn-icon">?</span><span class="btn-label">Consultar Obligaciones</span>
                         </button>
                         <button class="btn btn-primary" onclick="toggleBancosMesPanel()" aria-label="Mes">
                             <span class="btn-icon">📅</span><span class="btn-label">Mes</span>
@@ -1326,6 +1421,9 @@
                         <button class="btn btn-primary" onclick="notImplemented('Impuestos: Nuevo Impuesto')" aria-label="Nuevo Impuesto">
                             <span class="btn-icon">＋</span><span class="btn-label">Nuevo Impuesto</span>
                         </button>
+                        <button class="btn btn-info" onclick="notImplemented('Impuestos: Consultar')" aria-label="Consultar Impuestos">
+                            <span class="btn-icon">?</span><span class="btn-label">Consultar</span>
+                        </button>
                         <button class="btn btn-primary" onclick="toggleImpuestosMesPanel()" aria-label="Mes">
                             <span class="btn-icon">📅</span><span class="btn-label">Mes</span>
                         </button>
@@ -1339,6 +1437,25 @@
                 <div id="impuestosMesActualPanel" class="recent-section" style="margin-bottom: 16px;">
                     <h2 style="margin-bottom: 4px;">Mes en proceso</h2>
                     <p id="impuestosMesActual" style="margin:0; color:#555; font-size:0.95rem;">No hay mes en proceso registrado.</p>
+                </div>
+
+                <div id="impuestosDashboardResumen" class="stats-grid" style="margin-bottom: 16px;">
+                    <div class="stat-card">
+                        <h3>Conceptos activos</h3>
+                        <p class="stat-number">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Obligaciones del mes</h3>
+                        <p class="stat-number">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total estimado</h3>
+                        <p class="stat-number">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Estado periodo</h3>
+                        <p class="stat-number">Pend.</p>
+                    </div>
                 </div>
 
                 <!-- Modal selección de período de Impuestos (Año-Mes) -->
@@ -1414,11 +1531,117 @@
                 <p class="placeholder">Este módulo está en desarrollo. La barra de botones ya sigue la filosofía de períodos (Mes / Historial).</p>
             </div>
             
+            <div id="comisionesView" class="module-view">
+                <div class="module-header" id="comisionesHomeHeader">
+                    <div class="button-group module-actions">
+                        <button class="btn btn-primary" onclick="notImplemented('Comisiones: Nueva Comision')" aria-label="Nueva Comision">
+                            <span class="btn-icon">+</span><span class="btn-label">Nueva Comisión</span>
+                        </button>
+                        <button class="btn btn-info" onclick="notImplemented('Comisiones: Consultar Comisiones')" aria-label="Consultar Comisiones">
+                            <span class="btn-icon">?</span><span class="btn-label">Consultar Comisiones</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="toggleComisionesMesPanel()" aria-label="Mes">
+                            <span class="btn-icon">M</span><span class="btn-label">Mes</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="notImplemented('Comisiones: Historial')" aria-label="Ver Historial">
+                            <span class="btn-icon">H</span><span class="btn-label">Ver Historial</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="comisionesMesActualPanel" class="recent-section" style="margin-bottom: 16px;">
+                    <h2 style="margin-bottom: 4px;">Mes en proceso</h2>
+                    <p id="comisionesMesActual" style="margin:0; color:#555; font-size:0.95rem;">No hay mes en proceso registrado.</p>
+                </div>
+
+                <div id="comisionesDashboardResumen" class="stats-grid" style="margin-bottom: 16px;">
+                    <div class="stat-card">
+                        <h3>Comisiones activas</h3>
+                        <p class="stat-number">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Equipo liquidable</h3>
+                        <p class="stat-number">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total mes</h3>
+                        <p class="stat-number">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Estado periodo</h3>
+                        <p class="stat-number">Pend.</p>
+                    </div>
+                </div>
+
+                <div id="comisionesPeriodoSeleccionModal" class="modal">
+                    <div class="modal-content" style="max-width: 520px; width: 95%;">
+                        <div class="modal-header">
+                            <h2>Seleccionar Período de Comisiones</h2>
+                            <span class="close" onclick="closeComisionesPeriodoSeleccion()">&times;</span>
+                        </div>
+                        <form id="comisionesPeriodoSeleccionForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="comisiones_periodo_anio">Año *</label>
+                                    <input id="comisiones_periodo_anio" type="number" min="2000" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="comisiones_periodo_mes">Mes *</label>
+                                    <select id="comisiones_periodo_mes" required>
+                                        <option value="">Seleccione mes...</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeComisionesPeriodoSeleccion()">Cancelar</button>
+                                <button type="submit" class="btn btn-primary">Confirmar período</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div id="comisionesMesPanel" class="module-header" style="margin-bottom: 16px; display: none;">
+                    <div class="period-aux period-aux-center">
+                        <h3 class="quincena-title">Gestión de Mes</h3>
+                        <p id="comisionesMesSeleccionadoLabel" style="margin-top:0; margin-bottom:4px; color:#555; font-size:0.9rem;">Período Comisiones (Mes/Año) · selección pendiente</p>
+                        <div class="period-workflow">
+                            <div class="period-workflow-steps">
+                                <button type="button" class="btn btn-step active" data-module="comisiones" data-step="resumen" onclick="setGenericWorkflowStep('comisiones', 'resumen')">1. Pre-Liquidación</button>
+                                <button type="button" class="btn btn-step" data-module="comisiones" data-step="novedades" onclick="setGenericWorkflowStep('comisiones', 'novedades')">2. Novedades</button>
+                                <button type="button" class="btn btn-step" data-module="comisiones" data-step="pagos" onclick="setGenericWorkflowStep('comisiones', 'pagos')">3. Pagos</button>
+                            </div>
+                            <div class="period-workflow-actions">
+                                <button id="btnComisionesFinalizarNovedadesPanel" type="button" class="btn btn-outline btn-step" style="display:none;" onclick="notImplemented('Comisiones: FINALIZAR NOVEDADES mes')">Finalizar Novedades</button>
+                                <button id="btnComisionesFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="notImplemented('Comisiones: FINALIZAR PAGO mes')">Finalizar Pago Mes</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <h2>Módulo Comisiones</h2>
+                <p class="placeholder">Este módulo queda creado con la misma filosofía de operación por períodos. El siguiente paso será definir su estructura funcional y de base de datos.</p>
+            </div>
+
             <div id="comprasView" class="module-view">
                 <div class="module-header" id="comprasHomeHeader">
                     <div class="button-group module-actions">
                         <button class="btn btn-primary" onclick="notImplemented('Compras: Nueva Compra')" aria-label="Nueva Compra">
                             <span class="btn-icon">＋</span><span class="btn-label">Nueva Compra</span>
+                        </button>
+                        <button class="btn btn-info" onclick="notImplemented('Compras: Consultar')" aria-label="Consultar Compras">
+                            <span class="btn-icon">?</span><span class="btn-label">Consultar</span>
                         </button>
                         <button class="btn btn-primary" onclick="toggleComprasMesPanel()" aria-label="Mes">
                             <span class="btn-icon">📅</span><span class="btn-label">Mes</span>
@@ -1433,6 +1656,25 @@
                 <div id="comprasMesActualPanel" class="recent-section" style="margin-bottom: 16px;">
                     <h2 style="margin-bottom: 4px;">Mes en proceso</h2>
                     <p id="comprasMesActual" style="margin:0; color:#555; font-size:0.95rem;">No hay mes en proceso registrado.</p>
+                </div>
+
+                <div id="comprasDashboardResumen" class="stats-grid" style="margin-bottom: 16px;">
+                    <div class="stat-card">
+                        <h3>Proveedores activos</h3>
+                        <p class="stat-number">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Ordenes del mes</h3>
+                        <p class="stat-number">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total comprometido</h3>
+                        <p class="stat-number">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Estado periodo</h3>
+                        <p class="stat-number">Pend.</p>
+                    </div>
                 </div>
 
                 <!-- Modal selección de período de Compras (Año-Mes) -->
@@ -1514,6 +1756,9 @@
                         <button class="btn btn-primary" onclick="notImplemented('Ventas: Nueva Venta')" aria-label="Nueva Venta">
                             <span class="btn-icon">＋</span><span class="btn-label">Nueva Venta</span>
                         </button>
+                        <button class="btn btn-info" onclick="notImplemented('Ventas: Consultar')" aria-label="Consultar Ventas">
+                            <span class="btn-icon">?</span><span class="btn-label">Consultar</span>
+                        </button>
                         <button class="btn btn-primary" onclick="toggleVentasMesPanel()" aria-label="Mes">
                             <span class="btn-icon">📅</span><span class="btn-label">Mes</span>
                         </button>
@@ -1527,6 +1772,25 @@
                 <div id="ventasMesActualPanel" class="recent-section" style="margin-bottom: 16px;">
                     <h2 style="margin-bottom: 4px;">Mes en proceso</h2>
                     <p id="ventasMesActual" style="margin:0; color:#555; font-size:0.95rem;">No hay mes en proceso registrado.</p>
+                </div>
+
+                <div id="ventasDashboardResumen" class="stats-grid" style="margin-bottom: 16px;">
+                    <div class="stat-card">
+                        <h3>Clientes activos</h3>
+                        <p class="stat-number">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Ventas del mes</h3>
+                        <p class="stat-number">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total facturado</h3>
+                        <p class="stat-number">-</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Estado periodo</h3>
+                        <p class="stat-number">Pend.</p>
+                    </div>
                 </div>
 
                 <!-- Modal selección de período de Ventas (Año-Mes) -->
@@ -1608,6 +1872,60 @@
             </div>
         </div>
     </main>
+</div>
+
+<!-- Modal: Consultar Empleados -->
+<div id="consultarEmpleadosModal" class="modal">
+    <div class="modal-content" style="max-width: 1180px; width: 96%;">
+        <div class="modal-header">
+            <h2>Consultar Empleados</h2>
+            <span class="close" onclick="closeConsultarEmpleadosModal()">&times;</span>
+        </div>
+        <div style="padding: 24px;">
+            <div class="consulta-toolbar">
+                <div class="consulta-toolbar-grid">
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label for="consultaEmpleadoSearch">Buscar</label>
+                        <input type="text" id="consultaEmpleadoSearch" placeholder="Nombre, documento, cargo o banco">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label for="consultaEmpleadoEstado">Estado</label>
+                        <select id="consultaEmpleadoEstado">
+                            <option value="todos">Todos</option>
+                            <option value="activos">Solo activos</option>
+                            <option value="inactivos">Solo inactivos</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="consulta-toolbar-actions">
+                    <span id="consultaEmpleadosResumen" class="consulta-resumen">Cargando empleados...</span>
+                    <button type="button" class="btn btn-secondary" onclick="reloadConsultaEmpleados()">Actualizar</button>
+                </div>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Documento</th>
+                            <th>Empleado</th>
+                            <th>Cargo</th>
+                            <th>Forma Pago</th>
+                            <th>Sueldo Base</th>
+                            <th>Banco</th>
+                            <th>Estado</th>
+                            <th>Ingreso</th>
+                            <th>Retiro</th>
+                        </tr>
+                    </thead>
+                    <tbody id="consultaEmpleadosTable">
+                        <tr>
+                            <td colspan="9" class="loading">Cargando empleados...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Modal: Crear/Editar Empleado -->
@@ -1695,6 +2013,214 @@
             
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeEmpleadoModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="retiroEmpleadoModal" class="modal">
+    <div class="modal-content" style="max-width: 520px;">
+        <div class="modal-header">
+            <h2>Retirar Empleado</h2>
+            <span class="close" onclick="closeRetiroEmpleadoModal()">&times;</span>
+        </div>
+        <form id="retiroEmpleadoForm">
+            <input type="hidden" id="retiroEmpleadoId">
+            <div class="form-group">
+                <label>Empleado</label>
+                <input type="text" id="retiroEmpleadoNombre" readonly>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="retiroFecha">Fecha de retiro *</label>
+                    <input type="date" id="retiroFecha" required>
+                </div>
+                <div class="form-group">
+                    <label for="retiroMotivo">Motivo *</label>
+                    <input type="text" id="retiroMotivo" maxlength="255" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="retiroObservacion">Observacion</label>
+                <textarea id="retiroObservacion" rows="3" placeholder="Opcional"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeRetiroEmpleadoModal()">Cancelar</button>
+                <button type="submit" class="btn btn-danger">Confirmar Retiro</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="reintegroEmpleadoModal" class="modal">
+    <div class="modal-content" style="max-width: 620px;">
+        <div class="modal-header">
+            <h2>Reintegrar Empleado</h2>
+            <span class="close" onclick="closeReintegroEmpleadoModal()">&times;</span>
+        </div>
+        <form id="reintegroEmpleadoForm">
+            <input type="hidden" id="reintegroEmpleadoId">
+            <div class="form-group">
+                <label>Empleado</label>
+                <input type="text" id="reintegroEmpleadoNombre" readonly>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="reintegroFecha">Fecha de reintegro *</label>
+                    <input type="date" id="reintegroFecha" required>
+                </div>
+                <div class="form-group">
+                    <label for="reintegroMotivo">Motivo *</label>
+                    <input type="text" id="reintegroMotivo" maxlength="255" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="reintegroAreaId">Area</label>
+                    <select id="reintegroAreaId">
+                        <option value="">Conservar ultima asignacion</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="reintegroCargoId">Cargo</label>
+                    <select id="reintegroCargoId">
+                        <option value="">Conservar ultimo cargo</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="reintegroObservacion">Observacion</label>
+                <textarea id="reintegroObservacion" rows="3" placeholder="Opcional"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeReintegroEmpleadoModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Confirmar Reintegro</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="areaModal" class="modal">
+    <div class="modal-content" style="max-width: 520px;">
+        <div class="modal-header">
+            <h2 id="areaModalTitle">Nueva Area</h2>
+            <span class="close" onclick="closeAreaModal()">&times;</span>
+        </div>
+        <form id="areaForm">
+            <input type="hidden" id="areaId">
+            <div class="form-group">
+                <label for="areaNombre">Nombre *</label>
+                <input type="text" id="areaNombre" maxlength="150" required>
+            </div>
+            <div class="form-group">
+                <label for="areaDescripcion">Descripcion</label>
+                <textarea id="areaDescripcion" rows="3"></textarea>
+            </div>
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" id="areaActivo" checked>
+                    Area activa
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeAreaModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="cargoModal" class="modal">
+    <div class="modal-content" style="max-width: 620px;">
+        <div class="modal-header">
+            <h2 id="cargoModalTitle">Nuevo Cargo</h2>
+            <span class="close" onclick="closeCargoModal()">&times;</span>
+        </div>
+        <form id="cargoForm">
+            <input type="hidden" id="cargoConfigId">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="cargoConfigNombre">Nombre *</label>
+                    <input type="text" id="cargoConfigNombre" maxlength="150" required>
+                </div>
+                <div class="form-group">
+                    <label for="cargoAreaId">Area</label>
+                    <select id="cargoAreaId">
+                        <option value="">Sin area</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="cargoDescripcion">Descripcion</label>
+                <textarea id="cargoDescripcion" rows="3"></textarea>
+            </div>
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" id="cargoActivo" checked>
+                    Cargo activo
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeCargoModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="asignacionLaboralModal" class="modal">
+    <div class="modal-content" style="max-width: 720px;">
+        <div class="modal-header">
+            <h2 id="asignacionLaboralModalTitle">Nueva Asignacion Laboral</h2>
+            <span class="close" onclick="closeAsignacionLaboralModal()">&times;</span>
+        </div>
+        <form id="asignacionLaboralForm">
+            <input type="hidden" id="asignacionLaboralId">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="asignacionEmpleadoId">Empleado *</label>
+                    <select id="asignacionEmpleadoId" required>
+                        <option value="">Seleccione un empleado...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="asignacionAreaId">Area</label>
+                    <select id="asignacionAreaId">
+                        <option value="">Sin area</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="asignacionCargoId">Cargo</label>
+                    <select id="asignacionCargoId">
+                        <option value="">Sin cargo</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="asignacionFechaInicio">Fecha inicio *</label>
+                    <input type="date" id="asignacionFechaInicio" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="asignacionFechaFin">Fecha final</label>
+                    <input type="date" id="asignacionFechaFin">
+                </div>
+                <div class="form-group">
+                    <label for="asignacionMotivo">Motivo</label>
+                    <input type="text" id="asignacionMotivo" maxlength="255">
+                </div>
+            </div>
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" id="asignacionActiva" checked>
+                    Asignacion activa
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeAsignacionLaboralModal()">Cancelar</button>
                 <button type="submit" class="btn btn-primary">Guardar</button>
             </div>
         </form>
