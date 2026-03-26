@@ -66,13 +66,24 @@ def _periodo_siguiente(mes, numero_quincena, anio):
     return mes + 1, 1, anio
 
 
-def _quincena_referencia_dashboard(hoy):
+def _quincena_referencia_dashboard(hoy, mes=None, numero_quincena=None, anio=None):
+    if mes and numero_quincena and anio:
+        return mes, numero_quincena, anio
     if hoy.day <= 15:
         return hoy.month, 1, hoy.year
     return hoy.month, 2, hoy.year
 
 
-def _obtener_quincena_dashboard_actual(hoy):
+def _obtener_quincena_dashboard_actual(hoy, mes=None, numero_quincena=None, anio=None):
+    if mes and numero_quincena and anio:
+        quincena = Quincena.query.filter_by(
+            mes=mes,
+            numero_quincena=numero_quincena,
+            anio=anio
+        ).first()
+        if quincena:
+            return quincena
+
     quincena = Quincena.query.filter(
         Quincena.procesada == True,
         Quincena.pagos_finalizados == False
@@ -85,7 +96,7 @@ def _obtener_quincena_dashboard_actual(hoy):
     if quincena:
         return quincena
 
-    mes, numero_quincena, anio = _quincena_referencia_dashboard(hoy)
+    mes, numero_quincena, anio = _quincena_referencia_dashboard(hoy, mes, numero_quincena, anio)
     return Quincena.query.filter_by(
         mes=mes,
         numero_quincena=numero_quincena,
@@ -93,14 +104,19 @@ def _obtener_quincena_dashboard_actual(hoy):
     ).first()
 
 
-def _build_nomina_matrix(anio, hoy):
+def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None, anio_referencia=None):
     meses = {
         1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun',
         7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'
     }
 
     periodos = []
-    mes_referencia, numero_referencia, anio_referencia = _quincena_referencia_dashboard(hoy)
+    mes_referencia, numero_referencia, anio_referencia = _quincena_referencia_dashboard(
+        hoy,
+        mes_referencia,
+        numero_referencia,
+        anio_referencia
+    )
     limite_mes, limite_numero, limite_anio = _periodo_siguiente(mes_referencia, numero_referencia, anio_referencia)
 
     for mes in range(1, 13):
@@ -330,8 +346,16 @@ def dashboard_nomina():
         
         hoy = datetime.now()
         anio_matriz = request.args.get('anio', type=int) or hoy.year
+        referencia_mes = request.args.get('referencia_mes', type=int)
+        referencia_numero = request.args.get('referencia_numero_quincena', type=int)
+        referencia_anio = request.args.get('referencia_anio', type=int) or anio_matriz
         
-        quincena_actual = _obtener_quincena_dashboard_actual(hoy)
+        quincena_actual = _obtener_quincena_dashboard_actual(
+            hoy,
+            referencia_mes,
+            referencia_numero,
+            referencia_anio if referencia_mes and referencia_numero else None
+        )
         
         # Nómina pagada este mes
         este_mes_inicio = datetime(hoy.year, hoy.month, 1)
@@ -398,7 +422,13 @@ def dashboard_nomina():
                 'saldo_pendiente': float(saldo_pendiente_dec),
             })
 
-        matriz_anual = _build_nomina_matrix(anio_matriz, hoy)
+        matriz_anual = _build_nomina_matrix(
+            anio_matriz,
+            hoy,
+            referencia_mes,
+            referencia_numero,
+            referencia_anio if referencia_mes and referencia_numero else None
+        )
 
         datos = {
             'total_empleados': total_empleados,

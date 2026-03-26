@@ -1597,10 +1597,18 @@ async function loadNominaDashboard() {
     const q2PagadoEl = document.getElementById('nominaQ2Pagado');
     const q2SaldoEl = document.getElementById('nominaQ2Saldo');
     const totalMesEl = document.getElementById('nominaTotalMes');
-    const matrizAnio = parseInt(matrizYearEl?.value, 10) || new Date().getFullYear();
+    const anioPreferido = nominaPeriodoSeleccionado?.anio || new Date().getFullYear();
+    const matrizAnio = nominaPeriodoSeleccionado?.anio || parseInt(matrizYearEl?.value, 10) || anioPreferido;
+    const params = new URLSearchParams({ anio: String(matrizAnio) });
 
-    if (matrizYearEl && !matrizYearEl.value) {
+    if (matrizYearEl && (!matrizYearEl.value || nominaPeriodoSeleccionado?.anio)) {
         matrizYearEl.value = String(matrizAnio);
+    }
+
+    if (nominaPeriodoSeleccionado?.mes && nominaPeriodoSeleccionado?.numero_quincena && nominaPeriodoSeleccionado?.anio) {
+        params.set('referencia_mes', String(nominaPeriodoSeleccionado.mes));
+        params.set('referencia_numero_quincena', String(nominaPeriodoSeleccionado.numero_quincena));
+        params.set('referencia_anio', String(nominaPeriodoSeleccionado.anio));
     }
 
     if (quinEl) {
@@ -1608,7 +1616,7 @@ async function loadNominaDashboard() {
     }
 
     try {
-        const resp = await fetch(`/api/dashboard/nomina?anio=${matrizAnio}`, { credentials: 'include' });
+        const resp = await fetch(`/api/dashboard/nomina?${params.toString()}`, { credentials: 'include' });
         if (!resp.ok) {
             throw new Error('No se pudo cargar el dashboard de nómina');
         }
@@ -1662,7 +1670,26 @@ async function loadNominaDashboard() {
         renderNominaMatrizAnual(data.matriz_anual);
 
         if (quinEl) {
-            const q = data.quincena_actual || {};
+            const quincenaBackend = data.quincena_actual || {};
+            const backendCoincideSeleccion =
+                nominaPeriodoSeleccionado?.mes &&
+                nominaPeriodoSeleccionado?.numero_quincena &&
+                nominaPeriodoSeleccionado?.anio &&
+                Number(quincenaBackend.mes) === Number(nominaPeriodoSeleccionado.mes) &&
+                Number(quincenaBackend.numero_quincena) === Number(nominaPeriodoSeleccionado.numero_quincena) &&
+                Number(quincenaBackend.anio) === Number(nominaPeriodoSeleccionado.anio);
+
+            const q = (nominaPeriodoSeleccionado?.mes && nominaPeriodoSeleccionado?.numero_quincena && nominaPeriodoSeleccionado?.anio)
+                ? {
+                    mes: nominaPeriodoSeleccionado.mes,
+                    numero_quincena: nominaPeriodoSeleccionado.numero_quincena,
+                    anio: nominaPeriodoSeleccionado.anio,
+                    fecha_inicio: backendCoincideSeleccion ? quincenaBackend.fecha_inicio : null,
+                    fecha_fin: backendCoincideSeleccion ? quincenaBackend.fecha_fin : null,
+                    procesada: backendCoincideSeleccion ? quincenaBackend.procesada : false,
+                    pagos_finalizados: backendCoincideSeleccion ? quincenaBackend.pagos_finalizados : false
+                }
+                : quincenaBackend;
             if (q.mes && q.numero_quincena && q.anio) {
                 const quincenaLabel = q.numero_quincena === 1 ? '1ª quincena' : '2ª quincena';
                 const estado = q.pagos_finalizados ? 'FINALIZADA' : (q.procesada ? 'EN PROCESO' : 'PENDIENTE');
