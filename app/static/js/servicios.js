@@ -135,8 +135,8 @@ async function loadServicesList() {
                 <td>${s.mes_inicio_pago || ''}</td>
                 <td>${s.valor_aproximado.toLocaleString()}</td>
                 <td>
-                    <button class="action-btn" onclick="editServicio(${s.id})">Editar</button>
-                    <button class="action-btn" onclick="deleteServicio(${s.id})">Eliminar</button>
+                    <button class="action-btn action-btn-edit" onclick="editServicio(${s.id})">Editar</button>
+                    <button class="action-btn action-btn-delete" onclick="deleteServicio(${s.id})">Eliminar</button>
                 </td>
             `;
             tbody.appendChild(tr);

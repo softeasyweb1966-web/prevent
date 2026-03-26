@@ -793,3 +793,161 @@ async function submitPrestamoPagoForm() {
         alert(err.message || 'Error al guardar pago');
     }
 }
+
+function ensurePrestamosActionsHeader() {
+    const table = document.getElementById('prestamosTable')?.closest('table');
+    if (!table) return;
+    const headerRow = table.querySelector('thead tr');
+    if (!headerRow) return;
+    const headers = Array.from(headerRow.querySelectorAll('th')).map((th) => th.textContent.trim().toLowerCase());
+    if (!headers.includes('acciones')) {
+        const th = document.createElement('th');
+        th.textContent = 'Acciones';
+        headerRow.appendChild(th);
+    }
+    const emptyCell = document.querySelector('#prestamosTable td[colspan="9"]');
+    if (emptyCell) {
+        emptyCell.colSpan = 10;
+    }
+}
+
+loadPrestamosResumen = async function () {
+    const tbody = document.getElementById('prestamosTable');
+    if (!tbody) return;
+
+    ensurePrestamosActionsHeader();
+    tbody.innerHTML = '<tr><td colspan="10" class="loading">Cargando prestamos...</td></tr>';
+
+    try {
+        const res = await fetch('/api/bancos/prestamos', { credentials: 'include' });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            const msg = err.error || 'Error al cargar prestamos';
+            tbody.innerHTML = `<tr><td colspan="10" class="loading" style="color:#e74c3c;">${msg}</td></tr>`;
+            console.error('loadPrestamosResumen error', msg);
+            return;
+        }
+
+        const payload = await res.json();
+        const data = payload.data || payload.prestamos || payload || [];
+        if (!data || !data.length) {
+            tbody.innerHTML = '<tr><td colspan="10" class="loading">No hay prestamos de empresa registrados.</td></tr>';
+            const spanActivos = document.getElementById('bancosTotalActivos');
+            if (spanActivos) spanActivos.textContent = '0';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        let activosCount = 0;
+        data.forEach((p) => {
+            if (p.activo !== false) {
+                activosCount += 1;
+            }
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${escapeHtml(p.nombre || '')}</td>
+                <td>${p.fecha_inicio || ''}</td>
+                <td>${p.fecha_final || ''}</td>
+                <td style="text-align:right;">${p.cantidad_cuotas || ''}</td>
+                <td style="text-align:right;">${Number(p.valor_prestamo || 0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                <td style="text-align:right;">${p.porcentaje_interes != null ? Number(p.porcentaje_interes).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}) : ''}</td>
+                <td style="text-align:right;">${p.valor_cuota != null ? Number(p.valor_cuota).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}) : ''}</td>
+                <td style="text-align:center;">${p.dia_pago || ''}</td>
+                <td>${escapeHtml(p.modalidad_pago || '')}</td>
+                <td>
+                    <button class="action-btn action-btn-edit">Editar</button>
+                    <button class="action-btn action-btn-delete">Eliminar</button>
+                </td>
+            `;
+
+            const [editBtn, deleteBtn] = tr.querySelectorAll('button');
+            if (editBtn) editBtn.onclick = () => editPrestamoEmpresa(p.id);
+            if (deleteBtn) deleteBtn.onclick = () => deletePrestamoEmpresa(p.id, p.nombre || '');
+            tbody.appendChild(tr);
+        });
+
+        const spanActivos = document.getElementById('bancosTotalActivos');
+        if (spanActivos) {
+            spanActivos.textContent = String(activosCount);
+        }
+    } catch (err) {
+        console.error('loadPrestamosResumen exception', err);
+        tbody.innerHTML = '<tr><td colspan="10" class="loading" style="color:#e74c3c;">Error al cargar prestamos</td></tr>';
+    }
+};
+
+showNewPrestamoModal = function () {
+    const modal = document.getElementById('prestamoEmpresaModal');
+    if (!modal) {
+        alert('Formulario de prestamo no disponible');
+        return;
+    }
+
+    const form = document.getElementById('prestamoEmpresaForm');
+    if (form) {
+        form.reset();
+        form.dataset.editingId = '';
+    }
+
+    const modalTitle = modal.querySelector('.modal-header h2');
+    if (modalTitle) modalTitle.textContent = 'Nuevo Prestamo de Empresa';
+    modal.classList.add('active');
+};
+
+async function editPrestamoEmpresa(id) {
+    try {
+        const res = await fetch(`/api/bancos/prestamos/${id}`, { credentials: 'include' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.error || 'Error al cargar prestamo');
+        }
+
+        const modal = document.getElementById('prestamoEmpresaModal');
+        const form = document.getElementById('prestamoEmpresaForm');
+        if (!modal || !form) return;
+
+        form.nombre.value = data.nombre || '';
+        form.tipo_prestatario.value = data.tipo_prestatario || '';
+        form.fecha_inicio.value = data.fecha_inicio || '';
+        form.fecha_final.value = data.fecha_final || '';
+        form.cantidad_cuotas.value = data.cantidad_cuotas ?? '';
+        form.valor_prestamo.value = data.valor_prestamo ?? '';
+        form.porcentaje_interes.value = data.porcentaje_interes ?? '';
+        form.valor_cuota.value = data.valor_cuota ?? '';
+        form.dia_pago.value = data.dia_pago ?? '';
+        form.modalidad_pago.value = data.modalidad_pago || 'BANCARIO';
+        form.frecuencia_cadena.value = data.frecuencia_cadena || '';
+        form.fecha_recibe_cadena.value = data.fecha_recibe_cadena || '';
+        form.dataset.editingId = String(id);
+
+        const modalTitle = modal.querySelector('.modal-header h2');
+        if (modalTitle) modalTitle.textContent = 'Editar Prestamo de Empresa';
+        modal.classList.add('active');
+    } catch (err) {
+        console.error('editPrestamoEmpresa error', err);
+        alert(err.message || 'Error al cargar prestamo');
+    }
+}
+
+async function deletePrestamoEmpresa(id, nombre = '') {
+    const nombreMostrado = nombre ? ` ${nombre}` : '';
+    if (!confirm(`Desea desactivar${nombreMostrado}?`)) return;
+
+    try {
+        const res = await fetch(`/api/bancos/prestamos/${id}`, {
+            method: 'DELETE',
+            credentials: 'include',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.error || 'Error al eliminar prestamo');
+        }
+        showToast('Prestamo desactivado');
+        loadPrestamosResumen();
+        try { loadBancosDashboardFull(); } catch (e) {}
+    } catch (err) {
+        console.error('deletePrestamoEmpresa error', err);
+        showToast(err.message || 'Error al eliminar prestamo', 'error');
+    }
+}
