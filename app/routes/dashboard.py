@@ -422,12 +422,21 @@ def dashboard_nomina():
                 'saldo_pendiente': float(saldo_pendiente_dec),
             })
 
+        mes_ref_matriz = referencia_mes
+        numero_ref_matriz = referencia_numero
+        anio_ref_matriz = referencia_anio if referencia_mes and referencia_numero else None
+
+        if not (mes_ref_matriz and numero_ref_matriz) and quincena_actual:
+            mes_ref_matriz = quincena_actual.mes
+            numero_ref_matriz = quincena_actual.numero_quincena
+            anio_ref_matriz = quincena_actual.anio
+
         matriz_anual = _build_nomina_matrix(
             anio_matriz,
             hoy,
-            referencia_mes,
-            referencia_numero,
-            referencia_anio if referencia_mes and referencia_numero else None
+            mes_ref_matriz,
+            numero_ref_matriz,
+            anio_ref_matriz
         )
 
         datos = {

@@ -181,6 +181,7 @@ async function openNominaQuincenaView() {
 function activarVistaQuincenaNomina() {
     const homeHeader = document.getElementById('nominaHomeHeader');
     const dashboardResumen = document.getElementById('nominaDashboardResumen');
+    const estadoPanel = document.getElementById('nominaEstadoPanel');
     const resumenMensual = document.getElementById('nominaResumenMensual');
     const matrizPanel = document.getElementById('nominaMatrizPanel');
     const panelQuincena = document.getElementById('nominaQuincenaPanel');
@@ -188,6 +189,7 @@ function activarVistaQuincenaNomina() {
 
     if (homeHeader) homeHeader.style.display = 'none';
     if (dashboardResumen) dashboardResumen.style.display = 'none';
+    if (estadoPanel) estadoPanel.style.display = 'none';
     if (resumenMensual) resumenMensual.style.display = 'none';
     if (matrizPanel) matrizPanel.style.display = 'none';
     // En vista de quincena ocultamos el catálogo general de empleados
@@ -201,6 +203,7 @@ function activarVistaQuincenaNomina() {
 function volverInicioNomina() {
     const homeHeader = document.getElementById('nominaHomeHeader');
     const dashboardResumen = document.getElementById('nominaDashboardResumen');
+    const estadoPanel = document.getElementById('nominaEstadoPanel');
     const resumenMensual = document.getElementById('nominaResumenMensual');
     const matrizPanel = document.getElementById('nominaMatrizPanel');
     const panelQuincena = document.getElementById('nominaQuincenaPanel');
@@ -208,6 +211,7 @@ function volverInicioNomina() {
 
     if (homeHeader) homeHeader.style.display = '';
     if (dashboardResumen) dashboardResumen.style.display = '';
+    if (estadoPanel) estadoPanel.style.display = '';
     if (resumenMensual) resumenMensual.style.display = '';
     if (matrizPanel) matrizPanel.style.display = '';
     if (panelQuincena) panelQuincena.style.display = 'none';
