@@ -3573,3 +3573,19 @@ WHERE pg_catalog.pg_class.relname = %(table_name)s AND pg_catalog.pg_class.relki
 2026-03-25 21:40:12,909 - app - INFO - [DB] Dialecto activo: postgresql
 2026-03-25 21:40:12,909 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
 2026-03-25 21:40:17,008 - app - INFO - [DB] Usuario administrador 'admin' ya existe
+2026-03-25 21:53:39,151 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@crossover.proxy.rlwy.net:16693/railway?sslmode=require
+2026-03-25 21:53:39,249 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@crossover.proxy.rlwy.net:16693/railway?sslmode=require
+2026-03-25 21:53:39,250 - app - INFO - [DB] Dialecto activo: postgresql
+2026-03-25 21:53:39,251 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-03-25 21:55:29,413 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@crossover.proxy.rlwy.net:16693/railway?sslmode=require
+2026-03-25 21:55:29,466 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@crossover.proxy.rlwy.net:16693/railway?sslmode=require
+2026-03-25 21:55:29,466 - app - INFO - [DB] Dialecto activo: postgresql
+2026-03-25 21:55:29,466 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-03-25 21:57:38,403 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@crossover.proxy.rlwy.net:16693/railway?sslmode=require
+2026-03-25 21:57:38,507 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@crossover.proxy.rlwy.net:16693/railway?sslmode=require
+2026-03-25 21:57:38,507 - app - INFO - [DB] Dialecto activo: postgresql
+2026-03-25 21:57:38,507 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-03-25 21:59:49,875 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@crossover.proxy.rlwy.net:16693/railway?sslmode=require
+2026-03-25 21:59:50,007 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@crossover.proxy.rlwy.net:16693/railway?sslmode=require
+2026-03-25 21:59:50,007 - app - INFO - [DB] Dialecto activo: postgresql
+2026-03-25 21:59:50,010 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'

@@ -1,4 +1,4 @@
-"""estructura laboral y trazabilidad de empleados
+﻿"""estructura laboral y trazabilidad de empleados
 
 Revision ID: 20260324_001
 Revises:
@@ -99,7 +99,13 @@ def upgrade():
 
     op.execute("""
         INSERT INTO cargos (nombre, area_id, descripcion, activo, created_at, updated_at)
-        SELECT DISTINCT TRIM(cargo), NULL, 'Cargo migrado desde empleados', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        SELECT DISTINCT
+            TRIM(cargo),
+            CAST(NULL AS INTEGER),
+            'Cargo migrado desde empleados',
+            TRUE,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
         FROM empleados
         WHERE cargo IS NOT NULL AND TRIM(cargo) <> '';
     """)
@@ -109,12 +115,12 @@ def upgrade():
             (empleado_id, area_id, cargo_id, fecha_inicio, fecha_fin, motivo, activo, created_at, updated_at)
         SELECT
             e.id,
-            NULL,
+            CAST(NULL AS INTEGER),
             c.id,
             e.fecha_inicio,
             e.fecha_retiro,
             'MIGRACION_INICIAL',
-            CASE WHEN e.estado_laboral = 'ACTIVO' THEN 1 ELSE 0 END,
+            CASE WHEN e.estado_laboral = 'ACTIVO' THEN TRUE ELSE FALSE END,
             CURRENT_TIMESTAMP,
             CURRENT_TIMESTAMP
         FROM empleados e
@@ -131,9 +137,9 @@ def upgrade():
             e.fecha_inicio,
             'MIGRACION_INGRESO',
             'Movimiento generado automaticamente durante migracion',
-            NULL,
+            CAST(NULL AS VARCHAR(30)),
             'ACTIVO',
-            NULL,
+            CAST(NULL AS INTEGER),
             c.id,
             'sistema',
             CURRENT_TIMESTAMP
@@ -153,7 +159,7 @@ def upgrade():
             'Retiro historico reconstruido durante migracion',
             'ACTIVO',
             'RETIRADO',
-            NULL,
+            CAST(NULL AS INTEGER),
             c.id,
             'sistema',
             CURRENT_TIMESTAMP
@@ -183,3 +189,4 @@ def downgrade():
     with op.batch_alter_table('empleados', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_empleados_estado_laboral'))
         batch_op.drop_column('estado_laboral')
+
