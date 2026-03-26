@@ -3598,3 +3598,8 @@ WHERE pg_catalog.pg_class.relname = %(table_name)s AND pg_catalog.pg_class.relki
 2026-03-25 22:30:27,489 - app - INFO - [DB] Dialecto activo: sqlite
 2026-03-25 22:30:27,489 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
 2026-03-25 22:30:28,574 - app.routes.auth - INFO - Usuario logueado: admin
+2026-03-25 22:41:29,438 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-25 22:41:29,508 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-25 22:41:29,508 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-25 22:41:29,508 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-03-25 22:41:30,482 - app.routes.auth - INFO - Usuario logueado: admin

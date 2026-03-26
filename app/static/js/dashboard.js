@@ -1663,9 +1663,11 @@ async function loadNominaDashboard() {
 
         if (quinEl) {
             const q = data.quincena_actual || {};
-            if (q.fecha_inicio && q.fecha_fin) {
-                const estado = q.procesada ? 'PROCESADA' : 'EN PROCESO';
-                quinEl.textContent = `Del ${q.fecha_inicio} al ${q.fecha_fin} — ${estado}`;
+            if (q.mes && q.numero_quincena && q.anio) {
+                const quincenaLabel = q.numero_quincena === 1 ? '1ª quincena' : '2ª quincena';
+                const estado = q.pagos_finalizados ? 'FINALIZADA' : (q.procesada ? 'EN PROCESO' : 'PENDIENTE');
+                const rango = q.fecha_inicio && q.fecha_fin ? ` (${q.fecha_inicio} a ${q.fecha_fin})` : '';
+                quinEl.textContent = `${q.mes}/${q.anio} - ${quincenaLabel}${rango} - ${estado}`;
             } else {
                 quinEl.textContent = 'No hay quincena en proceso registrada.';
             }

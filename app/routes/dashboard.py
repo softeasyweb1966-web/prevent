@@ -58,6 +58,41 @@ def _empleado_aplica_en_periodo(empleado, fecha_inicio, fecha_fin, numero_quince
     return False, 'NA'
 
 
+def _periodo_siguiente(mes, numero_quincena, anio):
+    if numero_quincena == 1:
+        return mes, 2, anio
+    if mes == 12:
+        return 1, 1, anio + 1
+    return mes + 1, 1, anio
+
+
+def _quincena_referencia_dashboard(hoy):
+    if hoy.day <= 15:
+        return hoy.month, 1, hoy.year
+    return hoy.month, 2, hoy.year
+
+
+def _obtener_quincena_dashboard_actual(hoy):
+    quincena = Quincena.query.filter(
+        Quincena.procesada == True,
+        Quincena.pagos_finalizados == False
+    ).order_by(
+        Quincena.anio.desc(),
+        Quincena.mes.desc(),
+        Quincena.numero_quincena.desc()
+    ).first()
+
+    if quincena:
+        return quincena
+
+    mes, numero_quincena, anio = _quincena_referencia_dashboard(hoy)
+    return Quincena.query.filter_by(
+        mes=mes,
+        numero_quincena=numero_quincena,
+        anio=anio
+    ).first()
+
+
 def _build_nomina_matrix(anio, hoy):
     meses = {
         1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun',
@@ -65,6 +100,9 @@ def _build_nomina_matrix(anio, hoy):
     }
 
     periodos = []
+    mes_referencia, numero_referencia, anio_referencia = _quincena_referencia_dashboard(hoy)
+    limite_mes, limite_numero, limite_anio = _periodo_siguiente(mes_referencia, numero_referencia, anio_referencia)
+
     for mes in range(1, 13):
         for numero_quincena in (1, 2):
             fecha_inicio, fecha_fin = _periodo_quincena(anio, mes, numero_quincena)
@@ -162,6 +200,9 @@ def _build_nomina_matrix(anio, hoy):
             }
 
             if not aplica:
+                if (anio, periodo['mes'], periodo['numero_quincena']) > (limite_anio, limite_mes, limite_numero):
+                    fila['celdas'].append(celda)
+                    continue
                 if modo == 'NA':
                     celda['estado'] = 'NA'
                     celda['texto'] = 'NA'
@@ -171,7 +212,11 @@ def _build_nomina_matrix(anio, hoy):
 
             liquido = liquidos_por_periodo.get((empleado.id, periodo['mes'], periodo['numero_quincena']))
             if not liquido:
-                if periodo['fecha_fin'].date() < hoy.date():
+                if (anio, periodo['mes'], periodo['numero_quincena']) > (limite_anio, limite_mes, limite_numero):
+                    celda['estado'] = 'BLANK'
+                    celda['texto'] = ''
+                    celda['titulo'] = 'Quincena fuera del horizonte visible del tablero'
+                elif periodo['fecha_fin'].date() < hoy.date():
                     celda['estado'] = 'PENDING'
                     celda['texto'] = 'Pend.'
                     celda['titulo'] = 'Quincena vencida sin liquidacion o pago registrado'
@@ -286,11 +331,7 @@ def dashboard_nomina():
         hoy = datetime.now()
         anio_matriz = request.args.get('anio', type=int) or hoy.year
         
-        # Obtener quincena si existe
-        quincena_actual = Quincena.query.filter(
-            Quincena.fecha_inicio <= hoy,
-            Quincena.fecha_fin >= hoy
-        ).first()
+        quincena_actual = _obtener_quincena_dashboard_actual(hoy)
         
         # Nómina pagada este mes
         este_mes_inicio = datetime(hoy.year, hoy.month, 1)
@@ -369,9 +410,13 @@ def dashboard_nomina():
             'detalle_quincenas': detalle_quincenas,
             'matriz_anual': matriz_anual,
             'quincena_actual': {
+                'mes': quincena_actual.mes if quincena_actual else None,
+                'numero_quincena': quincena_actual.numero_quincena if quincena_actual else None,
+                'anio': quincena_actual.anio if quincena_actual else None,
                 'fecha_inicio': quincena_actual.fecha_inicio.strftime('%Y-%m-%d') if quincena_actual else None,
                 'fecha_fin': quincena_actual.fecha_fin.strftime('%Y-%m-%d') if quincena_actual else None,
-                'procesada': quincena_actual.procesada if quincena_actual else False
+                'procesada': quincena_actual.procesada if quincena_actual else False,
+                'pagos_finalizados': quincena_actual.pagos_finalizados if quincena_actual else False
             }
         }
         
