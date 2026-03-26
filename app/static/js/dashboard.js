@@ -7,6 +7,7 @@ let tiposNovedadList = [];
 let nominaPeriodoSeleccionado = null;
 let nominaDashboardRequestSeq = 0;
 // Contexto de período actual por módulo (Mes/Año)
+window._nominaMatrixContext = window._nominaMatrixContext || null;
 window._bancosPeriodoActual = window._bancosPeriodoActual || null;
 window._comisionesPeriodoActual = window._comisionesPeriodoActual || null;
 window._impuestosPeriodoActual = window._impuestosPeriodoActual || null;
@@ -1977,6 +1978,87 @@ function formatCurrencyCompact(value) {
     return formatCurrency(amount);
 }
 
+function compareNominaPeriods(a, b) {
+    const ax = [Number(a?.anio || 0), Number(a?.mes || 0), Number(a?.numero_quincena || 0)];
+    const bx = [Number(b?.anio || 0), Number(b?.mes || 0), Number(b?.numero_quincena || 0)];
+    if (ax[0] !== bx[0]) return ax[0] - bx[0];
+    if (ax[1] !== bx[1]) return ax[1] - bx[1];
+    return ax[2] - bx[2];
+}
+
+async function obtenerContextoPagoNomina(periodo) {
+    const params = new URLSearchParams({
+        mes: String(periodo.mes),
+        numero_quincena: String(periodo.numero_quincena),
+        anio: String(periodo.anio)
+    });
+
+    const response = await fetch(`/api/nomina/liquidaciones/pendientes?${params.toString()}`, {
+        credentials: 'include'
+    });
+    const liquidaciones = await response.json();
+    if (!response.ok) {
+        throw new Error(liquidaciones.error || 'No se pudo cargar la liquidacion del periodo.');
+    }
+
+    const empResponse = await fetch('/api/nomina/empleados', { credentials: 'include' });
+    const empleados = empResponse.ok ? await empResponse.json() : [];
+    const empMap = {};
+    (empleados || []).forEach(emp => {
+        empMap[emp.id] = emp;
+    });
+
+    return { liquidaciones, empMap };
+}
+
+async function handleNominaMatrixCellClick(empleadoId, periodIndex) {
+    try {
+        const matriz = window._nominaMatrixContext;
+        if (!matriz || !Array.isArray(matriz.periodos) || !Array.isArray(matriz.filas)) return;
+
+        const periodo = matriz.periodos[periodIndex];
+        const fila = (matriz.filas || []).find(item => Number(item.empleado_id) === Number(empleadoId));
+        const celda = fila?.celdas?.[periodIndex];
+        const referencia = matriz.referencia;
+
+        if (!periodo || !fila || !celda || !referencia) return;
+
+        if (compareNominaPeriods(periodo, referencia) > 0) {
+            showError('Ese valor corresponde a la quincena siguiente y aun no esta habilitado para pago.');
+            return;
+        }
+
+        const periodoPago = {
+            mes: Number(referencia.mes),
+            numero_quincena: Number(referencia.numero_quincena),
+            anio: Number(referencia.anio)
+        };
+
+        const contexto = await obtenerContextoPagoNomina(periodoPago);
+        const liquidacion = (contexto.liquidaciones || []).find(item => Number(item.empleado_id) === Number(empleadoId));
+        if (!liquidacion) {
+            showError('El empleado no tiene liquidacion pendiente en el periodo actual. Liquidelo primero si corresponde.');
+            return;
+        }
+
+        const empleado = contexto.empMap[empleadoId] || {};
+
+        nominaPeriodoSeleccionado = {
+            ...periodoPago,
+            origen: 'matriz'
+        };
+        persistNominaPeriodoSeleccionado();
+        actualizarEtiquetaQuincenaSeleccionada();
+        activarVistaQuincenaNomina();
+        ultimaLiquidacionData = { ...periodoPago };
+        setNominaWorkflowStep('pagos');
+        abrirModalPagoIndividual(liquidacion, empleado);
+    } catch (error) {
+        console.error('handleNominaMatrixCellClick error', error);
+        showError(error.message || 'No se pudo abrir el pago desde la matriz.');
+    }
+}
+
 function __legacy_renderNominaMatrizAnual(matriz, errorMessage = '') {
     const head = document.getElementById('nominaMatrizHead');
     const body = document.getElementById('nominaMatrizBody');
@@ -1987,6 +2069,7 @@ function __legacy_renderNominaMatrizAnual(matriz, errorMessage = '') {
     if (!head || !body || !foot) return;
 
     if (!matriz || !Array.isArray(matriz.periodos) || !Array.isArray(matriz.filas)) {
+        window._nominaMatrixContext = null;
         if (resumen) resumen.textContent = errorMessage || 'No se pudo construir el tablero anual.';
         head.innerHTML = `
             <tr>
@@ -2163,6 +2246,7 @@ function renderNominaMatrizAnual(matriz, errorMessage = '') {
         return;
     }
 
+    window._nominaMatrixContext = matriz;
     const filas = (matriz.filas || []).map(fila => ({
         ...fila,
         celdas: (fila.celdas || []).map(celda => ({ ...celda }))
@@ -2191,11 +2275,27 @@ function renderNominaMatrizAnual(matriz, errorMessage = '') {
         <tr>
             <td class="nomina-matriz-empleado">${escapeHtml(fila.empleado || 'N/A')}</td>
             <td class="nomina-matriz-money">${formatCurrencyCompact(fila.sueldo_base)}</td>
-            ${fila.celdas.map(celda => `
-                <td class="nomina-matriz-cell nomina-matriz-${String(celda.estado || 'BLANK').toLowerCase()}" title="${escapeHtml(celda.titulo || '')}">
+            ${fila.celdas.map((celda, idx) => {
+                const periodo = matriz.periodos[idx];
+                const esFutura = compareNominaPeriods(periodo, matriz.referencia || {}) > 0;
+                const tieneSaldo = Number(celda?.saldo_pendiente || 0) > 0;
+                const tieneValorFuturo = esFutura && Number(celda?.valor || 0) > 0;
+                const esAccionable = tieneSaldo || tieneValorFuturo;
+                const clickableClass = esAccionable ? ' nomina-matrix-actionable' : '';
+                const clickableTitle = esAccionable
+                    ? (esFutura
+                        ? 'No corresponde al periodo actual. Clic para ver la advertencia.'
+                        : 'Clic para gestionar el pago en el periodo actual.')
+                    : (celda.titulo || '');
+                const onclickAttr = esAccionable
+                    ? ` onclick="handleNominaMatrixCellClick(${Number(fila.empleado_id)}, ${idx})"`
+                    : '';
+                return `
+                <td class="nomina-matriz-cell nomina-matriz-${String(celda.estado || 'BLANK').toLowerCase()}${clickableClass}" title="${escapeHtml(clickableTitle)}"${onclickAttr}>
                     ${celda.texto ? escapeHtml(celda.texto) : '&nbsp;'}
                 </td>
-            `).join('')}
+            `;
+            }).join('')}
             <td class="nomina-matriz-money">${formatCurrencyCompact(fila.total_cancelado)}</td>
             <td class="nomina-matriz-money">${formatCurrencyCompact(fila.saldo_pendiente)}</td>
         </tr>

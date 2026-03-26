@@ -20,6 +20,8 @@
     window._serviciosPeriodoActual = window._serviciosPeriodoActual || null;
 })();
 
+window._serviciosMatrixContext = window._serviciosMatrixContext || null;
+
 async function switchToServicios() {
     // ensure module title and view switching similar to switchModule
     document.getElementById('moduleTitle').textContent = 'Servicios';
@@ -312,9 +314,66 @@ async function submitServicioNovedadForm(e){
     }
 }
 
-// --- Pagos ---
-function showNewPagoModal(){ document.getElementById('pagoForm').reset(); document.getElementById('pagoModal').classList.add('active'); loadServiciosSelect('pago_servicio'); }
+function compareServiciosPeriods(a, b) {
+    const ax = [Number(a?.anio || 0), Number(a?.mes || 0)];
+    const bx = [Number(b?.anio || 0), Number(b?.mes || 0)];
+    if (ax[0] !== bx[0]) return ax[0] - bx[0];
+    return ax[1] - bx[1];
+}
+
+function buildMonthPaymentDate(anio, mes, preferToday = false) {
+    const now = new Date();
+    if (preferToday && now.getFullYear() === Number(anio) && (now.getMonth() + 1) === Number(mes)) {
+        return now.toISOString().slice(0, 10);
+    }
+    const lastDay = new Date(Number(anio), Number(mes), 0);
+    return lastDay.toISOString().slice(0, 10);
+}
+
+async function showNewPagoModal(preset = null){
+    const form = document.getElementById('pagoForm');
+    if (form) form.reset();
+    await loadServiciosSelect('pago_servicio');
+    if (preset && form) {
+        form.servicio_id.value = preset.servicio_id || '';
+        form.fecha_pago.value = preset.fecha_pago || '';
+        form.forma_pago.value = preset.forma_pago || '';
+        form.valor_pagado.value = preset.valor_pagado || '';
+        form.observaciones.value = preset.observaciones || '';
+    }
+    document.getElementById('pagoModal').classList.add('active');
+}
 function closePagoModal(){ document.getElementById('pagoModal').classList.remove('active'); }
+
+async function handleServiciosMatrixCellClick(servicioId, periodIndex) {
+    try {
+        const matriz = window._serviciosMatrixContext;
+        if (!matriz || !Array.isArray(matriz.periodos) || !Array.isArray(matriz.filas)) return;
+        const periodo = matriz.periodos[periodIndex];
+        const fila = (matriz.filas || []).find(item => Number(item.item_id) === Number(servicioId));
+        const celda = fila?.celdas?.[periodIndex];
+        if (!periodo || !fila || !celda) return;
+
+        const referencia = { mes: matriz.referencia_mes, anio: matriz.referencia_anio || matriz.anio };
+        if (compareServiciosPeriods({ mes: periodo.mes, anio: matriz.anio }, referencia) > 0) {
+            showToast('Ese valor corresponde al mes siguiente y aun no esta habilitado para pago.', 'error');
+            return;
+        }
+
+        const valor = Number(celda.saldo_pendiente || celda.valor || 0);
+        await showNewPagoModal({
+            servicio_id: servicioId,
+            fecha_pago: buildMonthPaymentDate(matriz.anio, periodo.mes, compareServiciosPeriods({ mes: periodo.mes, anio: matriz.anio }, referencia) === 0),
+            forma_pago: '',
+            valor_pagado: valor > 0 ? String(valor) : '',
+            observaciones: `Pago gestionado desde matriz - ${periodo.label} ${matriz.anio}`
+        });
+    } catch (error) {
+        console.error('handleServiciosMatrixCellClick error', error);
+        showToast(error.message || 'No se pudo abrir el pago desde la matriz.', 'error');
+    }
+}
+
 async function submitPagoForm(e){
     e.preventDefault();
     const f = document.getElementById('pagoForm');
@@ -947,6 +1006,7 @@ function renderServiciosMatrizAnual(matriz, errorMessage = '') {
     if (!head || !body || !foot) return;
 
     if (!matriz || !Array.isArray(matriz.periodos) || !Array.isArray(matriz.filas)) {
+        window._serviciosMatrixContext = null;
         head.innerHTML = '';
         foot.innerHTML = '';
         body.innerHTML = `<tr><td colspan="15" class="loading">${escapeHtml(errorMessage || 'No hay datos de servicios para construir la matriz.')}</td></tr>`;
@@ -954,6 +1014,7 @@ function renderServiciosMatrizAnual(matriz, errorMessage = '') {
         return;
     }
 
+    window._serviciosMatrixContext = matriz;
     if (yearEl) yearEl.value = String(matriz.anio || new Date().getFullYear());
     if (resumen) resumen.textContent = `${matriz.filas.length} servicios visibles en el tablero ${matriz.anio}`;
 
@@ -977,11 +1038,26 @@ function renderServiciosMatrizAnual(matriz, errorMessage = '') {
         <tr>
             <td class="nomina-matriz-empleado">${escapeHtml(fila.item || 'N/A')}</td>
             <td class="nomina-matriz-money">${formatCurrencyCompact(fila.valor_base || 0)}</td>
-            ${(fila.celdas || []).map(celda => `
-                <td class="nomina-matriz-cell nomina-matriz-${String(celda.estado || 'BLANK').toLowerCase()}" title="${escapeHtml(celda.titulo || '')}">
+            ${(fila.celdas || []).map((celda, idx) => {
+                const periodo = matriz.periodos[idx];
+                const referencia = { mes: matriz.referencia_mes, anio: matriz.referencia_anio || matriz.anio };
+                const esFuturo = compareServiciosPeriods({ mes: periodo?.mes, anio: matriz.anio }, referencia) > 0;
+                const esAccionable = ['PENDING', 'PARTIAL'].includes(String(celda.estado || '')) || (esFuturo && Number(celda?.valor || 0) > 0);
+                const clickableClass = esAccionable ? ' nomina-matrix-actionable' : '';
+                const clickableTitle = esAccionable
+                    ? (esFuturo
+                        ? 'No corresponde al periodo actual. Clic para ver la advertencia.'
+                        : 'Clic para registrar pago de este servicio.')
+                    : (celda.titulo || '');
+                const onclickAttr = esAccionable
+                    ? ` onclick="handleServiciosMatrixCellClick(${Number(fila.item_id)}, ${idx})"`
+                    : '';
+                return `
+                <td class="nomina-matriz-cell nomina-matriz-${String(celda.estado || 'BLANK').toLowerCase()}${clickableClass}" title="${escapeHtml(clickableTitle)}"${onclickAttr}>
                     ${escapeHtml(celda.texto || '')}
                 </td>
-            `).join('')}
+            `;
+            }).join('')}
             <td class="nomina-matriz-money">${formatCurrencyCompact(fila.total_cancelado || 0)}</td>
             <td class="nomina-matriz-money">${formatCurrencyCompact(fila.saldo_pendiente || 0)}</td>
         </tr>

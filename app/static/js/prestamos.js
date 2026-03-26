@@ -115,6 +115,8 @@ async function actualizarResumenBancosDashboard() {
     }
 }
 
+window._bancosMatrixContext = window._bancosMatrixContext || null;
+
 function renderBancosMatrizAnual(matriz, errorMessage = '') {
     const head = document.getElementById('bancosMatrizHead');
     const body = document.getElementById('bancosMatrizBody');
@@ -125,6 +127,7 @@ function renderBancosMatrizAnual(matriz, errorMessage = '') {
     if (!head || !body || !foot) return;
 
     if (!matriz || !Array.isArray(matriz.periodos) || !Array.isArray(matriz.filas)) {
+        window._bancosMatrixContext = null;
         head.innerHTML = '';
         foot.innerHTML = '';
         body.innerHTML = `<tr><td colspan="15" class="loading">${escapeHtml(errorMessage || 'No hay datos de préstamos para construir la matriz.')}</td></tr>`;
@@ -132,6 +135,7 @@ function renderBancosMatrizAnual(matriz, errorMessage = '') {
         return;
     }
 
+    window._bancosMatrixContext = matriz;
     if (yearEl) yearEl.value = String(matriz.anio || new Date().getFullYear());
     if (resumen) resumen.textContent = `${matriz.filas.length} préstamos visibles en el tablero ${matriz.anio}`;
 
@@ -155,11 +159,26 @@ function renderBancosMatrizAnual(matriz, errorMessage = '') {
         <tr>
             <td class="nomina-matriz-empleado">${escapeHtml(fila.item || 'N/A')}</td>
             <td class="nomina-matriz-money">${formatCurrencyCompact(fila.valor_base || 0)}</td>
-            ${(fila.celdas || []).map(celda => `
-                <td class="nomina-matriz-cell nomina-matriz-${String(celda.estado || 'BLANK').toLowerCase()}" title="${escapeHtml(celda.titulo || '')}">
+            ${(fila.celdas || []).map((celda, idx) => {
+                const periodo = matriz.periodos[idx];
+                const referencia = { mes: matriz.referencia_mes, anio: matriz.referencia_anio || matriz.anio };
+                const esFuturo = comparePrestamosPeriods({ mes: periodo?.mes, anio: matriz.anio }, referencia) > 0;
+                const esAccionable = ['PENDING', 'PARTIAL'].includes(String(celda.estado || '')) || (esFuturo && Number(celda?.valor || 0) > 0);
+                const clickableClass = esAccionable ? ' nomina-matrix-actionable' : '';
+                const clickableTitle = esAccionable
+                    ? (esFuturo
+                        ? 'No corresponde al periodo actual. Clic para ver la advertencia.'
+                        : 'Clic para registrar pago de este prestamo.')
+                    : (celda.titulo || '');
+                const onclickAttr = esAccionable
+                    ? ` onclick="handlePrestamosMatrixCellClick(${Number(fila.item_id)}, ${idx})"`
+                    : '';
+                return `
+                <td class="nomina-matriz-cell nomina-matriz-${String(celda.estado || 'BLANK').toLowerCase()}${clickableClass}" title="${escapeHtml(clickableTitle)}"${onclickAttr}>
                     ${escapeHtml(celda.texto || '')}
                 </td>
-            `).join('')}
+            `;
+            }).join('')}
             <td class="nomina-matriz-money">${formatCurrencyCompact(fila.total_cancelado || 0)}</td>
             <td class="nomina-matriz-money">${formatCurrencyCompact(fila.saldo_pendiente || 0)}</td>
         </tr>
@@ -732,14 +751,36 @@ function renderPrestamosPagosResultados(data) {
 
 // ---------- Pagos de préstamos ----------
 
-function showNewPrestamoPagoModal() {
+function comparePrestamosPeriods(a, b) {
+    const ax = [Number(a?.anio || 0), Number(a?.mes || 0)];
+    const bx = [Number(b?.anio || 0), Number(b?.mes || 0)];
+    if (ax[0] !== bx[0]) return ax[0] - bx[0];
+    return ax[1] - bx[1];
+}
+
+function buildPrestamoPaymentDate(anio, mes, preferToday = false) {
+    const now = new Date();
+    if (preferToday && now.getFullYear() === Number(anio) && (now.getMonth() + 1) === Number(mes)) {
+        return now.toISOString().slice(0, 10);
+    }
+    const lastDay = new Date(Number(anio), Number(mes), 0);
+    return lastDay.toISOString().slice(0, 10);
+}
+
+async function showNewPrestamoPagoModal(preset = null) {
     const modal = document.getElementById('prestamoPagoModal');
     const form = document.getElementById('prestamoPagoForm');
     if (!modal || !form) return;
     form.reset();
-    loadPrestamosSelect('prestamo_pago_prestamo_id');
+    await loadPrestamosSelect('prestamo_pago_prestamo_id');
     const fechaInput = document.getElementById('prestamo_pago_fecha');
-    if (fechaInput) {
+    if (preset) {
+        form.prestamo_id.value = preset.prestamo_id || '';
+        if (fechaInput) fechaInput.value = preset.fecha_pago || '';
+        form.forma_pago.value = preset.forma_pago || '';
+        form.valor_pagado.value = preset.valor_pagado || '';
+        form.observaciones.value = preset.observaciones || '';
+    } else if (fechaInput) {
         const today = new Date();
         const y = today.getFullYear();
         const m = String(today.getMonth() + 1).padStart(2, '0');
@@ -747,6 +788,35 @@ function showNewPrestamoPagoModal() {
         fechaInput.value = `${y}-${m}-${d}`;
     }
     modal.classList.add('active');
+}
+
+async function handlePrestamosMatrixCellClick(prestamoId, periodIndex) {
+    try {
+        const matriz = window._bancosMatrixContext;
+        if (!matriz || !Array.isArray(matriz.periodos) || !Array.isArray(matriz.filas)) return;
+        const periodo = matriz.periodos[periodIndex];
+        const fila = (matriz.filas || []).find(item => Number(item.item_id) === Number(prestamoId));
+        const celda = fila?.celdas?.[periodIndex];
+        if (!periodo || !fila || !celda) return;
+
+        const referencia = { mes: matriz.referencia_mes, anio: matriz.referencia_anio || matriz.anio };
+        if (comparePrestamosPeriods({ mes: periodo.mes, anio: matriz.anio }, referencia) > 0) {
+            showToast('Ese valor corresponde al mes siguiente y aun no esta habilitado para pago.', 'error');
+            return;
+        }
+
+        const valor = Number(celda.saldo_pendiente || celda.valor || 0);
+        await showNewPrestamoPagoModal({
+            prestamo_id: prestamoId,
+            fecha_pago: buildPrestamoPaymentDate(matriz.anio, periodo.mes, comparePrestamosPeriods({ mes: periodo.mes, anio: matriz.anio }, referencia) === 0),
+            forma_pago: '',
+            valor_pagado: valor > 0 ? String(valor) : '',
+            observaciones: `Pago gestionado desde matriz - ${periodo.label} ${matriz.anio}`
+        });
+    } catch (error) {
+        console.error('handlePrestamosMatrixCellClick error', error);
+        alert(error.message || 'No se pudo abrir el pago desde la matriz.');
+    }
 }
 
 function closePrestamoPagoModal() {
