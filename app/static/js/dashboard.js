@@ -208,6 +208,9 @@ function volverInicioNomina() {
     const matrizPanel = document.getElementById('nominaMatrizPanel');
     const panelQuincena = document.getElementById('nominaQuincenaPanel');
     const empleadosPanel = document.getElementById('nominaEmpleadosPanel');
+    const matrizYearEl = document.getElementById('nominaMatrizAnio');
+    const label = document.getElementById('nominaQuincenaSeleccionadaLabel');
+    const title = document.getElementById('nominaQuincenaActualTitle');
 
     if (homeHeader) homeHeader.style.display = '';
     if (dashboardResumen) dashboardResumen.style.display = '';
@@ -217,6 +220,18 @@ function volverInicioNomina() {
     if (panelQuincena) panelQuincena.style.display = 'none';
     // Al volver al inicio restauramos la tabla de empleados
     if (empleadosPanel) empleadosPanel.style.display = '';
+    nominaPeriodoSeleccionado = null;
+    persistNominaPeriodoSeleccionado();
+    if (label) {
+        label.style.display = 'none';
+        label.textContent = '';
+    }
+    if (title) {
+        title.textContent = 'Quincena en proceso';
+    }
+    if (matrizYearEl) {
+        matrizYearEl.value = String(new Date().getFullYear());
+    }
     loadNominaDashboard({ usarPeriodoSeleccionado: false });
 }
 
