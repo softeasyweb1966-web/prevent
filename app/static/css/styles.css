@@ -962,3 +962,73 @@ body {
     font-weight:600;
 }
 .hist-filter-bar .action-btn { padding:6px 10px; font-size:0.88rem; }
+
+.nomina-matriz-scroll {
+    overflow-x: auto;
+    padding: 0 20px 20px 20px;
+}
+
+.nomina-matriz-table {
+    min-width: 2100px;
+}
+
+.nomina-matriz-table th,
+.nomina-matriz-table td {
+    padding: 10px 8px;
+    font-size: 0.82rem;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.nomina-matriz-empleado {
+    text-align: left !important;
+    font-weight: 600;
+    min-width: 220px;
+}
+
+.nomina-matriz-money {
+    text-align: right !important;
+    font-weight: 600;
+    min-width: 96px;
+}
+
+.nomina-matriz-cell {
+    min-width: 78px;
+    font-weight: 700;
+    border-radius: 8px;
+}
+
+.nomina-matriz-paid {
+    background-color: #dcfce7;
+    color: #166534;
+}
+
+.nomina-matriz-pending {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.nomina-matriz-partial {
+    background-color: #ffedd5;
+    color: #9a3412;
+}
+
+.nomina-matriz-na {
+    background-color: #f3f4f6;
+    color: #6b7280;
+}
+
+.nomina-matriz-blank {
+    background-color: #ffffff;
+    color: #cbd5e1;
+}
+
+.nomina-matriz-total,
+.nomina-matriz-total-label {
+    background-color: #eff6ff;
+    font-weight: 800;
+}
+
+.nomina-matriz-total-label {
+    text-align: left !important;
+}

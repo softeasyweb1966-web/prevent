@@ -3589,3 +3589,12 @@ WHERE pg_catalog.pg_class.relname = %(table_name)s AND pg_catalog.pg_class.relki
 2026-03-25 21:59:50,007 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@crossover.proxy.rlwy.net:16693/railway?sslmode=require
 2026-03-25 21:59:50,007 - app - INFO - [DB] Dialecto activo: postgresql
 2026-03-25 21:59:50,010 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-03-25 22:27:15,917 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-25 22:27:15,991 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-25 22:27:15,991 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-25 22:27:15,991 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-03-25 22:30:27,413 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-25 22:30:27,489 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-25 22:30:27,489 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-25 22:30:27,489 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-03-25 22:30:28,574 - app.routes.auth - INFO - Usuario logueado: admin

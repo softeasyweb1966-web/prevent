@@ -17,10 +17,223 @@ from app.models import (
 )
 from flask_login import login_required, current_user
 from datetime import datetime, timedelta
-from sqlalchemy import func
+from sqlalchemy import func, or_
+from decimal import Decimal
+import calendar
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _periodo_quincena(anio, mes, numero_quincena):
+    if numero_quincena == 1:
+        return (
+            datetime(anio, mes, 1),
+            datetime(anio, mes, 15, 23, 59, 59)
+        )
+
+    ultimo_dia = calendar.monthrange(anio, mes)[1]
+    return (
+        datetime(anio, mes, 16),
+        datetime(anio, mes, ultimo_dia, 23, 59, 59)
+    )
+
+
+def _empleado_aplica_en_periodo(empleado, fecha_inicio, fecha_fin, numero_quincena):
+    if empleado.fecha_inicio and empleado.fecha_inicio > fecha_fin:
+        return False, 'BLANK'
+
+    if empleado.fecha_retiro and empleado.fecha_retiro < fecha_inicio:
+        return False, 'BLANK'
+
+    if empleado.forma_pago == 'QUINCENAL':
+        return True, 'APLICA'
+
+    dia_pago = empleado.dia_pago or 5
+    if numero_quincena == 1 and dia_pago == 5:
+        return True, 'APLICA'
+    if numero_quincena == 2 and dia_pago == 20:
+        return True, 'APLICA'
+
+    return False, 'NA'
+
+
+def _build_nomina_matrix(anio, hoy):
+    meses = {
+        1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun',
+        7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'
+    }
+
+    periodos = []
+    for mes in range(1, 13):
+        for numero_quincena in (1, 2):
+            fecha_inicio, fecha_fin = _periodo_quincena(anio, mes, numero_quincena)
+            periodos.append({
+                'key': f'm{mes}_q{numero_quincena}',
+                'mes': mes,
+                'numero_quincena': numero_quincena,
+                'label': f"{meses[mes]} Q{numero_quincena}",
+                'fecha_inicio': fecha_inicio,
+                'fecha_fin': fecha_fin,
+            })
+
+    inicio_anio = datetime(anio, 1, 1)
+    fin_anio = datetime(anio, 12, 31, 23, 59, 59)
+
+    empleados = Empleado.query.filter(
+        Empleado.fecha_inicio <= fin_anio,
+        or_(Empleado.fecha_retiro.is_(None), Empleado.fecha_retiro >= inicio_anio)
+    ).order_by(
+        Empleado.activo.desc(),
+        Empleado.nombres.asc(),
+        Empleado.apellidos.asc()
+    ).all()
+
+    quincenas = Quincena.query.filter_by(anio=anio).all()
+    quincenas_por_id = {q.id: q for q in quincenas}
+    quincena_ids = [q.id for q in quincenas]
+
+    liquidos = []
+    if quincena_ids:
+        liquidos = LiquidoQuincena.query.filter(LiquidoQuincena.quincena_id.in_(quincena_ids)).all()
+
+    liquidos_por_periodo = {}
+    liquido_ids = []
+    for liquido in liquidos:
+        quincena = quincenas_por_id.get(liquido.quincena_id)
+        if not quincena:
+            continue
+        liquidos_por_periodo[(liquido.empleado_id, quincena.mes, quincena.numero_quincena)] = liquido
+        liquido_ids.append(liquido.id)
+
+    pagos_por_liquido = {}
+    if liquido_ids:
+        pagos_rows = db.session.query(
+            Pago.liquido_quincena_id,
+            func.coalesce(func.sum(Pago.valor_pagado), 0)
+        ).filter(
+            Pago.liquido_quincena_id.in_(liquido_ids)
+        ).group_by(
+            Pago.liquido_quincena_id
+        ).all()
+        pagos_por_liquido = {
+            liquido_id: Decimal(str(total_pagado or 0))
+            for liquido_id, total_pagado in pagos_rows
+        }
+
+    totales_por_periodo = {periodo['key']: Decimal('0') for periodo in periodos}
+    total_sueldos = Decimal('0')
+    total_cancelado = Decimal('0')
+    total_pendiente = Decimal('0')
+    filas = []
+
+    for empleado in empleados:
+        sueldo_base = Decimal(str(empleado.sueldo_base or 0))
+        total_sueldos += sueldo_base
+
+        fila = {
+            'empleado_id': empleado.id,
+            'empleado': f"{empleado.nombres} {empleado.apellidos}",
+            'sueldo_base': float(sueldo_base),
+            'celdas': [],
+            'total_cancelado': 0.0,
+            'saldo_pendiente': 0.0,
+        }
+
+        fila_cancelado = Decimal('0')
+        fila_pendiente = Decimal('0')
+
+        for periodo in periodos:
+            aplica, modo = _empleado_aplica_en_periodo(
+                empleado,
+                periodo['fecha_inicio'],
+                periodo['fecha_fin'],
+                periodo['numero_quincena']
+            )
+
+            celda = {
+                'key': periodo['key'],
+                'estado': 'BLANK',
+                'valor': None,
+                'valor_pagado': 0.0,
+                'saldo_pendiente': 0.0,
+                'texto': '',
+                'titulo': '',
+            }
+
+            if not aplica:
+                if modo == 'NA':
+                    celda['estado'] = 'NA'
+                    celda['texto'] = 'NA'
+                    celda['titulo'] = 'No aplica pago en esta quincena'
+                fila['celdas'].append(celda)
+                continue
+
+            liquido = liquidos_por_periodo.get((empleado.id, periodo['mes'], periodo['numero_quincena']))
+            if not liquido:
+                if periodo['fecha_fin'].date() < hoy.date():
+                    celda['estado'] = 'PENDING'
+                    celda['texto'] = 'Pend.'
+                    celda['titulo'] = 'Quincena vencida sin liquidacion o pago registrado'
+                else:
+                    celda['estado'] = 'BLANK'
+                    celda['titulo'] = 'Quincena futura o aun sin procesar'
+                fila['celdas'].append(celda)
+                continue
+
+            total_a_pagar = Decimal(str(liquido.total_a_pagar or 0))
+            total_pagado = pagos_por_liquido.get(liquido.id, Decimal('0'))
+            saldo_pendiente = Decimal(str(liquido.saldo_pendiente or 0))
+
+            celda['valor'] = float(total_a_pagar)
+            celda['valor_pagado'] = float(total_pagado)
+            celda['saldo_pendiente'] = float(saldo_pendiente)
+            celda['texto'] = f"{float(total_a_pagar):,.0f}"
+            celda['titulo'] = (
+                f"Total a pagar: {float(total_a_pagar):,.2f} | "
+                f"Pagado: {float(total_pagado):,.2f} | "
+                f"Saldo: {float(saldo_pendiente):,.2f}"
+            )
+
+            if total_pagado > 0 and saldo_pendiente > 0:
+                celda['estado'] = 'PARTIAL'
+            elif saldo_pendiente <= 0 or liquido.pagada:
+                celda['estado'] = 'PAID'
+            elif periodo['fecha_fin'].date() < hoy.date():
+                celda['estado'] = 'PENDING'
+            else:
+                celda['estado'] = 'BLANK'
+
+            fila_cancelado += total_pagado
+            fila_pendiente += max(Decimal('0'), saldo_pendiente)
+            totales_por_periodo[periodo['key']] += total_a_pagar
+            fila['celdas'].append(celda)
+
+        fila['total_cancelado'] = float(fila_cancelado)
+        fila['saldo_pendiente'] = float(fila_pendiente)
+        total_cancelado += fila_cancelado
+        total_pendiente += fila_pendiente
+        filas.append(fila)
+
+    return {
+        'anio': anio,
+        'periodos': [
+            {
+                'key': periodo['key'],
+                'mes': periodo['mes'],
+                'numero_quincena': periodo['numero_quincena'],
+                'label': periodo['label'],
+            }
+            for periodo in periodos
+        ],
+        'filas': filas,
+        'totales': {
+            'sueldo_base': float(total_sueldos),
+            'periodos': {key: float(valor) for key, valor in totales_por_periodo.items()},
+            'total_cancelado': float(total_cancelado),
+            'saldo_pendiente': float(total_pendiente),
+        },
+    }
 
 @dashboard_bp.route('/stats', methods=['GET'])
 @login_required
@@ -64,32 +277,14 @@ def dashboard_stats():
 def dashboard_nomina():
     """Dashboard del módulo de nómina"""
     try:
-        from decimal import Decimal
-
         # Total de empleados activos
         total_empleados = Empleado.query.filter_by(activo=True).count()
         
         # Total empleados afiliados a planilla
         empleados_planilla = Empleado.query.filter_by(planilla_afiliado=True, activo=True).count()
         
-        # Quincena actual
         hoy = datetime.now()
-        quincena_actual = None
-        if hoy.day <= 5:
-            # Primera quincena
-            fecha_inicio = datetime(hoy.year, hoy.month, 1)
-            fecha_fin = datetime(hoy.year, hoy.month, 5)
-        elif hoy.day <= 20:
-            # Primera quincena o segunda quincena
-            fecha_inicio = datetime(hoy.year, hoy.month, 6)
-            fecha_fin = datetime(hoy.year, hoy.month, 20)
-        else:
-            # Segunda quincena
-            fecha_inicio = datetime(hoy.year, hoy.month, 21)
-            if hoy.month == 12:
-                fecha_fin = datetime(hoy.year + 1, 1, 5)
-            else:
-                fecha_fin = datetime(hoy.year, hoy.month + 1, 5)
+        anio_matriz = request.args.get('anio', type=int) or hoy.year
         
         # Obtener quincena si existe
         quincena_actual = Quincena.query.filter(
@@ -162,6 +357,8 @@ def dashboard_nomina():
                 'saldo_pendiente': float(saldo_pendiente_dec),
             })
 
+        matriz_anual = _build_nomina_matrix(anio_matriz, hoy)
+
         datos = {
             'total_empleados': total_empleados,
             'empleados_planilla': empleados_planilla,
@@ -170,6 +367,7 @@ def dashboard_nomina():
             'pendiente_por_pagar': float(pendiente),
             'total_mes_nomina': float(total_mes_nomina_dec),
             'detalle_quincenas': detalle_quincenas,
+            'matriz_anual': matriz_anual,
             'quincena_actual': {
                 'fecha_inicio': quincena_actual.fecha_inicio.strftime('%Y-%m-%d') if quincena_actual else None,
                 'fecha_fin': quincena_actual.fecha_fin.strftime('%Y-%m-%d') if quincena_actual else None,

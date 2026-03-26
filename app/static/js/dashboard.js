@@ -117,12 +117,14 @@ function activarVistaQuincenaNomina() {
     const homeHeader = document.getElementById('nominaHomeHeader');
     const dashboardResumen = document.getElementById('nominaDashboardResumen');
     const resumenMensual = document.getElementById('nominaResumenMensual');
+    const matrizPanel = document.getElementById('nominaMatrizPanel');
     const panelQuincena = document.getElementById('nominaQuincenaPanel');
     const empleadosPanel = document.getElementById('nominaEmpleadosPanel');
 
     if (homeHeader) homeHeader.style.display = 'none';
     if (dashboardResumen) dashboardResumen.style.display = 'none';
     if (resumenMensual) resumenMensual.style.display = 'none';
+    if (matrizPanel) matrizPanel.style.display = 'none';
     // En vista de quincena ocultamos el catálogo general de empleados
     if (empleadosPanel) empleadosPanel.style.display = 'none';
     if (panelQuincena) {
@@ -135,12 +137,14 @@ function volverInicioNomina() {
     const homeHeader = document.getElementById('nominaHomeHeader');
     const dashboardResumen = document.getElementById('nominaDashboardResumen');
     const resumenMensual = document.getElementById('nominaResumenMensual');
+    const matrizPanel = document.getElementById('nominaMatrizPanel');
     const panelQuincena = document.getElementById('nominaQuincenaPanel');
     const empleadosPanel = document.getElementById('nominaEmpleadosPanel');
 
     if (homeHeader) homeHeader.style.display = '';
     if (dashboardResumen) dashboardResumen.style.display = '';
     if (resumenMensual) resumenMensual.style.display = '';
+    if (matrizPanel) matrizPanel.style.display = '';
     if (panelQuincena) panelQuincena.style.display = 'none';
     // Al volver al inicio restauramos la tabla de empleados
     if (empleadosPanel) empleadosPanel.style.display = '';
@@ -1584,6 +1588,7 @@ async function loadNominaDashboard() {
     const pagadaMesEl = document.getElementById('nominaPagadaMes');
     const pendienteEl = document.getElementById('nominaPendientePagar');
     const quinEl = document.getElementById('nominaQuincenaActual');
+    const matrizYearEl = document.getElementById('nominaMatrizAnio');
 
     const q1TotalEl = document.getElementById('nominaQ1Total');
     const q1PagadoEl = document.getElementById('nominaQ1Pagado');
@@ -1592,13 +1597,18 @@ async function loadNominaDashboard() {
     const q2PagadoEl = document.getElementById('nominaQ2Pagado');
     const q2SaldoEl = document.getElementById('nominaQ2Saldo');
     const totalMesEl = document.getElementById('nominaTotalMes');
+    const matrizAnio = parseInt(matrizYearEl?.value, 10) || new Date().getFullYear();
+
+    if (matrizYearEl && !matrizYearEl.value) {
+        matrizYearEl.value = String(matrizAnio);
+    }
 
     if (quinEl) {
         quinEl.textContent = 'Cargando información de quincena...';
     }
 
     try {
-        const resp = await fetch('/api/dashboard/nomina', { credentials: 'include' });
+        const resp = await fetch(`/api/dashboard/nomina?anio=${matrizAnio}`, { credentials: 'include' });
         if (!resp.ok) {
             throw new Error('No se pudo cargar el dashboard de nómina');
         }
@@ -1649,6 +1659,8 @@ async function loadNominaDashboard() {
             ? formatCurrency(data.total_mes_nomina || 0)
             : (data.total_mes_nomina || 0);
 
+        renderNominaMatrizAnual(data.matriz_anual);
+
         if (quinEl) {
             const q = data.quincena_actual || {};
             if (q.fecha_inicio && q.fecha_fin) {
@@ -1672,7 +1684,94 @@ async function loadNominaDashboard() {
         if (q2PagadoEl) q2PagadoEl.textContent = '-';
         if (q2SaldoEl) q2SaldoEl.textContent = '-';
         if (totalMesEl) totalMesEl.textContent = '-';
+        renderNominaMatrizAnual(null, err.message);
     }
+}
+
+function formatCurrencyCompact(value) {
+    const amount = Number(value || 0);
+    if (!Number.isFinite(amount)) return '-';
+    if (typeof Intl !== 'undefined' && Intl.NumberFormat) {
+        return '$' + new Intl.NumberFormat('es-CO', {
+            notation: 'compact',
+            compactDisplay: 'short',
+            maximumFractionDigits: amount >= 1000000 ? 1 : 0
+        }).format(amount);
+    }
+    return formatCurrency(amount);
+}
+
+function renderNominaMatrizAnual(matriz, errorMessage = '') {
+    const head = document.getElementById('nominaMatrizHead');
+    const body = document.getElementById('nominaMatrizBody');
+    const foot = document.getElementById('nominaMatrizFoot');
+    const resumen = document.getElementById('nominaMatrizResumen');
+    const yearEl = document.getElementById('nominaMatrizAnio');
+
+    if (!head || !body || !foot) return;
+
+    if (!matriz || !Array.isArray(matriz.periodos) || !Array.isArray(matriz.filas)) {
+        if (resumen) resumen.textContent = errorMessage || 'No se pudo construir el tablero anual.';
+        head.innerHTML = `
+            <tr>
+                <th>Empleado</th>
+                <th>Sueldo</th>
+                <th>Total Cancelado</th>
+                <th>Saldo Pendiente</th>
+            </tr>
+        `;
+        body.innerHTML = '<tr><td colspan="4" class="loading">No hay información disponible para el tablero anual.</td></tr>';
+        foot.innerHTML = '';
+        return;
+    }
+
+    if (yearEl) yearEl.value = String(matriz.anio || new Date().getFullYear());
+    if (resumen) resumen.textContent = `${matriz.filas.length} empleados visibles en el tablero ${matriz.anio}`;
+
+    head.innerHTML = `
+        <tr>
+            <th>Empleado</th>
+            <th>Sueldo</th>
+            ${matriz.periodos.map(periodo => `<th>${escapeHtml(periodo.label)}</th>`).join('')}
+            <th>Total Cancelado</th>
+            <th>Saldo Pendiente</th>
+        </tr>
+    `;
+
+    if (matriz.filas.length === 0) {
+        body.innerHTML = `<tr><td colspan="${matriz.periodos.length + 4}" class="loading">No hay empleados con información para ${matriz.anio}.</td></tr>`;
+        foot.innerHTML = '';
+        return;
+    }
+
+    body.innerHTML = matriz.filas.map(fila => `
+        <tr>
+            <td class="nomina-matriz-empleado">${escapeHtml(fila.empleado || 'N/A')}</td>
+            <td class="nomina-matriz-money">${formatCurrencyCompact(fila.sueldo_base)}</td>
+            ${fila.celdas.map(celda => `
+                <td class="nomina-matriz-cell nomina-matriz-${String(celda.estado || 'BLANK').toLowerCase()}" title="${escapeHtml(celda.titulo || '')}">
+                    ${celda.texto ? escapeHtml(celda.texto) : '&nbsp;'}
+                </td>
+            `).join('')}
+            <td class="nomina-matriz-money">${formatCurrencyCompact(fila.total_cancelado)}</td>
+            <td class="nomina-matriz-money">${formatCurrencyCompact(fila.saldo_pendiente)}</td>
+        </tr>
+    `).join('');
+
+    const totalesPeriodos = matriz.periodos.map(periodo => {
+        const total = matriz.totales?.periodos?.[periodo.key] || 0;
+        return `<td class="nomina-matriz-total" title="${formatCurrency(total)}">${formatCurrencyCompact(total)}</td>`;
+    }).join('');
+
+    foot.innerHTML = `
+        <tr>
+            <td class="nomina-matriz-total-label">Totales</td>
+            <td class="nomina-matriz-total" title="${formatCurrency(matriz.totales?.sueldo_base || 0)}">${formatCurrencyCompact(matriz.totales?.sueldo_base || 0)}</td>
+            ${totalesPeriodos}
+            <td class="nomina-matriz-total" title="${formatCurrency(matriz.totales?.total_cancelado || 0)}">${formatCurrencyCompact(matriz.totales?.total_cancelado || 0)}</td>
+            <td class="nomina-matriz-total" title="${formatCurrency(matriz.totales?.saldo_pendiente || 0)}">${formatCurrencyCompact(matriz.totales?.saldo_pendiente || 0)}</td>
+        </tr>
+    `;
 }
 
 function openModuleFull(moduleName) {

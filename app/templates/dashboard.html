@@ -363,6 +363,41 @@
                     </table>
                 </div>
 
+                <div id="nominaMatrizPanel" class="table-container" style="margin-bottom: 20px;">
+                    <div style="padding: 20px 20px 8px 20px;">
+                        <div class="consulta-toolbar" style="margin-bottom: 10px;">
+                            <div class="consulta-toolbar-grid" style="grid-template-columns: minmax(180px, 220px);">
+                                <div class="form-group" style="margin-bottom:0;">
+                                    <label for="nominaMatrizAnio">Año tablero</label>
+                                    <input type="number" id="nominaMatrizAnio" min="2000">
+                                </div>
+                            </div>
+                            <div class="consulta-toolbar-actions">
+                                <span id="nominaMatrizResumen" class="consulta-resumen">Cargando tablero anual...</span>
+                                <button type="button" class="btn btn-secondary" onclick="loadNominaDashboard()">Actualizar</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="nomina-matriz-scroll">
+                        <table class="data-table nomina-matriz-table">
+                            <thead id="nominaMatrizHead">
+                                <tr>
+                                    <th>Empleado</th>
+                                    <th>Sueldo</th>
+                                    <th>Total Cancelado</th>
+                                    <th>Saldo Pendiente</th>
+                                </tr>
+                            </thead>
+                            <tbody id="nominaMatrizBody">
+                                <tr>
+                                    <td colspan="4" class="loading">Cargando tablero anual...</td>
+                                </tr>
+                            </tbody>
+                            <tfoot id="nominaMatrizFoot"></tfoot>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Vista de trabajo por Quincena en Nómina -->
                 <div id="nominaQuincenaPanel" class="module-header" style="margin-bottom: 16px; display: none; flex-direction: column; align-items: stretch;">
                     <div class="period-aux period-aux-center">
