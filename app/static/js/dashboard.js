@@ -13,6 +13,68 @@ window._impuestosPeriodoActual = window._impuestosPeriodoActual || null;
 window._comprasPeriodoActual = window._comprasPeriodoActual || null;
 window._ventasPeriodoActual = window._ventasPeriodoActual || null;
 
+(function initNominaPeriodoFromStorage() {
+    try {
+        if (!nominaPeriodoSeleccionado && window.localStorage) {
+            const raw = localStorage.getItem('nominaPeriodoActual');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed.mes === 'number' && typeof parsed.anio === 'number' && typeof parsed.numero_quincena === 'number') {
+                    nominaPeriodoSeleccionado = parsed;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('No se pudo recuperar periodo de nomina desde localStorage', e);
+    }
+})();
+
+function persistNominaPeriodoSeleccionado() {
+    try {
+        if (!window.localStorage) return;
+        if (nominaPeriodoSeleccionado) {
+            localStorage.setItem('nominaPeriodoActual', JSON.stringify({
+                mes: Number(nominaPeriodoSeleccionado.mes),
+                anio: Number(nominaPeriodoSeleccionado.anio),
+                numero_quincena: Number(nominaPeriodoSeleccionado.numero_quincena),
+                origen: nominaPeriodoSeleccionado.origen || 'manual'
+            }));
+        } else {
+            localStorage.removeItem('nominaPeriodoActual');
+        }
+    } catch (e) {
+        console.warn('No se pudo guardar periodo de nomina en localStorage', e);
+    }
+}
+
+function getNominaPeriodoActivo() {
+    if (nominaPeriodoSeleccionado && nominaPeriodoSeleccionado.mes && nominaPeriodoSeleccionado.anio && nominaPeriodoSeleccionado.numero_quincena) {
+        return {
+            mes: Number(nominaPeriodoSeleccionado.mes),
+            anio: Number(nominaPeriodoSeleccionado.anio),
+            numero_quincena: Number(nominaPeriodoSeleccionado.numero_quincena),
+            origen: nominaPeriodoSeleccionado.origen || 'manual'
+        };
+    }
+
+    try {
+        if (window.localStorage) {
+            const raw = localStorage.getItem('nominaPeriodoActual');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed.mes === 'number' && typeof parsed.anio === 'number' && typeof parsed.numero_quincena === 'number') {
+                    nominaPeriodoSeleccionado = parsed;
+                    return parsed;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('No se pudo leer el periodo activo de nomina', e);
+    }
+
+    return null;
+}
+
 // Intentar recuperar período de Bancos desde localStorage para no
 // volver a pedirlo en cada recarga (similar a Servicios).
 (function initBancosPeriodoFromStorage() {
@@ -99,6 +161,7 @@ async function openNominaQuincenaView() {
                     numero_quincena: sugerida.numero_quincena,
                     origen: sugerida.modo || 'sugerida'
                 };
+                persistNominaPeriodoSeleccionado();
                 actualizarEtiquetaQuincenaSeleccionada();
                 await loadNominaDashboard();
             } else {
@@ -156,19 +219,21 @@ function volverInicioNomina() {
 function actualizarEtiquetaQuincenaSeleccionada() {
     const label = document.getElementById('nominaQuincenaSeleccionadaLabel');
     const title = document.getElementById('nominaQuincenaActualTitle');
-    if (!label) return;
+    const periodoActivo = getNominaPeriodoActivo();
 
-    if (!nominaPeriodoSeleccionado) {
-        label.style.display = 'none';
-        label.textContent = '';
+    if (!periodoActivo) {
+        if (label) {
+            label.style.display = 'none';
+            label.textContent = '';
+        }
         if (title) title.textContent = 'Quincena en proceso';
         return;
     }
 
     const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-    const mesNombre = meses[nominaPeriodoSeleccionado.mes] || nominaPeriodoSeleccionado.mes;
-    const qText = nominaPeriodoSeleccionado.numero_quincena === 1 || nominaPeriodoSeleccionado.numero_quincena === '1'
+    const mesNombre = meses[periodoActivo.mes] || periodoActivo.mes;
+    const qText = periodoActivo.numero_quincena === 1 || periodoActivo.numero_quincena === '1'
         ? '1ª Quincena'
         : '2ª Quincena';
     label.textContent = `Período seleccionado: ${qText} de ${mesNombre} ${nominaPeriodoSeleccionado.anio}`;
@@ -207,6 +272,7 @@ function setupNominaQuincenaSeleccion() {
             origen: 'manual'
         };
 
+        persistNominaPeriodoSeleccionado();
         closeNominaQuincenaSeleccion();
         actualizarEtiquetaQuincenaSeleccionada();
         loadNominaDashboard();
@@ -1683,18 +1749,20 @@ async function loadNominaDashboard() {
     const q2PagadoEl = document.getElementById('nominaQ2Pagado');
     const q2SaldoEl = document.getElementById('nominaQ2Saldo');
     const totalMesEl = document.getElementById('nominaTotalMes');
-    const anioPreferido = nominaPeriodoSeleccionado?.anio || new Date().getFullYear();
-    const matrizAnio = nominaPeriodoSeleccionado?.anio || parseInt(matrizYearEl?.value, 10) || anioPreferido;
+    const periodoActivo = getNominaPeriodoActivo();
+    const anioPreferido = periodoActivo?.anio || new Date().getFullYear();
+    const matrizAnio = periodoActivo?.anio || parseInt(matrizYearEl?.value, 10) || anioPreferido;
     const params = new URLSearchParams({ anio: String(matrizAnio) });
 
-    if (matrizYearEl && (!matrizYearEl.value || nominaPeriodoSeleccionado?.anio)) {
+    if (matrizYearEl && (!matrizYearEl.value || periodoActivo?.anio)) {
         matrizYearEl.value = String(matrizAnio);
     }
 
-    if (nominaPeriodoSeleccionado?.mes && nominaPeriodoSeleccionado?.numero_quincena && nominaPeriodoSeleccionado?.anio) {
-        params.set('referencia_mes', String(nominaPeriodoSeleccionado.mes));
-        params.set('referencia_numero_quincena', String(nominaPeriodoSeleccionado.numero_quincena));
-        params.set('referencia_anio', String(nominaPeriodoSeleccionado.anio));
+    if (periodoActivo?.mes && periodoActivo?.numero_quincena && periodoActivo?.anio) {
+        params.set('referencia_mes', String(periodoActivo.mes));
+        params.set('referencia_numero_quincena', String(periodoActivo.numero_quincena));
+        params.set('referencia_anio', String(periodoActivo.anio));
+        actualizarEtiquetaQuincenaSeleccionada();
     }
 
     if (quinEl) {
@@ -1762,18 +1830,18 @@ async function loadNominaDashboard() {
           if (quinEl) {
               const quincenaBackend = data.quincena_actual || {};
               const backendCoincideSeleccion =
-                nominaPeriodoSeleccionado?.mes &&
-                nominaPeriodoSeleccionado?.numero_quincena &&
-                nominaPeriodoSeleccionado?.anio &&
-                Number(quincenaBackend.mes) === Number(nominaPeriodoSeleccionado.mes) &&
-                Number(quincenaBackend.numero_quincena) === Number(nominaPeriodoSeleccionado.numero_quincena) &&
-                Number(quincenaBackend.anio) === Number(nominaPeriodoSeleccionado.anio);
+                periodoActivo?.mes &&
+                periodoActivo?.numero_quincena &&
+                periodoActivo?.anio &&
+                Number(quincenaBackend.mes) === Number(periodoActivo.mes) &&
+                Number(quincenaBackend.numero_quincena) === Number(periodoActivo.numero_quincena) &&
+                Number(quincenaBackend.anio) === Number(periodoActivo.anio);
 
-            const q = (nominaPeriodoSeleccionado?.mes && nominaPeriodoSeleccionado?.numero_quincena && nominaPeriodoSeleccionado?.anio)
+            const q = (periodoActivo?.mes && periodoActivo?.numero_quincena && periodoActivo?.anio)
                 ? {
-                    mes: nominaPeriodoSeleccionado.mes,
-                    numero_quincena: nominaPeriodoSeleccionado.numero_quincena,
-                    anio: nominaPeriodoSeleccionado.anio,
+                    mes: periodoActivo.mes,
+                    numero_quincena: periodoActivo.numero_quincena,
+                    anio: periodoActivo.anio,
                     fecha_inicio: backendCoincideSeleccion ? quincenaBackend.fecha_inicio : null,
                     fecha_fin: backendCoincideSeleccion ? quincenaBackend.fecha_fin : null,
                     procesada: backendCoincideSeleccion ? quincenaBackend.procesada : false,
@@ -1861,11 +1929,12 @@ function renderNominaMatrizAnual(matriz, errorMessage = '') {
       if (yearEl) yearEl.value = String(matriz.anio || new Date().getFullYear());
       if (resumen) resumen.textContent = `${matriz.filas.length} empleados visibles en el tablero ${matriz.anio}`;
 
-      if (nominaPeriodoSeleccionado?.anio && nominaPeriodoSeleccionado?.mes && nominaPeriodoSeleccionado?.numero_quincena) {
+      const periodoActivo = getNominaPeriodoActivo();
+      if (periodoActivo?.anio && periodoActivo?.mes && periodoActivo?.numero_quincena) {
           const limite = getNominaMatrizLimiteVisual(
-              Number(nominaPeriodoSeleccionado.mes),
-              Number(nominaPeriodoSeleccionado.numero_quincena),
-              Number(nominaPeriodoSeleccionado.anio)
+              Number(periodoActivo.mes),
+              Number(periodoActivo.numero_quincena),
+              Number(periodoActivo.anio)
           );
 
           matriz.filas = (matriz.filas || []).map(fila => ({
@@ -1926,6 +1995,155 @@ function getNominaMatrizLimiteVisual(mes, numeroQuincena, anio) {
 }
 
     body.innerHTML = matriz.filas.map(fila => `
+        <tr>
+            <td class="nomina-matriz-empleado">${escapeHtml(fila.empleado || 'N/A')}</td>
+            <td class="nomina-matriz-money">${formatCurrencyCompact(fila.sueldo_base)}</td>
+            ${fila.celdas.map(celda => `
+                <td class="nomina-matriz-cell nomina-matriz-${String(celda.estado || 'BLANK').toLowerCase()}" title="${escapeHtml(celda.titulo || '')}">
+                    ${celda.texto ? escapeHtml(celda.texto) : '&nbsp;'}
+                </td>
+            `).join('')}
+            <td class="nomina-matriz-money">${formatCurrencyCompact(fila.total_cancelado)}</td>
+            <td class="nomina-matriz-money">${formatCurrencyCompact(fila.saldo_pendiente)}</td>
+        </tr>
+    `).join('');
+
+    const totalesPeriodos = matriz.periodos.map(periodo => {
+        const total = matriz.totales?.periodos?.[periodo.key] || 0;
+        return `<td class="nomina-matriz-total" title="${formatCurrency(total)}">${formatCurrencyCompact(total)}</td>`;
+    }).join('');
+
+    foot.innerHTML = `
+        <tr>
+            <td class="nomina-matriz-total-label">Totales</td>
+            <td class="nomina-matriz-total" title="${formatCurrency(matriz.totales?.sueldo_base || 0)}">${formatCurrencyCompact(matriz.totales?.sueldo_base || 0)}</td>
+            ${totalesPeriodos}
+            <td class="nomina-matriz-total" title="${formatCurrency(matriz.totales?.total_cancelado || 0)}">${formatCurrencyCompact(matriz.totales?.total_cancelado || 0)}</td>
+            <td class="nomina-matriz-total" title="${formatCurrency(matriz.totales?.saldo_pendiente || 0)}">${formatCurrencyCompact(matriz.totales?.saldo_pendiente || 0)}</td>
+        </tr>
+    `;
+}
+
+function getNominaMatrizLimiteVisual(mes, numeroQuincena, anio) {
+    if (Number(numeroQuincena) === 1) {
+        return [Number(anio), Number(mes), 2];
+    }
+
+    if (Number(mes) === 12) {
+        return [Number(anio) + 1, 1, 1];
+    }
+
+    return [Number(anio), Number(mes) + 1, 1];
+}
+
+function actualizarEtiquetaQuincenaSeleccionada() {
+    const label = document.getElementById('nominaQuincenaSeleccionadaLabel');
+    const title = document.getElementById('nominaQuincenaActualTitle');
+    const periodoActivo = getNominaPeriodoActivo();
+
+    if (!periodoActivo) {
+        if (label) {
+            label.style.display = 'none';
+            label.textContent = '';
+        }
+        if (title) title.textContent = 'Quincena en proceso';
+        return;
+    }
+
+    const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const mesNombre = meses[periodoActivo.mes] || periodoActivo.mes;
+    const qText = Number(periodoActivo.numero_quincena) === 1 ? '1ª Quincena' : '2ª Quincena';
+
+    if (label) {
+        label.textContent = `Período seleccionado: ${qText} de ${mesNombre} ${periodoActivo.anio}`;
+        label.style.display = 'block';
+    }
+    if (title) {
+        title.textContent = `${qText} de ${mesNombre} ${periodoActivo.anio}`;
+    }
+}
+
+function renderNominaMatrizAnual(matriz, errorMessage = '') {
+    const head = document.getElementById('nominaMatrizHead');
+    const body = document.getElementById('nominaMatrizBody');
+    const foot = document.getElementById('nominaMatrizFoot');
+    const resumen = document.getElementById('nominaMatrizResumen');
+    const yearEl = document.getElementById('nominaMatrizAnio');
+
+    if (!head || !body || !foot) return;
+
+    if (!matriz || !Array.isArray(matriz.periodos) || !Array.isArray(matriz.filas)) {
+        if (resumen) resumen.textContent = errorMessage || 'No se pudo construir el tablero anual.';
+        head.innerHTML = `
+            <tr>
+                <th>Empleado</th>
+                <th>Sueldo</th>
+                <th>Total Cancelado</th>
+                <th>Saldo Pendiente</th>
+            </tr>
+        `;
+        body.innerHTML = '<tr><td colspan="4" class="loading">No hay información disponible para el tablero anual.</td></tr>';
+        foot.innerHTML = '';
+        return;
+    }
+
+    const periodoActivo = getNominaPeriodoActivo();
+    const filas = (matriz.filas || []).map(fila => ({
+        ...fila,
+        celdas: (fila.celdas || []).map(celda => ({ ...celda }))
+    }));
+
+    if (periodoActivo?.anio && periodoActivo?.mes && periodoActivo?.numero_quincena) {
+        const limite = getNominaMatrizLimiteVisual(periodoActivo.mes, periodoActivo.numero_quincena, periodoActivo.anio);
+
+        filas.forEach(fila => {
+            fila.celdas = fila.celdas.map((celda, idx) => {
+                const periodo = matriz.periodos[idx];
+                if (!periodo) return celda;
+
+                const fueraDeHorizonte =
+                    Number(matriz.anio) > limite[0] ||
+                    (Number(matriz.anio) === limite[0] && Number(periodo.mes) > limite[1]) ||
+                    (Number(matriz.anio) === limite[0] && Number(periodo.mes) === limite[1] && Number(periodo.numero_quincena) > limite[2]);
+
+                if (!fueraDeHorizonte) {
+                    return celda;
+                }
+
+                return {
+                    ...celda,
+                    estado: 'BLANK',
+                    texto: '',
+                    titulo: 'Quincena fuera del horizonte visible del tablero',
+                    valor: null,
+                    valor_pagado: 0,
+                    saldo_pendiente: 0
+                };
+            });
+        });
+    }
+
+    if (yearEl) yearEl.value = String(matriz.anio || new Date().getFullYear());
+    if (resumen) resumen.textContent = `${filas.length} empleados visibles en el tablero ${matriz.anio}`;
+
+    head.innerHTML = `
+        <tr>
+            <th>Empleado</th>
+            <th>Sueldo</th>
+            ${matriz.periodos.map(periodo => `<th>${escapeHtml(periodo.label)}</th>`).join('')}
+            <th>Total Cancelado</th>
+            <th>Saldo Pendiente</th>
+        </tr>
+    `;
+
+    if (filas.length === 0) {
+        body.innerHTML = `<tr><td colspan="${matriz.periodos.length + 4}" class="loading">No hay empleados con información para ${matriz.anio}.</td></tr>`;
+        foot.innerHTML = '';
+        return;
+    }
+
+    body.innerHTML = filas.map(fila => `
         <tr>
             <td class="nomina-matriz-empleado">${escapeHtml(fila.empleado || 'N/A')}</td>
             <td class="nomina-matriz-money">${formatCurrencyCompact(fila.sueldo_base)}</td>
