@@ -163,7 +163,7 @@ async function openNominaQuincenaView() {
                 };
                 persistNominaPeriodoSeleccionado();
                 actualizarEtiquetaQuincenaSeleccionada();
-                await loadNominaDashboard();
+                await loadNominaDashboard({ usarPeriodoSeleccionado: true });
             } else {
                 // No hay información de quincena: pedir Año-Mes-Quincena al usuario
                 abrirModalNominaQuincenaSeleccion();
@@ -217,7 +217,7 @@ function volverInicioNomina() {
     if (panelQuincena) panelQuincena.style.display = 'none';
     // Al volver al inicio restauramos la tabla de empleados
     if (empleadosPanel) empleadosPanel.style.display = '';
-    loadNominaDashboard();
+    loadNominaDashboard({ usarPeriodoSeleccionado: false });
 }
 
 function __legacy_actualizarEtiquetaQuincenaSeleccionada() {
@@ -279,7 +279,7 @@ function setupNominaQuincenaSeleccion() {
         persistNominaPeriodoSeleccionado();
         closeNominaQuincenaSeleccion();
         actualizarEtiquetaQuincenaSeleccionada();
-        loadNominaDashboard();
+        loadNominaDashboard({ usarPeriodoSeleccionado: true });
         activarVistaQuincenaNomina();
     });
 }
@@ -1584,9 +1584,6 @@ function switchModule(moduleName) {
         // Load module-specific data where available
         if (moduleName === 'nomina') {
             loadEmpleados();
-            if (typeof loadNominaDashboard === 'function') {
-                loadNominaDashboard();
-            }
             // Siempre que entremos al módulo Nómina, mostrar vista de inicio
             volverInicioNomina();
         } else if (moduleName === 'usuarios') {
@@ -1780,7 +1777,8 @@ async function loadModuleDashboardData(moduleName, container) {
 }
 
 // Dashboard específico del módulo de Nómina
-async function loadNominaDashboard() {
+async function loadNominaDashboard(options = {}) {
+    const usarPeriodoSeleccionado = options.usarPeriodoSeleccionado === true;
     const requestSeq = ++nominaDashboardRequestSeq;
       const totalEmpEl = document.getElementById('nominaTotalEmpleados');
       const planillaEl = document.getElementById('nominaEmpleadosPlanilla');
@@ -1797,16 +1795,16 @@ async function loadNominaDashboard() {
     const q2PagadoEl = document.getElementById('nominaQ2Pagado');
     const q2SaldoEl = document.getElementById('nominaQ2Saldo');
     const totalMesEl = document.getElementById('nominaTotalMes');
-    const periodoActivo = getNominaPeriodoActivo();
+    const periodoActivo = usarPeriodoSeleccionado ? getNominaPeriodoActivo() : null;
     const anioPreferido = periodoActivo?.anio || new Date().getFullYear();
-    const matrizAnio = periodoActivo?.anio || parseInt(matrizYearEl?.value, 10) || anioPreferido;
+    const matrizAnio = parseInt(matrizYearEl?.value, 10) || anioPreferido;
     const params = new URLSearchParams({ anio: String(matrizAnio) });
 
-    if (matrizYearEl && (!matrizYearEl.value || periodoActivo?.anio)) {
+    if (matrizYearEl && !matrizYearEl.value) {
         matrizYearEl.value = String(matrizAnio);
     }
 
-    if (periodoActivo?.mes && periodoActivo?.numero_quincena && periodoActivo?.anio) {
+    if (usarPeriodoSeleccionado && periodoActivo?.mes && periodoActivo?.numero_quincena && periodoActivo?.anio) {
         params.set('referencia_mes', String(periodoActivo.mes));
         params.set('referencia_numero_quincena', String(periodoActivo.numero_quincena));
         params.set('referencia_anio', String(periodoActivo.anio));
@@ -1878,6 +1876,7 @@ async function loadNominaDashboard() {
           if (quinEl) {
               const quincenaBackend = data.quincena_actual || {};
               const backendCoincideSeleccion =
+                usarPeriodoSeleccionado &&
                 periodoActivo?.mes &&
                 periodoActivo?.numero_quincena &&
                 periodoActivo?.anio &&
@@ -1885,7 +1884,7 @@ async function loadNominaDashboard() {
                 Number(quincenaBackend.numero_quincena) === Number(periodoActivo.numero_quincena) &&
                 Number(quincenaBackend.anio) === Number(periodoActivo.anio);
 
-            const q = (periodoActivo?.mes && periodoActivo?.numero_quincena && periodoActivo?.anio)
+            const q = (usarPeriodoSeleccionado && periodoActivo?.mes && periodoActivo?.numero_quincena && periodoActivo?.anio)
                 ? {
                     mes: periodoActivo.mes,
                     numero_quincena: periodoActivo.numero_quincena,
@@ -2148,41 +2147,10 @@ function renderNominaMatrizAnual(matriz, errorMessage = '') {
         return;
     }
 
-    const periodoActivo = getNominaPeriodoActivo();
     const filas = (matriz.filas || []).map(fila => ({
         ...fila,
         celdas: (fila.celdas || []).map(celda => ({ ...celda }))
     }));
-
-    if (periodoActivo?.anio && periodoActivo?.mes && periodoActivo?.numero_quincena) {
-        const limite = getNominaMatrizLimiteVisual(periodoActivo.mes, periodoActivo.numero_quincena, periodoActivo.anio);
-
-        filas.forEach(fila => {
-            fila.celdas = fila.celdas.map((celda, idx) => {
-                const periodo = matriz.periodos[idx];
-                if (!periodo) return celda;
-
-                const fueraDeHorizonte =
-                    Number(matriz.anio) > limite[0] ||
-                    (Number(matriz.anio) === limite[0] && Number(periodo.mes) > limite[1]) ||
-                    (Number(matriz.anio) === limite[0] && Number(periodo.mes) === limite[1] && Number(periodo.numero_quincena) > limite[2]);
-
-                if (!fueraDeHorizonte) {
-                    return celda;
-                }
-
-                return {
-                    ...celda,
-                    estado: 'BLANK',
-                    texto: '',
-                    titulo: 'Quincena fuera del horizonte visible del tablero',
-                    valor: null,
-                    valor_pagado: 0,
-                    saldo_pendiente: 0
-                };
-            });
-        });
-    }
 
     if (yearEl) yearEl.value = String(matriz.anio || new Date().getFullYear());
     if (resumen) resumen.textContent = `${filas.length} empleados visibles en el tablero ${matriz.anio}`;
