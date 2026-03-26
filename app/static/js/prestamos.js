@@ -115,6 +115,113 @@ async function actualizarResumenBancosDashboard() {
     }
 }
 
+function renderBancosMatrizAnual(matriz, errorMessage = '') {
+    const head = document.getElementById('bancosMatrizHead');
+    const body = document.getElementById('bancosMatrizBody');
+    const foot = document.getElementById('bancosMatrizFoot');
+    const resumen = document.getElementById('bancosMatrizResumen');
+    const yearEl = document.getElementById('bancosMatrizAnio');
+
+    if (!head || !body || !foot) return;
+
+    if (!matriz || !Array.isArray(matriz.periodos) || !Array.isArray(matriz.filas)) {
+        head.innerHTML = '';
+        foot.innerHTML = '';
+        body.innerHTML = `<tr><td colspan="15" class="loading">${escapeHtml(errorMessage || 'No hay datos de préstamos para construir la matriz.')}</td></tr>`;
+        if (resumen) resumen.textContent = errorMessage || 'Sin información anual de préstamos.';
+        return;
+    }
+
+    if (yearEl) yearEl.value = String(matriz.anio || new Date().getFullYear());
+    if (resumen) resumen.textContent = `${matriz.filas.length} préstamos visibles en el tablero ${matriz.anio}`;
+
+    head.innerHTML = `
+        <tr>
+            <th>Préstamo</th>
+            <th>Valor Base</th>
+            ${matriz.periodos.map(periodo => `<th>${escapeHtml(periodo.label)}</th>`).join('')}
+            <th>Total Cancelado</th>
+            <th>Saldo Pendiente</th>
+        </tr>
+    `;
+
+    if (matriz.filas.length === 0) {
+        body.innerHTML = `<tr><td colspan="${matriz.periodos.length + 4}" class="loading">No hay préstamos con información para ${matriz.anio}.</td></tr>`;
+        foot.innerHTML = '';
+        return;
+    }
+
+    body.innerHTML = matriz.filas.map(fila => `
+        <tr>
+            <td class="nomina-matriz-empleado">${escapeHtml(fila.item || 'N/A')}</td>
+            <td class="nomina-matriz-money">${formatCurrencyCompact(fila.valor_base || 0)}</td>
+            ${(fila.celdas || []).map(celda => `
+                <td class="nomina-matriz-cell nomina-matriz-${String(celda.estado || 'BLANK').toLowerCase()}" title="${escapeHtml(celda.titulo || '')}">
+                    ${escapeHtml(celda.texto || '')}
+                </td>
+            `).join('')}
+            <td class="nomina-matriz-money">${formatCurrencyCompact(fila.total_cancelado || 0)}</td>
+            <td class="nomina-matriz-money">${formatCurrencyCompact(fila.saldo_pendiente || 0)}</td>
+        </tr>
+    `).join('');
+
+    const totalesPeriodos = matriz.periodos.map(periodo => {
+        const total = matriz.totales?.periodos?.[periodo.key] || 0;
+        return `<td class="nomina-matriz-total" title="${formatCurrency(total)}">${formatCurrencyCompact(total)}</td>`;
+    }).join('');
+
+    foot.innerHTML = `
+        <tr>
+            <td class="nomina-matriz-total-label">Totales</td>
+            <td class="nomina-matriz-total" title="${formatCurrency(matriz.totales?.valor_base || 0)}">${formatCurrencyCompact(matriz.totales?.valor_base || 0)}</td>
+            ${totalesPeriodos}
+            <td class="nomina-matriz-total" title="${formatCurrency(matriz.totales?.total_cancelado || 0)}">${formatCurrencyCompact(matriz.totales?.total_cancelado || 0)}</td>
+            <td class="nomina-matriz-total" title="${formatCurrency(matriz.totales?.saldo_pendiente || 0)}">${formatCurrencyCompact(matriz.totales?.saldo_pendiente || 0)}</td>
+        </tr>
+    `;
+}
+
+async function loadBancosDashboardFull() {
+    const activosEl = document.getElementById('bancosTotalActivos');
+    const conCargoEl = document.getElementById('bancosConCargoMes');
+    const totalProgramadoEl = document.getElementById('bancosTotalProgramadoMes');
+    const totalPagadoEl = document.getElementById('bancosTotalPagadoMes');
+    const yearEl = document.getElementById('bancosMatrizAnio');
+
+    try {
+        const periodo = window._bancosPeriodoActual || {
+            mes: new Date().getMonth() + 1,
+            anio: new Date().getFullYear()
+        };
+        const anio = parseInt(yearEl?.value, 10) || periodo.anio || new Date().getFullYear();
+        const params = new URLSearchParams({
+            anio: String(anio),
+            referencia_mes: String(periodo.mes),
+            referencia_anio: String(periodo.anio)
+        });
+
+        const res = await fetch('/api/dashboard/bancos?' + params.toString(), { credentials: 'include' });
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.error || 'No se pudo cargar el dashboard de préstamos');
+        }
+
+        if (activosEl) activosEl.textContent = String(data.total_prestamos_activos ?? '-');
+        if (conCargoEl) conCargoEl.textContent = String(data.prestamos_con_cargo_mes ?? '-');
+        if (totalProgramadoEl) totalProgramadoEl.textContent = formatCurrencyCompact(data.total_programado_mes || 0);
+        if (totalPagadoEl) totalPagadoEl.textContent = formatCurrencyCompact(data.total_pagado_mes || 0);
+
+        renderBancosMatrizAnual(data.matriz_anual);
+    } catch (err) {
+        console.error('Error cargando dashboard de bancos', err);
+        if (activosEl) activosEl.textContent = '-';
+        if (conCargoEl) conCargoEl.textContent = '-';
+        if (totalProgramadoEl) totalProgramadoEl.textContent = '-';
+        if (totalPagadoEl) totalPagadoEl.textContent = '-';
+        renderBancosMatrizAnual(null, err.message || 'Error al cargar matriz de préstamos');
+    }
+}
+
 async function loadPrestamosResumen() {
     const tbody = document.getElementById('prestamosTable');
     if (!tbody) return;
@@ -311,11 +418,16 @@ async function submitPrestamoNovedadForm() {
             throw new Error(err.error || 'Error al guardar novedad');
         }
         closePrestamoNovedadModal();
+        if (window.showToast) {
+            showToast('Novedad de préstamo guardada');
+        }
         // Si el modal de listado está abierto, recargarlo
         const listadoModal = document.getElementById('prestamosNovedadesModal');
         if (listadoModal && listadoModal.classList.contains('active')) {
             reloadPrestamosNovedades();
         }
+        try { loadPrestamosNovedadesMesActual('bancosNovedadesInlineBody'); } catch (e1) {}
+        try { loadBancosDashboardFull(); } catch (e2) {}
     } catch (err) {
         console.error('submitPrestamoNovedadForm error', err);
         alert(err.message || 'Error al guardar novedad');
@@ -668,10 +780,14 @@ async function submitPrestamoPagoForm() {
             throw new Error(err.error || 'Error al guardar pago');
         }
         closePrestamoPagoModal();
+        if (window.showToast) {
+            showToast('Pago de préstamo guardado');
+        }
         const tbody = document.getElementById('prestamosPagosBody');
         if (tbody && tbody.dataset && tbody.dataset.lastQuery) {
             await reloadPrestamosNovedades();
         }
+        try { loadBancosDashboardFull(); } catch (e1) {}
     } catch (err) {
         console.error('submitPrestamoPagoForm error', err);
         alert(err.message || 'Error al guardar pago');

@@ -197,6 +197,24 @@ class EmpleadoMovimientoLaboral(db.Model):
         return f'<EmpleadoMovimientoLaboral {self.empleado_id} - {self.tipo_movimiento}>'
 
 
+class Vendedor(db.Model):
+    """Tabla maestra de vendedores para el módulo de comisiones"""
+    __tablename__ = 'vendedores'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(200), nullable=False, index=True)
+    documento = db.Column(db.String(30), unique=True, index=True)
+    telefono = db.Column(db.String(50))
+    email = db.Column(db.String(120))
+    descripcion = db.Column(db.Text)
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<Vendedor {self.nombre}>'
+
+
 class TipoNovedad(db.Model):
     """Tabla maestra de tipos de novedad"""
     __tablename__ = 'tipos_novedad'

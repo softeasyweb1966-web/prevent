@@ -9,10 +9,12 @@ from app.models import (
     Servicio,
     ServicioNovedad,
     ServicioPago,
+    ServicioPeriodo,
     Novedad,
     NovedadAplicada,
     TipoNovedad,
     PrestamoEmpresa,
+    PrestamoNovedad,
     PrestamoPago,
 )
 from flask_login import login_required, current_user
@@ -64,6 +66,393 @@ def _periodo_siguiente(mes, numero_quincena, anio):
     if mes == 12:
         return 1, 1, anio + 1
     return mes + 1, 1, anio
+
+
+def _periodo_mensual(anio, mes):
+    ultimo_dia = calendar.monthrange(anio, mes)[1]
+    return (
+        datetime(anio, mes, 1),
+        datetime(anio, mes, ultimo_dia, 23, 59, 59)
+    )
+
+
+def _mes_siguiente(mes, anio):
+    if mes == 12:
+        return 1, anio + 1
+    return mes + 1, anio
+
+
+def _debe_pagarse_servicio_en_mes(servicio, mes):
+    try:
+        periodo = int(servicio.modalidad_pago_meses or 1)
+        mes_inicio = int(servicio.mes_inicio_pago or 1)
+    except Exception:
+        return True
+
+    if periodo <= 0:
+        return True
+    if not (1 <= mes_inicio <= 12) or not (1 <= mes <= 12):
+        return True
+
+    return ((mes - mes_inicio) % periodo) == 0
+
+
+def _serialize_month_matrix_summary(matriz, mes_referencia):
+    key = f'm{mes_referencia}'
+    con_movimiento = 0
+    total_programado = Decimal('0')
+    total_pagado = Decimal('0')
+
+    for fila in matriz.get('filas', []):
+        celda = next((c for c in fila.get('celdas', []) if c.get('key') == key), None)
+        if not celda:
+            continue
+        valor = Decimal(str(celda.get('valor') or 0))
+        valor_pagado = Decimal(str(celda.get('valor_pagado') or 0))
+        if valor > 0:
+            con_movimiento += 1
+            total_programado += valor
+        total_pagado += valor_pagado
+
+    return {
+        'con_movimiento': con_movimiento,
+        'total_programado': float(total_programado),
+        'total_pagado': float(total_pagado),
+    }
+
+
+def _build_servicios_matrix(anio, hoy, mes_referencia=None, anio_referencia=None):
+    meses = {
+        1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun',
+        7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'
+    }
+
+    if not mes_referencia or not anio_referencia:
+        periodo_actual = (
+            ServicioPeriodo.query
+            .filter_by(en_proceso=True)
+            .order_by(ServicioPeriodo.anio.desc(), ServicioPeriodo.mes.desc())
+            .first()
+        )
+        if periodo_actual:
+            mes_referencia = periodo_actual.mes
+            anio_referencia = periodo_actual.anio
+        else:
+            mes_referencia = hoy.month
+            anio_referencia = hoy.year
+
+    limite_mes, limite_anio = _mes_siguiente(mes_referencia, anio_referencia)
+    periodos = [{
+        'key': f'm{mes}',
+        'mes': mes,
+        'label': meses[mes],
+    } for mes in range(1, 13)]
+
+    servicios = Servicio.query.order_by(Servicio.activo.desc(), Servicio.nombre.asc()).all()
+
+    novedades_rows = db.session.query(
+        ServicioNovedad.servicio_id,
+        func.extract('month', ServicioNovedad.fecha_recibo),
+        func.coalesce(func.sum(ServicioNovedad.valor_real), 0)
+    ).filter(
+        func.extract('year', ServicioNovedad.fecha_recibo) == anio
+    ).group_by(
+        ServicioNovedad.servicio_id,
+        func.extract('month', ServicioNovedad.fecha_recibo)
+    ).all()
+
+    pagos_rows = db.session.query(
+        ServicioPago.servicio_id,
+        func.extract('month', ServicioPago.fecha_pago),
+        func.coalesce(func.sum(ServicioPago.valor_pagado), 0)
+    ).filter(
+        func.extract('year', ServicioPago.fecha_pago) == anio
+    ).group_by(
+        ServicioPago.servicio_id,
+        func.extract('month', ServicioPago.fecha_pago)
+    ).all()
+
+    novedades_por_periodo = {
+        (servicio_id, int(mes)): Decimal(str(valor or 0))
+        for servicio_id, mes, valor in novedades_rows
+    }
+    pagos_por_periodo = {
+        (servicio_id, int(mes)): Decimal(str(valor or 0))
+        for servicio_id, mes, valor in pagos_rows
+    }
+
+    totales_por_periodo = {periodo['key']: Decimal('0') for periodo in periodos}
+    total_base = Decimal('0')
+    total_cancelado = Decimal('0')
+    total_pendiente = Decimal('0')
+    filas = []
+
+    for servicio in servicios:
+        valor_base = Decimal(str(servicio.valor_aproximado or 0))
+        total_base += valor_base
+        fila_cancelado = Decimal('0')
+        fila_pendiente = Decimal('0')
+        fila = {
+            'item_id': servicio.id,
+            'item': servicio.nombre,
+            'valor_base': float(valor_base),
+            'celdas': [],
+            'total_cancelado': 0.0,
+            'saldo_pendiente': 0.0,
+        }
+
+        for periodo in periodos:
+            _, fecha_fin = _periodo_mensual(anio, periodo['mes'])
+            aplica = _debe_pagarse_servicio_en_mes(servicio, periodo['mes'])
+            beyond_limit = (anio, periodo['mes']) > (limite_anio, limite_mes)
+            future_to_reference = (anio, periodo['mes']) > (anio_referencia, mes_referencia)
+
+            celda = {
+                'key': periodo['key'],
+                'estado': 'BLANK',
+                'valor': None,
+                'valor_pagado': 0.0,
+                'saldo_pendiente': 0.0,
+                'texto': '',
+                'titulo': '',
+            }
+
+            if beyond_limit:
+                fila['celdas'].append(celda)
+                continue
+
+            if not aplica:
+                celda['estado'] = 'NA'
+                celda['texto'] = 'NA'
+                celda['titulo'] = 'No aplica pago en este mes'
+                fila['celdas'].append(celda)
+                continue
+
+            cargo = novedades_por_periodo.get((servicio.id, periodo['mes']))
+            if cargo is None or cargo <= 0:
+                cargo = valor_base
+            pagado = pagos_por_periodo.get((servicio.id, periodo['mes']), Decimal('0'))
+            saldo = max(Decimal('0'), cargo - pagado)
+
+            if future_to_reference and pagado <= 0:
+                fila['celdas'].append(celda)
+                continue
+
+            celda['valor'] = float(cargo)
+            celda['valor_pagado'] = float(pagado)
+            celda['saldo_pendiente'] = float(saldo)
+            celda['texto'] = f"{float(cargo):,.0f}" if cargo > 0 else ''
+            celda['titulo'] = (
+                f"Programado: {float(cargo):,.2f} | "
+                f"Pagado: {float(pagado):,.2f} | "
+                f"Saldo: {float(saldo):,.2f}"
+            )
+
+            if cargo <= 0 and pagado <= 0:
+                celda['estado'] = 'NA'
+                celda['texto'] = 'NA'
+                celda['titulo'] = 'No hay cargo programado para este mes'
+            elif pagado > 0 and saldo > 0:
+                celda['estado'] = 'PARTIAL'
+            elif pagado >= cargo and cargo > 0:
+                celda['estado'] = 'PAID'
+            elif fecha_fin.date() <= hoy.date():
+                celda['estado'] = 'PENDING'
+            else:
+                celda['estado'] = 'BLANK'
+                celda['texto'] = ''
+                celda['titulo'] = 'Mes futuro dentro del horizonte visible'
+
+            if celda['estado'] != 'BLANK' and cargo > 0:
+                totales_por_periodo[periodo['key']] += cargo
+                fila_cancelado += pagado
+                fila_pendiente += saldo
+
+            fila['celdas'].append(celda)
+
+        fila['total_cancelado'] = float(fila_cancelado)
+        fila['saldo_pendiente'] = float(fila_pendiente)
+        total_cancelado += fila_cancelado
+        total_pendiente += fila_pendiente
+        filas.append(fila)
+
+    return {
+        'anio': anio,
+        'referencia_mes': mes_referencia,
+        'referencia_anio': anio_referencia,
+        'periodos': periodos,
+        'filas': filas,
+        'totales': {
+            'valor_base': float(total_base),
+            'periodos': {key: float(valor) for key, valor in totales_por_periodo.items()},
+            'total_cancelado': float(total_cancelado),
+            'saldo_pendiente': float(total_pendiente),
+        }
+    }
+
+
+def _build_bancos_matrix(anio, hoy, mes_referencia=None, anio_referencia=None):
+    meses = {
+        1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun',
+        7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'
+    }
+
+    if not mes_referencia or not anio_referencia:
+        mes_referencia = hoy.month
+        anio_referencia = hoy.year
+
+    limite_mes, limite_anio = _mes_siguiente(mes_referencia, anio_referencia)
+    periodos = [{
+        'key': f'm{mes}',
+        'mes': mes,
+        'label': meses[mes],
+    } for mes in range(1, 13)]
+
+    prestamos = PrestamoEmpresa.query.order_by(PrestamoEmpresa.activo.desc(), PrestamoEmpresa.nombre.asc()).all()
+
+    novedades_rows = db.session.query(
+        PrestamoNovedad.prestamo_id,
+        func.extract('month', PrestamoNovedad.fecha_limite_pago),
+        func.coalesce(func.sum(PrestamoNovedad.valor_a_pagar), 0)
+    ).filter(
+        func.extract('year', PrestamoNovedad.fecha_limite_pago) == anio
+    ).group_by(
+        PrestamoNovedad.prestamo_id,
+        func.extract('month', PrestamoNovedad.fecha_limite_pago)
+    ).all()
+
+    pagos_rows = db.session.query(
+        PrestamoPago.prestamo_id,
+        func.extract('month', PrestamoPago.fecha_pago),
+        func.coalesce(func.sum(PrestamoPago.valor_pagado), 0)
+    ).filter(
+        func.extract('year', PrestamoPago.fecha_pago) == anio
+    ).group_by(
+        PrestamoPago.prestamo_id,
+        func.extract('month', PrestamoPago.fecha_pago)
+    ).all()
+
+    novedades_por_periodo = {
+        (prestamo_id, int(mes)): Decimal(str(valor or 0))
+        for prestamo_id, mes, valor in novedades_rows
+    }
+    pagos_por_periodo = {
+        (prestamo_id, int(mes)): Decimal(str(valor or 0))
+        for prestamo_id, mes, valor in pagos_rows
+    }
+
+    totales_por_periodo = {periodo['key']: Decimal('0') for periodo in periodos}
+    total_base = Decimal('0')
+    total_cancelado = Decimal('0')
+    total_pendiente = Decimal('0')
+    filas = []
+
+    for prestamo in prestamos:
+        valor_base = Decimal(str(prestamo.valor_cuota or prestamo.valor_prestamo or 0))
+        total_base += valor_base
+        fila_cancelado = Decimal('0')
+        fila_pendiente = Decimal('0')
+        fila = {
+            'item_id': prestamo.id,
+            'item': prestamo.nombre,
+            'valor_base': float(valor_base),
+            'celdas': [],
+            'total_cancelado': 0.0,
+            'saldo_pendiente': 0.0,
+        }
+
+        for periodo in periodos:
+            fecha_inicio, fecha_fin = _periodo_mensual(anio, periodo['mes'])
+            beyond_limit = (anio, periodo['mes']) > (limite_anio, limite_mes)
+            future_to_reference = (anio, periodo['mes']) > (anio_referencia, mes_referencia)
+
+            celda = {
+                'key': periodo['key'],
+                'estado': 'BLANK',
+                'valor': None,
+                'valor_pagado': 0.0,
+                'saldo_pendiente': 0.0,
+                'texto': '',
+                'titulo': '',
+            }
+
+            if beyond_limit:
+                fila['celdas'].append(celda)
+                continue
+
+            if prestamo.fecha_inicio and prestamo.fecha_inicio > fecha_fin:
+                fila['celdas'].append(celda)
+                continue
+
+            if prestamo.fecha_final and prestamo.fecha_final < fecha_inicio:
+                fila['celdas'].append(celda)
+                continue
+
+            cargo = novedades_por_periodo.get((prestamo.id, periodo['mes']))
+            if cargo is None or cargo <= 0:
+                cargo = Decimal(str(prestamo.valor_cuota or 0))
+
+            pagado = pagos_por_periodo.get((prestamo.id, periodo['mes']), Decimal('0'))
+            saldo = max(Decimal('0'), cargo - pagado)
+
+            if future_to_reference and pagado <= 0:
+                fila['celdas'].append(celda)
+                continue
+
+            if cargo <= 0 and pagado <= 0:
+                celda['estado'] = 'NA'
+                celda['texto'] = 'NA'
+                celda['titulo'] = 'No hay cuota programada para este mes'
+                fila['celdas'].append(celda)
+                continue
+
+            celda['valor'] = float(cargo)
+            celda['valor_pagado'] = float(pagado)
+            celda['saldo_pendiente'] = float(saldo)
+            celda['texto'] = f"{float(cargo):,.0f}" if cargo > 0 else ''
+            celda['titulo'] = (
+                f"Programado: {float(cargo):,.2f} | "
+                f"Pagado: {float(pagado):,.2f} | "
+                f"Saldo: {float(saldo):,.2f}"
+            )
+
+            if pagado > 0 and saldo > 0:
+                celda['estado'] = 'PARTIAL'
+            elif pagado >= cargo and cargo > 0:
+                celda['estado'] = 'PAID'
+            elif fecha_fin.date() <= hoy.date():
+                celda['estado'] = 'PENDING'
+            else:
+                celda['estado'] = 'BLANK'
+                celda['texto'] = ''
+                celda['titulo'] = 'Mes futuro dentro del horizonte visible'
+
+            if celda['estado'] != 'BLANK' and cargo > 0:
+                totales_por_periodo[periodo['key']] += cargo
+                fila_cancelado += pagado
+                fila_pendiente += saldo
+
+            fila['celdas'].append(celda)
+
+        fila['total_cancelado'] = float(fila_cancelado)
+        fila['saldo_pendiente'] = float(fila_pendiente)
+        total_cancelado += fila_cancelado
+        total_pendiente += fila_pendiente
+        filas.append(fila)
+
+    return {
+        'anio': anio,
+        'referencia_mes': mes_referencia,
+        'referencia_anio': anio_referencia,
+        'periodos': periodos,
+        'filas': filas,
+        'totales': {
+            'valor_base': float(total_base),
+            'periodos': {key: float(valor) for key, valor in totales_por_periodo.items()},
+            'total_cancelado': float(total_cancelado),
+            'saldo_pendiente': float(total_pendiente),
+        }
+    }
 
 
 def _quincena_referencia_dashboard(hoy, mes=None, numero_quincena=None, anio=None):
@@ -482,12 +871,37 @@ def dashboard_servicios():
         ahora = datetime.utcnow()
         mes_inicio = datetime(ahora.year, ahora.month, 1)
         pagos_mes = db.session.query(func.sum(ServicioPago.valor_pagado)).filter(ServicioPago.fecha_pago >= mes_inicio).scalar() or 0
+        periodo_actual = (
+            ServicioPeriodo.query
+            .filter_by(en_proceso=True)
+            .order_by(ServicioPeriodo.anio.desc(), ServicioPeriodo.mes.desc())
+            .first()
+        )
+        referencia_mes = request.args.get('referencia_mes', type=int) or (periodo_actual.mes if periodo_actual else ahora.month)
+        referencia_anio = request.args.get('referencia_anio', type=int) or (periodo_actual.anio if periodo_actual else ahora.year)
+        anio_matriz = request.args.get('anio', type=int) or referencia_anio
+        matriz_anual = _build_servicios_matrix(
+            anio_matriz,
+            ahora,
+            mes_referencia=referencia_mes,
+            anio_referencia=referencia_anio
+        )
+        resumen_mes = _serialize_month_matrix_summary(matriz_anual, referencia_mes)
+        pagos_mes = resumen_mes['total_pagado']
 
         datos = {
             'total_servicios': total_servicios,
             'novedades_ultimos_30_dias': int(novedades_30),
             'pagos_ultimos_30_dias': int(pagos_30),
-            'pagos_mes_actual': float(pagos_mes)
+            'pagos_mes_actual': float(pagos_mes),
+            'servicios_con_cargo_mes': int(resumen_mes['con_movimiento']),
+            'total_programado_mes': float(resumen_mes['total_programado']),
+            'matriz_anual': matriz_anual,
+            'periodo_actual': {
+                'mes': referencia_mes,
+                'anio': referencia_anio,
+                'en_proceso': True if periodo_actual else False
+            }
         }
 
         return jsonify(datos), 200
@@ -526,6 +940,10 @@ def dashboard_bancos():
     try:
         from decimal import Decimal
         from sqlalchemy import func as _func
+        hoy = datetime.utcnow()
+        referencia_mes = request.args.get('referencia_mes', type=int) or request.args.get('mes', type=int) or hoy.month
+        referencia_anio = request.args.get('referencia_anio', type=int) or request.args.get('anio', type=int) or hoy.year
+        anio_matriz = request.args.get('anio', type=int) or referencia_anio
 
         total_prestamos = PrestamoEmpresa.query.count()
         total_prestamos_activos = PrestamoEmpresa.query.filter_by(activo=True).count()
@@ -546,12 +964,28 @@ def dashboard_bancos():
             saldo = max(Decimal('0'), valor_total - pagado_sum)
             saldo_total += saldo
 
+        matriz_anual = _build_bancos_matrix(
+            anio_matriz,
+            hoy,
+            mes_referencia=referencia_mes,
+            anio_referencia=referencia_anio
+        )
+        resumen_mes = _serialize_month_matrix_summary(matriz_anual, referencia_mes)
+
         datos = {
             'nombre': 'Préstamos Empresa',
             'total_prestamos': int(total_prestamos),
             'total_prestamos_activos': int(total_prestamos_activos),
             'monto_total_prestado': float(monto_total),
             'saldo_total_pendiente': float(saldo_total),
+            'prestamos_con_cargo_mes': int(resumen_mes['con_movimiento']),
+            'total_programado_mes': float(resumen_mes['total_programado']),
+            'total_pagado_mes': float(resumen_mes['total_pagado']),
+            'matriz_anual': matriz_anual,
+            'periodo_actual': {
+                'mes': referencia_mes,
+                'anio': referencia_anio
+            },
         }
 
         return jsonify(datos), 200

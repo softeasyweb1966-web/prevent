@@ -391,10 +391,16 @@ function scrollToModuleSection(elementId) {
 }
 
 function consultarServicios() {
+    if (typeof loadServicesList === 'function') {
+        loadServicesList();
+    }
     scrollToModuleSection('serviciosCatalogo');
 }
 
 function consultarBancos() {
+    if (typeof loadPrestamosResumen === 'function') {
+        loadPrestamosResumen();
+    }
     scrollToModuleSection('prestamosTable');
 }
 
@@ -484,7 +490,9 @@ function setupModulosPeriodoActual() {
             }
             actualizarEtiquetaBancosPeriodo();
             try {
-                if (typeof actualizarResumenBancosDashboard === 'function') {
+                if (typeof loadBancosDashboardFull === 'function') {
+                    loadBancosDashboardFull();
+                } else if (typeof actualizarResumenBancosDashboard === 'function') {
                     actualizarResumenBancosDashboard();
                 }
             } catch (eDash) {
@@ -500,7 +508,9 @@ function setupModulosPeriodoActual() {
         formBancos.dataset.bound = 'true';
         actualizarEtiquetaBancosPeriodo();
         try {
-            if (typeof actualizarResumenBancosDashboard === 'function') {
+            if (typeof loadBancosDashboardFull === 'function') {
+                loadBancosDashboardFull();
+            } else if (typeof actualizarResumenBancosDashboard === 'function') {
                 actualizarResumenBancosDashboard();
             }
         } catch (eDashInit) {
@@ -1572,6 +1582,9 @@ function switchModule(moduleName) {
                 if (typeof loadServicesList === 'function') {
                     loadServicesList();
                 }
+                if (typeof loadServiciosDashboardFull === 'function') {
+                    loadServiciosDashboardFull();
+                }
 
                 // Al entrar al módulo Servicios desde la barra lateral,
                 // siempre mostramos la vista "home" del módulo:
@@ -1613,7 +1626,9 @@ function switchModule(moduleName) {
                 if (typeof loadPrestamosResumen === 'function') {
                     loadPrestamosResumen();
                 }
-                if (typeof actualizarResumenBancosDashboard === 'function') {
+                if (typeof loadBancosDashboardFull === 'function') {
+                    loadBancosDashboardFull();
+                } else if (typeof actualizarResumenBancosDashboard === 'function') {
                     actualizarResumenBancosDashboard();
                 }
             } catch (e) {
@@ -2311,6 +2326,7 @@ let consultaEmpleadosData = [];
 let areasConfigData = [];
 let cargosConfigData = [];
 let asignacionesLaboralesData = [];
+let vendedoresConfigData = [];
 
 function setupConsultaEmpleados() {
     const searchInput = document.getElementById('consultaEmpleadoSearch');
@@ -2673,6 +2689,12 @@ function setupEstructuraLaboralForms() {
         asignacionForm.dataset.bound = 'true';
     }
 
+    const vendedorForm = document.getElementById('vendedorForm');
+    if (vendedorForm && !vendedorForm.dataset.bound) {
+        vendedorForm.addEventListener('submit', guardarVendedorConfig);
+        vendedorForm.dataset.bound = 'true';
+    }
+
     const retiroForm = document.getElementById('retiroEmpleadoForm');
     if (retiroForm && !retiroForm.dataset.bound) {
         retiroForm.addEventListener('submit', guardarRetiroEmpleado);
@@ -2848,6 +2870,36 @@ async function cargarAsignacionesLaboralesConfig() {
     }
 }
 
+async function cargarVendedoresConfig() {
+    const tbody = document.getElementById('vendedoresTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/nomina/vendedores', { credentials: 'include' });
+        const vendedores = await response.json();
+        vendedoresConfigData = Array.isArray(vendedores) ? vendedores : [];
+
+        if (vendedoresConfigData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="loading">No hay vendedores configurados</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = vendedoresConfigData.map(vendedor => `
+            <tr>
+                <td>${escapeHtml(vendedor.nombre || 'N/A')}</td>
+                <td>${escapeHtml(vendedor.documento || 'N/A')}</td>
+                <td>${escapeHtml(vendedor.telefono || 'N/A')}</td>
+                <td>${escapeHtml(vendedor.email || 'N/A')}</td>
+                <td>${vendedor.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
+                <td><button class="action-btn action-btn-edit" onclick="editarVendedorConfig(${vendedor.id})">Editar</button></td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando vendedores:', error);
+        tbody.innerHTML = '<tr><td colspan="6" class="loading">Error al cargar vendedores</td></tr>';
+    }
+}
+
 function mostrarAgregarArea() {
     document.getElementById('areaForm').reset();
     document.getElementById('areaId').value = '';
@@ -2914,6 +2966,33 @@ async function mostrarAgregarAsignacionLaboral() {
 
 function closeAsignacionLaboralModal() {
     document.getElementById('asignacionLaboralModal').classList.remove('active');
+}
+
+function mostrarAgregarVendedor() {
+    document.getElementById('vendedorForm').reset();
+    document.getElementById('vendedorId').value = '';
+    document.getElementById('vendedorModalTitle').textContent = 'Nuevo Vendedor';
+    document.getElementById('vendedorActivo').checked = true;
+    document.getElementById('vendedorModal').classList.add('active');
+}
+
+function closeVendedorModal() {
+    document.getElementById('vendedorModal').classList.remove('active');
+}
+
+function editarVendedorConfig(id) {
+    const vendedor = vendedoresConfigData.find(item => item.id === id);
+    if (!vendedor) return;
+
+    document.getElementById('vendedorId').value = vendedor.id;
+    document.getElementById('vendedorNombre').value = vendedor.nombre || '';
+    document.getElementById('vendedorDocumento').value = vendedor.documento || '';
+    document.getElementById('vendedorTelefono').value = vendedor.telefono || '';
+    document.getElementById('vendedorEmail').value = vendedor.email || '';
+    document.getElementById('vendedorDescripcion').value = vendedor.descripcion || '';
+    document.getElementById('vendedorActivo').checked = vendedor.activo !== false;
+    document.getElementById('vendedorModalTitle').textContent = 'Editar Vendedor';
+    document.getElementById('vendedorModal').classList.add('active');
 }
 
 function editarAsignacionLaboral(id) {
@@ -3001,6 +3080,29 @@ async function guardarAsignacionLaboralConfig(event) {
     closeAsignacionLaboralModal();
     await cargarAsignacionesLaboralesConfig();
     await loadEmpleados();
+}
+
+async function guardarVendedorConfig(event) {
+    event.preventDefault();
+    const id = document.getElementById('vendedorId').value;
+    const response = await fetch(id ? `/api/nomina/vendedores/${id}` : '/api/nomina/vendedores', {
+        method: id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+            nombre: document.getElementById('vendedorNombre').value.trim(),
+            documento: document.getElementById('vendedorDocumento').value.trim() || null,
+            telefono: document.getElementById('vendedorTelefono').value.trim() || null,
+            email: document.getElementById('vendedorEmail').value.trim() || null,
+            descripcion: document.getElementById('vendedorDescripcion').value.trim() || null,
+            activo: document.getElementById('vendedorActivo').checked
+        })
+    });
+    const data = await response.json();
+    if (!response.ok) return showError(data.error || 'Error al guardar vendedor');
+    showSuccess(id ? 'Vendedor actualizado' : 'Vendedor creado');
+    closeVendedorModal();
+    await cargarVendedoresConfig();
 }
 
 async function guardarRetiroEmpleado(event) {
@@ -4974,6 +5076,7 @@ switchModule = function(moduleName) {
         cargarAreasConfig();
         cargarCargosConfig();
         cargarAsignacionesLaboralesConfig();
+        cargarVendedoresConfig();
     }
 };
 

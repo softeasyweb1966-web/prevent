@@ -7,6 +7,7 @@ from app.models import (
     Cargo,
     EmpleadoAsignacionLaboral,
     EmpleadoMovimientoLaboral,
+    Vendedor,
     Novedad,
     NovedadAplicada,
     TipoNovedad,
@@ -84,6 +85,18 @@ def _serialize_asignacion(asignacion):
         'fecha_fin': asignacion.fecha_fin.strftime('%Y-%m-%d') if asignacion.fecha_fin else None,
         'motivo': asignacion.motivo,
         'activo': asignacion.activo
+    }
+
+
+def _serialize_vendedor(vendedor):
+    return {
+        'id': vendedor.id,
+        'nombre': vendedor.nombre,
+        'documento': vendedor.documento,
+        'telefono': vendedor.telefono,
+        'email': vendedor.email,
+        'descripcion': vendedor.descripcion,
+        'activo': vendedor.activo
     }
 
 
@@ -743,6 +756,80 @@ def actualizar_asignacion_laboral(asignacion_id):
         db.session.rollback()
         logger.error(f"Error actualizando asignacion laboral: {str(e)}")
         return jsonify({'error': 'Error al actualizar asignacion laboral'}), 500
+
+
+@nomina_bp.route('/vendedores', methods=['GET'])
+@login_required
+def get_vendedores():
+    try:
+        vendedores = Vendedor.query.order_by(Vendedor.activo.desc(), Vendedor.nombre.asc()).all()
+        return jsonify([_serialize_vendedor(vendedor) for vendedor in vendedores]), 200
+    except Exception as e:
+        logger.error(f"Error obteniendo vendedores: {str(e)}")
+        return jsonify({'error': 'Error al obtener vendedores'}), 500
+
+
+@nomina_bp.route('/vendedores', methods=['POST'])
+@login_required
+def crear_vendedor():
+    data = request.get_json() or {}
+
+    try:
+        nombre = (data.get('nombre') or '').strip()
+        documento = (data.get('documento') or '').strip() or None
+        if not nombre:
+            return jsonify({'error': 'El nombre del vendedor es obligatorio'}), 400
+
+        if documento and Vendedor.query.filter_by(documento=documento).first():
+            return jsonify({'error': 'Ya existe un vendedor con ese documento'}), 409
+
+        vendedor = Vendedor(
+            nombre=nombre,
+            documento=documento,
+            telefono=(data.get('telefono') or '').strip() or None,
+            email=(data.get('email') or '').strip() or None,
+            descripcion=(data.get('descripcion') or '').strip() or None,
+            activo=bool(data.get('activo', True))
+        )
+        db.session.add(vendedor)
+        db.session.commit()
+        return jsonify({'mensaje': 'Vendedor creado', 'id': vendedor.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error creando vendedor: {str(e)}")
+        return jsonify({'error': 'Error al crear vendedor'}), 500
+
+
+@nomina_bp.route('/vendedores/<int:vendedor_id>', methods=['PUT'])
+@login_required
+def actualizar_vendedor(vendedor_id):
+    data = request.get_json() or {}
+
+    try:
+        vendedor = Vendedor.query.get_or_404(vendedor_id)
+        nombre = (data.get('nombre') or vendedor.nombre).strip()
+        documento = (data.get('documento') if 'documento' in data else vendedor.documento)
+        documento = (documento or '').strip() or None
+
+        if documento:
+            existente = Vendedor.query.filter(Vendedor.documento == documento, Vendedor.id != vendedor_id).first()
+            if existente:
+                return jsonify({'error': 'Ya existe un vendedor con ese documento'}), 409
+
+        vendedor.nombre = nombre
+        vendedor.documento = documento
+        vendedor.telefono = (data.get('telefono') if 'telefono' in data else vendedor.telefono)
+        vendedor.email = (data.get('email') if 'email' in data else vendedor.email)
+        vendedor.descripcion = (data.get('descripcion') if 'descripcion' in data else vendedor.descripcion)
+        if 'activo' in data:
+            vendedor.activo = bool(data.get('activo'))
+
+        db.session.commit()
+        return jsonify({'mensaje': 'Vendedor actualizado'}), 200
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error actualizando vendedor: {str(e)}")
+        return jsonify({'error': 'Error al actualizar vendedor'}), 500
 
 
 # ==================== NOVEDADES ====================

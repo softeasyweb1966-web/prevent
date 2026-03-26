@@ -633,6 +633,26 @@
                 </div>
 
                 <!-- Modal selección de período de Servicios (Año-Mes) -->
+                <div id="serviciosMatrizPanel" class="recent-section" style="margin-bottom: 16px;">
+                    <div class="module-header" style="margin-bottom: 8px;">
+                        <h2>Matriz Anual de Servicios</h2>
+                        <div class="button-group module-actions">
+                            <input id="serviciosMatrizAnio" type="number" min="2000" style="width:110px;" />
+                            <button class="btn btn-secondary" onclick="loadServiciosDashboardFull()">Actualizar</button>
+                        </div>
+                    </div>
+                    <p id="serviciosMatrizResumen" style="margin:0 0 12px 0; color:#555; font-size:0.92rem;">Cargando matriz de servicios...</p>
+                    <div class="nomina-matriz-scroll">
+                        <table class="data-table nomina-matriz-table">
+                            <thead id="serviciosMatrizHead"></thead>
+                            <tbody id="serviciosMatrizBody">
+                                <tr><td colspan="15" class="loading">Cargando matriz de servicios...</td></tr>
+                            </tbody>
+                            <tfoot id="serviciosMatrizFoot"></tfoot>
+                        </table>
+                    </div>
+                </div>
+
                 <div id="serviciosPeriodoSeleccionModal" class="modal">
                     <div class="modal-content" style="max-width: 520px; width: 95%;">
                         <div class="modal-header">
@@ -1277,6 +1297,35 @@
                         </tbody>
                     </table>
                 </div>
+
+                <div class="table-container">
+                    <div class="module-header" style="margin-bottom:12px;">
+                        <h3>Vendedores</h3>
+                        <div class="button-group module-actions">
+                            <button class="btn btn-secondary" onclick="mostrarAgregarVendedor()" aria-label="Nuevo Vendedor">
+                                <span class="btn-icon">+</span><span class="btn-label">Nuevo Vendedor</span>
+                            </button>
+                        </div>
+                    </div>
+                    <p style="margin-top:0; color:#666;">Catálogo base de vendedores para el futuro módulo de comisiones.</p>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Documento</th>
+                                <th>Teléfono</th>
+                                <th>Email</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vendedoresTable">
+                            <tr>
+                                <td colspan="6" class="loading">Pendiente de implementar catálogo de vendedores</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
             
             <!-- Módulo Bancos / Préstamos de Empresa -->
@@ -1325,6 +1374,26 @@
                 </div>
 
                 <!-- Modal selección de período de Bancos (Año-Mes) -->
+                <div id="bancosMatrizPanel" class="recent-section" style="margin-bottom: 16px;">
+                    <div class="module-header" style="margin-bottom: 8px;">
+                        <h2>Matriz Anual de Préstamos</h2>
+                        <div class="button-group module-actions">
+                            <input id="bancosMatrizAnio" type="number" min="2000" style="width:110px;" />
+                            <button class="btn btn-secondary" onclick="loadBancosDashboardFull()">Actualizar</button>
+                        </div>
+                    </div>
+                    <p id="bancosMatrizResumen" style="margin:0 0 12px 0; color:#555; font-size:0.92rem;">Cargando matriz de préstamos...</p>
+                    <div class="nomina-matriz-scroll">
+                        <table class="data-table nomina-matriz-table">
+                            <thead id="bancosMatrizHead"></thead>
+                            <tbody id="bancosMatrizBody">
+                                <tr><td colspan="15" class="loading">Cargando matriz de préstamos...</td></tr>
+                            </tbody>
+                            <tfoot id="bancosMatrizFoot"></tfoot>
+                        </table>
+                    </div>
+                </div>
+
                 <div id="bancosPeriodoSeleccionModal" class="modal">
                     <div class="modal-content" style="max-width: 520px; width: 95%;">
                         <div class="modal-header">
@@ -2257,6 +2326,52 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeAsignacionLaboralModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="vendedorModal" class="modal">
+    <div class="modal-content" style="max-width: 620px;">
+        <div class="modal-header">
+            <h2 id="vendedorModalTitle">Nuevo Vendedor</h2>
+            <span class="close" onclick="closeVendedorModal()">&times;</span>
+        </div>
+        <form id="vendedorForm">
+            <input type="hidden" id="vendedorId">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="vendedorNombre">Nombre *</label>
+                    <input type="text" id="vendedorNombre" maxlength="200" required>
+                </div>
+                <div class="form-group">
+                    <label for="vendedorDocumento">Documento</label>
+                    <input type="text" id="vendedorDocumento" maxlength="30">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="vendedorTelefono">Teléfono</label>
+                    <input type="text" id="vendedorTelefono" maxlength="50">
+                </div>
+                <div class="form-group">
+                    <label for="vendedorEmail">Email</label>
+                    <input type="email" id="vendedorEmail" maxlength="120">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="vendedorDescripcion">Descripción</label>
+                <textarea id="vendedorDescripcion" rows="3"></textarea>
+            </div>
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" id="vendedorActivo" checked>
+                    Vendedor activo
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeVendedorModal()">Cancelar</button>
                 <button type="submit" class="btn btn-primary">Guardar</button>
             </div>
         </form>

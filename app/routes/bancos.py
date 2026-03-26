@@ -207,9 +207,14 @@ def list_prestamo_novedades(prestamo_id):
 def create_prestamo_novedad(prestamo_id):
     payload = request.get_json() or {}
     try:
+        if not PrestamoEmpresa.query.get(prestamo_id):
+            return jsonify({'error': 'Préstamo no encontrado'}), 404
+        valor_a_pagar = float(payload.get('valor_a_pagar') or 0)
+        if valor_a_pagar <= 0:
+            return jsonify({'error': 'El valor a pagar debe ser mayor a cero'}), 400
         n = PrestamoNovedad(
             prestamo_id=prestamo_id,
-            valor_a_pagar=payload.get('valor_a_pagar') or 0,
+            valor_a_pagar=valor_a_pagar,
             fecha_limite_pago=_parse_date(payload.get('fecha_limite_pago')) or datetime.utcnow(),
             descripcion=payload.get('descripcion'),
             cumplida=bool(payload.get('cumplida', False)),
@@ -288,11 +293,16 @@ def list_prestamo_pagos(prestamo_id):
 def create_prestamo_pago(prestamo_id):
     payload = request.get_json() or {}
     try:
+        if not PrestamoEmpresa.query.get(prestamo_id):
+            return jsonify({'error': 'Préstamo no encontrado'}), 404
+        valor_pagado = float(payload.get('valor_pagado') or 0)
+        if valor_pagado <= 0:
+            return jsonify({'error': 'El valor pagado debe ser mayor a cero'}), 400
         p = PrestamoPago(
             prestamo_id=prestamo_id,
             fecha_pago=_parse_date(payload.get('fecha_pago')) or datetime.utcnow(),
             forma_pago=payload.get('forma_pago'),
-            valor_pagado=payload.get('valor_pagado') or 0,
+            valor_pagado=valor_pagado,
             observaciones=payload.get('observaciones'),
             usuario_registra_id=None,
         )

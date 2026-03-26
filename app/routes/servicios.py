@@ -278,16 +278,22 @@ def create_servicio():
         logger.exception('Error creando servicio')
         return jsonify({'error': 'Error al crear servicio'}), 500
 
-
 @servicios_bp.route('/novedades', methods=['POST'])
 @login_required
 def create_novedad():
     payload = request.get_json() or {}
     servicio_id = payload.get('servicio_id')
+    if not servicio_id:
+        return jsonify({'error': 'Debe seleccionar un servicio'}), 400
     try:
         valor_real = float(payload.get('valor_real', 0))
     except Exception:
         return jsonify({'error': 'valor_real inválido'}), 400
+
+    if valor_real <= 0:
+        return jsonify({'error': 'El valor real debe ser mayor a cero'}), 400
+    if not Servicio.query.get(servicio_id):
+        return jsonify({'error': 'Servicio no encontrado'}), 404
 
     fecha_recibo_dt = _parse_date(payload.get('fecha_recibo')) or datetime.utcnow()
     fecha_limite_dt = _parse_date(payload.get('fecha_limite_primer_pago'))
@@ -492,10 +498,17 @@ def novedad_detail(id):
 def create_pago():
     payload = request.get_json() or {}
     servicio_id = payload.get('servicio_id')
+    if not servicio_id:
+        return jsonify({'error': 'Debe seleccionar un servicio'}), 400
     try:
         valor_pagado = float(payload.get('valor_pagado', 0))
     except Exception:
         return jsonify({'error': 'valor_pagado inválido'}), 400
+
+    if valor_pagado <= 0:
+        return jsonify({'error': 'El valor pagado debe ser mayor a cero'}), 400
+    if not Servicio.query.get(servicio_id):
+        return jsonify({'error': 'Servicio no encontrado'}), 404
 
     fecha_pago_dt = _parse_date(payload.get('fecha_pago')) or datetime.utcnow()
 

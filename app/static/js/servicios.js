@@ -292,7 +292,7 @@ async function submitServicioNovedadForm(e){
         url = `/api/servicios/novedades/${editId}`;
         method = 'PUT';
     }
-    const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const res = await fetch(url, {method, headers:{'Content-Type':'application/json'}, credentials:'include', body:JSON.stringify(payload)});
     if (res.ok){
         delete f.dataset.editId;
         closeServicioNovedadModal();
@@ -302,8 +302,14 @@ async function submitServicioNovedadForm(e){
         if (body && body.dataset.lastQuery){
             try { reloadServiciosNovedadesMes(); } catch(e){}
         }
+        try { loadServiciosNovedadesMesActual('serviciosNovedadesInlineBody'); } catch(e1){}
+        try { loadServiciosDashboardFull(); } catch(e2){}
+        try { submitServiciosLiquidacionForm(); } catch(e3){}
     }
-    else showToast('Error','error');
+    else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Error guardando novedad', 'error');
+    }
 }
 
 // --- Pagos ---
@@ -319,9 +325,19 @@ async function submitPagoForm(e){
         valor_pagado: f.valor_pagado.value,
         observaciones: f.observaciones.value
     };
-    const res = await fetch('/api/servicios/pagos', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
-    if (res.ok){ closePagoModal(); showToast('Pago registrado'); }
-    else showToast('Error registrando pago','error');
+    const res = await fetch('/api/servicios/pagos', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body:JSON.stringify(payload)});
+    if (res.ok){
+        closePagoModal();
+        showToast('Pago registrado');
+        try { loadServiciosDashboardFull(); } catch(e1){}
+        try { submitServiciosLiquidacionForm(); } catch(e2){}
+        try { reloadServiciosNovedadesMes(); } catch(e3){}
+        try { loadServiciosNovedadesMesActual('serviciosNovedadesInlineBody'); } catch(e4){}
+    }
+    else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Error registrando pago','error');
+    }
 }
 
 async function loadServiciosSelect(selectId){
@@ -921,6 +937,130 @@ function closeServiciosPeriodoSeleccion() {
     if (modal) modal.classList.remove('active');
 }
 
+function renderServiciosMatrizAnual(matriz, errorMessage = '') {
+    const head = document.getElementById('serviciosMatrizHead');
+    const body = document.getElementById('serviciosMatrizBody');
+    const foot = document.getElementById('serviciosMatrizFoot');
+    const resumen = document.getElementById('serviciosMatrizResumen');
+    const yearEl = document.getElementById('serviciosMatrizAnio');
+
+    if (!head || !body || !foot) return;
+
+    if (!matriz || !Array.isArray(matriz.periodos) || !Array.isArray(matriz.filas)) {
+        head.innerHTML = '';
+        foot.innerHTML = '';
+        body.innerHTML = `<tr><td colspan="15" class="loading">${escapeHtml(errorMessage || 'No hay datos de servicios para construir la matriz.')}</td></tr>`;
+        if (resumen) resumen.textContent = errorMessage || 'Sin información anual de servicios.';
+        return;
+    }
+
+    if (yearEl) yearEl.value = String(matriz.anio || new Date().getFullYear());
+    if (resumen) resumen.textContent = `${matriz.filas.length} servicios visibles en el tablero ${matriz.anio}`;
+
+    head.innerHTML = `
+        <tr>
+            <th>Servicio</th>
+            <th>Valor Base</th>
+            ${matriz.periodos.map(periodo => `<th>${escapeHtml(periodo.label)}</th>`).join('')}
+            <th>Total Cancelado</th>
+            <th>Saldo Pendiente</th>
+        </tr>
+    `;
+
+    if (matriz.filas.length === 0) {
+        body.innerHTML = `<tr><td colspan="${matriz.periodos.length + 4}" class="loading">No hay servicios con información para ${matriz.anio}.</td></tr>`;
+        foot.innerHTML = '';
+        return;
+    }
+
+    body.innerHTML = matriz.filas.map(fila => `
+        <tr>
+            <td class="nomina-matriz-empleado">${escapeHtml(fila.item || 'N/A')}</td>
+            <td class="nomina-matriz-money">${formatCurrencyCompact(fila.valor_base || 0)}</td>
+            ${(fila.celdas || []).map(celda => `
+                <td class="nomina-matriz-cell nomina-matriz-${String(celda.estado || 'BLANK').toLowerCase()}" title="${escapeHtml(celda.titulo || '')}">
+                    ${escapeHtml(celda.texto || '')}
+                </td>
+            `).join('')}
+            <td class="nomina-matriz-money">${formatCurrencyCompact(fila.total_cancelado || 0)}</td>
+            <td class="nomina-matriz-money">${formatCurrencyCompact(fila.saldo_pendiente || 0)}</td>
+        </tr>
+    `).join('');
+
+    const totalesPeriodos = matriz.periodos.map(periodo => {
+        const total = matriz.totales?.periodos?.[periodo.key] || 0;
+        return `<td class="nomina-matriz-total" title="${formatCurrency(total)}">${formatCurrencyCompact(total)}</td>`;
+    }).join('');
+
+    foot.innerHTML = `
+        <tr>
+            <td class="nomina-matriz-total-label">Totales</td>
+            <td class="nomina-matriz-total" title="${formatCurrency(matriz.totales?.valor_base || 0)}">${formatCurrencyCompact(matriz.totales?.valor_base || 0)}</td>
+            ${totalesPeriodos}
+            <td class="nomina-matriz-total" title="${formatCurrency(matriz.totales?.total_cancelado || 0)}">${formatCurrencyCompact(matriz.totales?.total_cancelado || 0)}</td>
+            <td class="nomina-matriz-total" title="${formatCurrency(matriz.totales?.saldo_pendiente || 0)}">${formatCurrencyCompact(matriz.totales?.saldo_pendiente || 0)}</td>
+        </tr>
+    `;
+}
+
+async function loadServiciosDashboardFull() {
+    const totalActivosEl = document.getElementById('serviciosTotalActivos');
+    const conCargoEl = document.getElementById('serviciosConCargoMes');
+    const totalMesEl = document.getElementById('serviciosTotalMes');
+    const periodoResumenEl = document.getElementById('serviciosPeriodoResumen');
+    const yearEl = document.getElementById('serviciosMatrizAnio');
+
+    try {
+        let periodo = window._serviciosPeriodoActual;
+        if (!periodo) {
+            periodo = await obtenerPeriodoActualServicios();
+        }
+
+        if (periodo && !window._serviciosPeriodoActual) {
+            window._serviciosPeriodoActual = periodo;
+        }
+
+        const anio = parseInt(yearEl?.value, 10) || periodo?.anio || new Date().getFullYear();
+        const params = new URLSearchParams({ anio: String(anio) });
+        if (periodo?.mes && periodo?.anio) {
+            params.set('referencia_mes', String(periodo.mes));
+            params.set('referencia_anio', String(periodo.anio));
+        }
+
+        const res = await fetch('/api/dashboard/servicios?' + params.toString(), { credentials: 'include' });
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.error || 'No se pudo cargar el dashboard de servicios');
+        }
+
+        if ((!window._serviciosPeriodoActual || !window._serviciosPeriodoActual.mes) && data.periodo_actual?.mes && data.periodo_actual?.anio) {
+            window._serviciosPeriodoActual = {
+                mes: Number(data.periodo_actual.mes),
+                anio: Number(data.periodo_actual.anio)
+            };
+        }
+
+        actualizarEtiquetaServiciosPeriodo();
+
+        if (totalActivosEl) totalActivosEl.textContent = String(data.total_servicios ?? '-');
+        if (conCargoEl) conCargoEl.textContent = String(data.servicios_con_cargo_mes ?? '-');
+        if (totalMesEl) totalMesEl.textContent = formatCurrencyCompact(data.total_programado_mes || 0);
+        if (periodoResumenEl && window._serviciosPeriodoActual) {
+            const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+            periodoResumenEl.textContent = `${meses[window._serviciosPeriodoActual.mes] || window._serviciosPeriodoActual.mes} ${window._serviciosPeriodoActual.anio}`;
+        }
+
+        renderServiciosMatrizAnual(data.matriz_anual);
+    } catch (err) {
+        console.error('Error cargando dashboard de servicios', err);
+        if (totalActivosEl) totalActivosEl.textContent = '-';
+        if (conCargoEl) conCargoEl.textContent = '-';
+        if (totalMesEl) totalMesEl.textContent = '-';
+        renderServiciosMatrizAnual(null, err.message || 'Error al cargar matriz de servicios');
+    }
+}
+
 function openNovedadesOverdue(){
     const list = window._servicios_overdue || [];
     if (!list.length) return showToast('No hay recibos vencidos');
@@ -995,7 +1135,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
                 console.warn('No se pudo guardar periodo de servicios en localStorage (selección manual)', eStore);
             }
             actualizarEtiquetaServiciosPeriodo();
-            try { actualizarResumenServiciosDashboard(); } catch (eDash) { console.warn('No se pudo refrescar resumen de servicios', eDash); }
+            try { loadServiciosDashboardFull(); } catch (eDash) { console.warn('No se pudo refrescar dashboard de servicios', eDash); }
             closeServiciosPeriodoSeleccion();
 
             // Activar directamente la vista de gestión de mes
@@ -1007,6 +1147,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
         // Al cargar, actualizar etiquetas y el resumen si ya hubiera un período en memoria
         actualizarEtiquetaServiciosPeriodo();
-        try { actualizarResumenServiciosDashboard(); } catch (eDashInit) { console.warn('No se pudo inicializar resumen de servicios', eDashInit); }
+        try { loadServiciosDashboardFull(); } catch (eDashInit) { console.warn('No se pudo inicializar dashboard de servicios', eDashInit); }
     }
 });
