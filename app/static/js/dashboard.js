@@ -155,11 +155,13 @@ function volverInicioNomina() {
 
 function actualizarEtiquetaQuincenaSeleccionada() {
     const label = document.getElementById('nominaQuincenaSeleccionadaLabel');
+    const title = document.getElementById('nominaQuincenaActualTitle');
     if (!label) return;
 
     if (!nominaPeriodoSeleccionado) {
         label.style.display = 'none';
         label.textContent = '';
+        if (title) title.textContent = 'Quincena en proceso';
         return;
     }
 
@@ -171,6 +173,9 @@ function actualizarEtiquetaQuincenaSeleccionada() {
         : '2ª Quincena';
     label.textContent = `Período seleccionado: ${qText} de ${mesNombre} ${nominaPeriodoSeleccionado.anio}`;
     label.style.display = 'block';
+    if (title) {
+        title.textContent = `${qText} de ${mesNombre} ${nominaPeriodoSeleccionado.anio}`;
+    }
 }
 
 // Configuración y manejo del modal de selección de período de nómina
@@ -1853,8 +1858,44 @@ function renderNominaMatrizAnual(matriz, errorMessage = '') {
         return;
     }
 
-    if (yearEl) yearEl.value = String(matriz.anio || new Date().getFullYear());
-    if (resumen) resumen.textContent = `${matriz.filas.length} empleados visibles en el tablero ${matriz.anio}`;
+      if (yearEl) yearEl.value = String(matriz.anio || new Date().getFullYear());
+      if (resumen) resumen.textContent = `${matriz.filas.length} empleados visibles en el tablero ${matriz.anio}`;
+
+      if (nominaPeriodoSeleccionado?.anio && nominaPeriodoSeleccionado?.mes && nominaPeriodoSeleccionado?.numero_quincena) {
+          const limite = getNominaMatrizLimiteVisual(
+              Number(nominaPeriodoSeleccionado.mes),
+              Number(nominaPeriodoSeleccionado.numero_quincena),
+              Number(nominaPeriodoSeleccionado.anio)
+          );
+
+          matriz.filas = (matriz.filas || []).map(fila => ({
+              ...fila,
+              celdas: (fila.celdas || []).map((celda, idx) => {
+                  const periodo = matriz.periodos[idx];
+                  if (!periodo) return celda;
+
+                  const actual = [Number(matriz.anio || 0), Number(periodo.mes || 0), Number(periodo.numero_quincena || 0)];
+                  const fueraDeHorizonte =
+                      actual[0] > limite[0] ||
+                      (actual[0] === limite[0] && actual[1] > limite[1]) ||
+                      (actual[0] === limite[0] && actual[1] === limite[1] && actual[2] > limite[2]);
+
+                  if (!fueraDeHorizonte) {
+                      return celda;
+                  }
+
+                  return {
+                      ...celda,
+                      estado: 'BLANK',
+                      texto: '',
+                      titulo: 'Quincena fuera del horizonte visible del tablero',
+                      valor: null,
+                      valor_pagado: 0,
+                      saldo_pendiente: 0
+                  };
+              })
+          }));
+      }
 
     head.innerHTML = `
         <tr>
@@ -1870,7 +1911,19 @@ function renderNominaMatrizAnual(matriz, errorMessage = '') {
         body.innerHTML = `<tr><td colspan="${matriz.periodos.length + 4}" class="loading">No hay empleados con información para ${matriz.anio}.</td></tr>`;
         foot.innerHTML = '';
         return;
+  }
+
+function getNominaMatrizLimiteVisual(mes, numeroQuincena, anio) {
+    if (Number(numeroQuincena) === 1) {
+        return [Number(anio), Number(mes), 2];
     }
+
+    if (Number(mes) === 12) {
+        return [Number(anio) + 1, 1, 1];
+    }
+
+    return [Number(anio), Number(mes) + 1, 1];
+}
 
     body.innerHTML = matriz.filas.map(fila => `
         <tr>
