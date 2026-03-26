@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime, timezone
 
 import click
 from flask_migrate import Migrate
@@ -173,7 +174,32 @@ def register_template_helpers(app):
                 return url_for('static', filename=filename, v=version)
             return url_for('static', filename=filename)
 
-        return {"asset_url": asset_url}
+        def _mtime_token(*parts):
+            path = os.path.join(*parts)
+            try:
+                stamp = os.path.getmtime(path)
+                return datetime.fromtimestamp(stamp, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+            except OSError:
+                return 'N/D'
+
+        commit = (
+            os.environ.get('RAILWAY_GIT_COMMIT_SHA')
+            or os.environ.get('GITHUB_SHA')
+            or os.environ.get('RENDER_GIT_COMMIT')
+            or ''
+        ).strip()
+        commit_short = commit[:7] if commit else 'local'
+
+        build_info = {
+            'commit': commit_short,
+            'ui_dashboard_js': _mtime_token(app.static_folder, 'js', 'dashboard.js'),
+            'api_dashboard_py': _mtime_token(app.root_path, 'routes', 'dashboard.py'),
+        }
+
+        return {
+            "asset_url": asset_url,
+            "build_info": build_info,
+        }
 
 
 def create_app(config_name='development'):
