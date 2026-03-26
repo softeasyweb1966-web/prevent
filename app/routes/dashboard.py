@@ -573,25 +573,24 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
         anio_referencia
     )
     limite_mes, limite_numero, limite_anio = _periodo_siguiente(mes_referencia, numero_referencia, anio_referencia)
-    periodos_config = [
-        (anio_referencia, mes_referencia, numero_referencia),
-        (limite_anio, limite_mes, limite_numero),
-    ]
+    for mes in range(1, 13):
+        for numero_quincena in (1, 2):
+            periodo_actual = (anio, mes, numero_quincena)
+            if periodo_actual > (limite_anio, limite_mes, limite_numero):
+                continue
+            fecha_inicio, fecha_fin = _periodo_quincena(anio, mes, numero_quincena)
+            periodos.append({
+                'key': f'a{anio}_m{mes}_q{numero_quincena}',
+                'anio': anio,
+                'mes': mes,
+                'numero_quincena': numero_quincena,
+                'label': f"{meses[mes]} Q{numero_quincena}",
+                'fecha_inicio': fecha_inicio,
+                'fecha_fin': fecha_fin,
+            })
 
-    for periodo_anio, periodo_mes, periodo_numero in periodos_config:
-        fecha_inicio, fecha_fin = _periodo_quincena(periodo_anio, periodo_mes, periodo_numero)
-        periodos.append({
-            'key': f'a{periodo_anio}_m{periodo_mes}_q{periodo_numero}',
-            'anio': periodo_anio,
-            'mes': periodo_mes,
-            'numero_quincena': periodo_numero,
-            'label': f"{meses[periodo_mes]} Q{periodo_numero}",
-            'fecha_inicio': fecha_inicio,
-            'fecha_fin': fecha_fin,
-        })
-
-    inicio_visible = min(periodo['fecha_inicio'] for periodo in periodos)
-    fin_visible = max(periodo['fecha_fin'] for periodo in periodos)
+    inicio_visible = datetime(anio, 1, 1)
+    fin_visible = max(periodo['fecha_fin'] for periodo in periodos) if periodos else datetime(anio, 12, 31, 23, 59, 59)
 
     empleados = Empleado.query.filter(
         Empleado.fecha_inicio <= fin_visible,
@@ -602,12 +601,7 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
         Empleado.apellidos.asc()
     ).all()
 
-    quincenas = Quincena.query.filter(
-        or_(
-            (Quincena.anio == anio_referencia) & (Quincena.mes == mes_referencia) & (Quincena.numero_quincena == numero_referencia),
-            (Quincena.anio == limite_anio) & (Quincena.mes == limite_mes) & (Quincena.numero_quincena == limite_numero),
-        )
-    ).all()
+    quincenas = Quincena.query.filter_by(anio=anio).all()
     quincenas_por_id = {q.id: q for q in quincenas}
     quincena_ids = [q.id for q in quincenas]
 
@@ -734,7 +728,7 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
         filas.append(fila)
 
     return {
-        'anio': anio_referencia,
+        'anio': anio,
         'referencia': {
             'mes': mes_referencia,
             'numero_quincena': numero_referencia,
