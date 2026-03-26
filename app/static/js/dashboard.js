@@ -99,6 +99,7 @@ async function openNominaQuincenaView() {
                     origen: sugerida.modo || 'sugerida'
                 };
                 actualizarEtiquetaQuincenaSeleccionada();
+                await loadNominaDashboard();
             } else {
                 // No hay información de quincena: pedir Año-Mes-Quincena al usuario
                 abrirModalNominaQuincenaSeleccion();
@@ -148,6 +149,7 @@ function volverInicioNomina() {
     if (panelQuincena) panelQuincena.style.display = 'none';
     // Al volver al inicio restauramos la tabla de empleados
     if (empleadosPanel) empleadosPanel.style.display = '';
+    loadNominaDashboard();
 }
 
 function actualizarEtiquetaQuincenaSeleccionada() {
@@ -201,6 +203,7 @@ function setupNominaQuincenaSeleccion() {
 
         closeNominaQuincenaSeleccion();
         actualizarEtiquetaQuincenaSeleccionada();
+        loadNominaDashboard();
         activarVistaQuincenaNomina();
     });
 }
@@ -830,12 +833,12 @@ async function preliquidarQuincenaSeleccionada() {
             })
         });
 
+        const raw = await response.text();
         let result = null;
         try {
-            result = await response.json();
+            result = raw ? JSON.parse(raw) : {};
         } catch (err) {
-            const text = await response.text();
-            result = { error: text || 'Respuesta inválida del servidor' };
+            result = { error: raw || 'Respuesta inválida del servidor' };
         }
 
         if (response.ok) {
@@ -3325,13 +3328,12 @@ async function liquidarQuincena() {
                 credentials: 'include',
                 body: JSON.stringify({})
             });
+            const raw = await response.text();
             let result = null;
             try {
-                result = await response.json();
+                result = raw ? JSON.parse(raw) : {};
             } catch (err) {
-                // Si no se pudo parsear JSON, intentar obtener texto crudo
-                const text = await response.text();
-                result = { error: text || 'Respuesta inválida del servidor' };
+                result = { error: raw || 'Respuesta inválida del servidor' };
             }
 
             if (response.ok) {
@@ -3397,13 +3399,13 @@ async function liquidarQuincena() {
                 anio: new Date().getFullYear()
             })
         });
-        
+
+        const raw = await response.text();
         let result = null;
         try {
-            result = await response.json();
+            result = raw ? JSON.parse(raw) : {};
         } catch (err) {
-            const text = await response.text();
-            result = { error: text || 'Respuesta inválida del servidor' };
+            result = { error: raw || 'Respuesta inválida del servidor' };
         }
 
         if (response.ok) {
