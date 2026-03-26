@@ -1797,6 +1797,14 @@ function renderEstadoLaboralBadge(estadoLaboral, activo) {
     return `<span class="badge badge-secondary">${escapeHtml(estado)}</span>`;
 }
 
+function getEstadoLaboralVigente(empleado) {
+    if (!empleado) return 'INACTIVO';
+    const estado = String(empleado.estado_laboral || '').trim().toUpperCase();
+    if (estado === 'RETIRADO' || empleado.fecha_retiro) return 'RETIRADO';
+    if (empleado.activo === false) return 'INACTIVO';
+    return estado || 'ACTIVO';
+}
+
 let consultaEmpleadosData = [];
 let areasConfigData = [];
 let cargosConfigData = [];
@@ -1840,7 +1848,7 @@ async function reloadConsultaEmpleados() {
     const resumen = document.getElementById('consultaEmpleadosResumen');
 
     if (tbody) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">Cargando empleados...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">Cargando empleados...</td></tr>';
     }
     if (resumen) resumen.textContent = 'Consultando empleados activos e inactivos...';
 
@@ -1854,7 +1862,7 @@ async function reloadConsultaEmpleados() {
     } catch (error) {
         console.error('Error consultando empleados:', error);
         if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="9" class="loading">Error al cargar empleados</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" class="loading">Error al cargar empleados</td></tr>';
         }
         if (resumen) resumen.textContent = 'No se pudo cargar la consulta de empleados.';
     }
@@ -1870,9 +1878,9 @@ function renderConsultaEmpleados() {
 
     let empleados = [...consultaEmpleadosData];
     if (estado === 'activos') {
-        empleados = empleados.filter(emp => emp.activo);
+        empleados = empleados.filter(emp => getEstadoLaboralVigente(emp) === 'ACTIVO');
     } else if (estado === 'inactivos') {
-        empleados = empleados.filter(emp => !emp.activo);
+        empleados = empleados.filter(emp => getEstadoLaboralVigente(emp) !== 'ACTIVO');
     }
 
     if (search) {
@@ -1890,14 +1898,14 @@ function renderConsultaEmpleados() {
         });
     }
 
-    const activos = empleados.filter(emp => emp.activo).length;
+    const activos = empleados.filter(emp => getEstadoLaboralVigente(emp) === 'ACTIVO').length;
     const inactivos = empleados.length - activos;
     if (resumen) {
         resumen.textContent = `${empleados.length} empleados visibles · ${activos} activos · ${inactivos} inactivos`;
     }
 
     if (empleados.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="loading">No hay empleados que coincidan con la consulta</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">No hay empleados que coincidan con la consulta</td></tr>';
         return;
     }
 
@@ -1909,11 +1917,32 @@ function renderConsultaEmpleados() {
             <td>${emp.forma_pago || 'N/A'}</td>
             <td>${formatCurrency(emp.sueldo_base || 0)}</td>
             <td>${emp.banco || 'N/A'}</td>
-            <td>${renderEstadoLaboralBadge(emp.estado_laboral, emp.activo)}</td>
+            <td>${renderEstadoLaboralBadge(getEstadoLaboralVigente(emp), emp.activo)}</td>
             <td>${emp.fecha_inicio || emp.fecha_ingreso || 'N/A'}</td>
             <td>${emp.fecha_retiro || 'N/A'}</td>
+            <td>
+                <button class="action-btn action-btn-edit" onclick="editEmpleadoFromConsulta(${emp.id})">Editar</button>
+                ${getEstadoLaboralVigente(emp) === 'RETIRADO'
+                    ? `<button class="action-btn" onclick="showReintegrarEmpleadoDesdeConsulta(${emp.id}, ${JSON.stringify(emp.nombre_completo || `${emp.nombres || ''} ${emp.apellidos || ''}`.trim())})">Reintegrar</button>`
+                    : `<button class="action-btn action-btn-delete" onclick="showRetiroEmpleadoDesdeConsulta(${emp.id}, ${JSON.stringify(emp.nombre_completo || `${emp.nombres || ''} ${emp.apellidos || ''}`.trim())})">Retirar</button>`}
+            </td>
         </tr>
     `).join('');
+}
+
+function editEmpleadoFromConsulta(id) {
+    closeConsultarEmpleadosModal();
+    editEmpleado(id);
+}
+
+function showRetiroEmpleadoDesdeConsulta(id, nombre) {
+    closeConsultarEmpleadosModal();
+    showRetiroEmpleadoModal(id, nombre);
+}
+
+function showReintegrarEmpleadoDesdeConsulta(id, nombre) {
+    closeConsultarEmpleadosModal();
+    showReintegrarEmpleadoModal(id, nombre);
 }
 
 async function loadUsuarios() {

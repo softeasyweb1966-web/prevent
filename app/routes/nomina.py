@@ -41,6 +41,15 @@ def _normalize_estado_laboral(activo, estado_laboral=None):
     return 'ACTIVO' if activo else 'INACTIVO'
 
 
+def _estado_laboral_vigente(empleado):
+    estado = (empleado.estado_laboral or '').strip().upper()
+    if estado == 'RETIRADO' or empleado.fecha_retiro:
+        return 'RETIRADO'
+    if not empleado.activo:
+        return 'INACTIVO'
+    return estado or 'ACTIVO'
+
+
 def _serialize_area(area):
     return {
         'id': area.id,
@@ -165,6 +174,7 @@ def get_empleados():
         empleados = query.order_by(Empleado.activo.desc(), Empleado.nombres.asc(), Empleado.apellidos.asc()).all()
         
         datos = [{
+            'estado_laboral': _estado_laboral_vigente(e),
             'id': e.id,
             'cedula': e.nro_documento,
             'nro_documento': e.nro_documento,
@@ -180,7 +190,6 @@ def get_empleados():
             'banco': e.banco,
             'numero_cuenta': e.numero_cuenta,
             'activo': e.activo,
-            'estado_laboral': e.estado_laboral,
             'fecha_inicio': e.fecha_inicio.strftime('%Y-%m-%d'),
             'fecha_ingreso': e.fecha_inicio.strftime('%Y-%m-%d'),
             'fecha_retiro': e.fecha_retiro.strftime('%Y-%m-%d') if e.fecha_retiro else None,
@@ -286,7 +295,7 @@ def get_empleado(empleado_id):
             'fecha_ingreso': empleado.fecha_inicio.strftime('%Y-%m-%d'),
             'fecha_retiro': empleado.fecha_retiro.strftime('%Y-%m-%d') if empleado.fecha_retiro else None,
             'activo': empleado.activo,
-            'estado_laboral': empleado.estado_laboral
+            'estado_laboral': _estado_laboral_vigente(empleado)
         }
         
         return jsonify(datos), 200
