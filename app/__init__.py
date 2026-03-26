@@ -155,6 +155,27 @@ def register_cli_commands(app):
         click.echo("Usuario administrador creado." if created else "Usuario administrador ya existia.")
 
 
+def register_template_helpers(app):
+    """Helpers de plantillas para evitar cache agresivo de archivos estaticos."""
+    from flask import url_for
+
+    @app.context_processor
+    def inject_asset_helpers():
+        def asset_url(filename):
+            static_path = os.path.join(app.static_folder, *filename.split('/'))
+            version = None
+            try:
+                version = int(os.path.getmtime(static_path))
+            except OSError:
+                version = None
+
+            if version is not None:
+                return url_for('static', filename=filename, v=version)
+            return url_for('static', filename=filename)
+
+        return {"asset_url": asset_url}
+
+
 def create_app(config_name='development'):
     """Factory function para crear la aplicacion Flask."""
     from flask import Flask
@@ -192,6 +213,7 @@ def create_app(config_name='development'):
 
     register_shell_context(app)
     register_cli_commands(app)
+    register_template_helpers(app)
     register_blueprints(app)
 
     with app.app_context():

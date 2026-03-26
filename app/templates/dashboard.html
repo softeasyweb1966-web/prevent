@@ -2887,9 +2887,9 @@
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
-<script src="{{ url_for('static', filename='js/servicios.js') }}"></script>
-<script src="{{ url_for('static', filename='js/prestamos.js') }}"></script>
+<script src="{{ asset_url('js/dashboard.js') }}"></script>
+<script src="{{ asset_url('js/servicios.js') }}"></script>
+<script src="{{ asset_url('js/prestamos.js') }}"></script>
 <script>
 // Auto-load services list when serviciosView is active (debug helper)
 document.addEventListener('DOMContentLoaded', function(){
