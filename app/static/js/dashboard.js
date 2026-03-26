@@ -216,7 +216,7 @@ function volverInicioNomina() {
     loadNominaDashboard();
 }
 
-function actualizarEtiquetaQuincenaSeleccionada() {
+function __legacy_actualizarEtiquetaQuincenaSeleccionada() {
     const label = document.getElementById('nominaQuincenaSeleccionadaLabel');
     const title = document.getElementById('nominaQuincenaActualTitle');
     const periodoActivo = getNominaPeriodoActivo();
@@ -1902,7 +1902,7 @@ function formatCurrencyCompact(value) {
     return formatCurrency(amount);
 }
 
-function renderNominaMatrizAnual(matriz, errorMessage = '') {
+function __legacy_renderNominaMatrizAnual(matriz, errorMessage = '') {
     const head = document.getElementById('nominaMatrizHead');
     const body = document.getElementById('nominaMatrizBody');
     const foot = document.getElementById('nominaMatrizFoot');
@@ -1982,7 +1982,7 @@ function renderNominaMatrizAnual(matriz, errorMessage = '') {
         return;
   }
 
-function getNominaMatrizLimiteVisual(mes, numeroQuincena, anio) {
+function __legacy_getNominaMatrizLimiteVisual(mes, numeroQuincena, anio) {
     if (Number(numeroQuincena) === 1) {
         return [Number(anio), Number(mes), 2];
     }
