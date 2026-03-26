@@ -68,6 +68,15 @@ def _periodo_siguiente(mes, numero_quincena, anio):
     return mes + 1, 1, anio
 
 
+def _nombre_quincena(mes, numero_quincena, anio):
+    meses = {
+        1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
+        7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+    }
+    prefijo = '1a Quincena' if numero_quincena == 1 else '2a Quincena'
+    return f"{prefijo} de {meses.get(mes, mes)} {anio}"
+
+
 def _construir_quincena_virtual(mes, numero_quincena, anio, procesada=False, pagos_finalizados=False):
     fecha_inicio, fecha_fin = _periodo_quincena(anio, mes, numero_quincena)
     quincena = Quincena(
@@ -564,34 +573,41 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
         anio_referencia
     )
     limite_mes, limite_numero, limite_anio = _periodo_siguiente(mes_referencia, numero_referencia, anio_referencia)
+    periodos_config = [
+        (anio_referencia, mes_referencia, numero_referencia),
+        (limite_anio, limite_mes, limite_numero),
+    ]
 
-    for mes in range(1, 13):
-        for numero_quincena in (1, 2):
-            if (anio, mes, numero_quincena) > (limite_anio, limite_mes, limite_numero):
-                continue
-            fecha_inicio, fecha_fin = _periodo_quincena(anio, mes, numero_quincena)
-            periodos.append({
-                'key': f'm{mes}_q{numero_quincena}',
-                'mes': mes,
-                'numero_quincena': numero_quincena,
-                'label': f"{meses[mes]} Q{numero_quincena}",
-                'fecha_inicio': fecha_inicio,
-                'fecha_fin': fecha_fin,
-            })
+    for periodo_anio, periodo_mes, periodo_numero in periodos_config:
+        fecha_inicio, fecha_fin = _periodo_quincena(periodo_anio, periodo_mes, periodo_numero)
+        periodos.append({
+            'key': f'a{periodo_anio}_m{periodo_mes}_q{periodo_numero}',
+            'anio': periodo_anio,
+            'mes': periodo_mes,
+            'numero_quincena': periodo_numero,
+            'label': f"{meses[periodo_mes]} Q{periodo_numero}",
+            'fecha_inicio': fecha_inicio,
+            'fecha_fin': fecha_fin,
+        })
 
-    inicio_anio = datetime(anio, 1, 1)
-    fin_anio = datetime(anio, 12, 31, 23, 59, 59)
+    inicio_visible = min(periodo['fecha_inicio'] for periodo in periodos)
+    fin_visible = max(periodo['fecha_fin'] for periodo in periodos)
 
     empleados = Empleado.query.filter(
-        Empleado.fecha_inicio <= fin_anio,
-        or_(Empleado.fecha_retiro.is_(None), Empleado.fecha_retiro >= inicio_anio)
+        Empleado.fecha_inicio <= fin_visible,
+        or_(Empleado.fecha_retiro.is_(None), Empleado.fecha_retiro >= inicio_visible)
     ).order_by(
         Empleado.activo.desc(),
         Empleado.nombres.asc(),
         Empleado.apellidos.asc()
     ).all()
 
-    quincenas = Quincena.query.filter_by(anio=anio).all()
+    quincenas = Quincena.query.filter(
+        or_(
+            (Quincena.anio == anio_referencia) & (Quincena.mes == mes_referencia) & (Quincena.numero_quincena == numero_referencia),
+            (Quincena.anio == limite_anio) & (Quincena.mes == limite_mes) & (Quincena.numero_quincena == limite_numero),
+        )
+    ).all()
     quincenas_por_id = {q.id: q for q in quincenas}
     quincena_ids = [q.id for q in quincenas]
 
@@ -718,20 +734,23 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
         filas.append(fila)
 
     return {
-        'anio': anio,
+        'anio': anio_referencia,
         'referencia': {
             'mes': mes_referencia,
             'numero_quincena': numero_referencia,
             'anio': anio_referencia,
+            'nombre': _nombre_quincena(mes_referencia, numero_referencia, anio_referencia),
         },
         'limite_visible': {
             'mes': limite_mes,
             'numero_quincena': limite_numero,
             'anio': limite_anio,
+            'nombre': _nombre_quincena(limite_mes, limite_numero, limite_anio),
         },
         'periodos': [
             {
                 'key': periodo['key'],
+                'anio': periodo['anio'],
                 'mes': periodo['mes'],
                 'numero_quincena': periodo['numero_quincena'],
                 'label': periodo['label'],
@@ -903,6 +922,7 @@ def dashboard_nomina():
                 'mes': quincena_actual.mes if quincena_actual else None,
                 'numero_quincena': quincena_actual.numero_quincena if quincena_actual else None,
                 'anio': quincena_actual.anio if quincena_actual else None,
+                'nombre': _nombre_quincena(quincena_actual.mes, quincena_actual.numero_quincena, quincena_actual.anio) if quincena_actual else None,
                 'fecha_inicio': quincena_actual.fecha_inicio.strftime('%Y-%m-%d') if quincena_actual else None,
                 'fecha_fin': quincena_actual.fecha_fin.strftime('%Y-%m-%d') if quincena_actual else None,
                 'procesada': quincena_actual.procesada if quincena_actual else False,

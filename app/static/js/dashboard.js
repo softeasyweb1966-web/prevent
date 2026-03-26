@@ -1908,7 +1908,8 @@ async function loadNominaDashboard(options = {}) {
                     fecha_fin: backendCoincideSeleccion ? quincenaBackend.fecha_fin : null,
                     procesada: backendCoincideSeleccion ? quincenaBackend.procesada : false,
                     pagos_finalizados: backendCoincideSeleccion ? quincenaBackend.pagos_finalizados : false,
-                    modo: backendCoincideSeleccion ? quincenaBackend.modo : 'seleccionada'
+                    modo: backendCoincideSeleccion ? quincenaBackend.modo : 'seleccionada',
+                    nombre: backendCoincideSeleccion ? quincenaBackend.nombre : null
                 }
                 : quincenaBackend;
               if (q.mes && q.numero_quincena && q.anio) {
@@ -1931,9 +1932,9 @@ async function loadNominaDashboard(options = {}) {
                   }
                   const rango = q.fecha_inicio && q.fecha_fin ? ` (${q.fecha_inicio} a ${q.fecha_fin})` : '';
                   if (quinTitleEl) {
-                      quinTitleEl.textContent = `${quincenaLabelTitulo} de ${mesNombre} ${q.anio}`;
+                      quinTitleEl.textContent = q.nombre || `${quincenaLabelTitulo} de ${mesNombre} ${q.anio}`;
                   }
-                  quinEl.textContent = `${q.mes}/${q.anio} - ${quincenaLabel}${rango} - ${estado}`;
+                  quinEl.textContent = `${q.nombre || quincenaLabel}${rango} - ${estado}`;
               } else {
                   if (quinTitleEl) {
                       quinTitleEl.textContent = 'Quincena en proceso';
