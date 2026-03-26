@@ -1893,7 +1893,8 @@ async function loadNominaDashboard() {
                     fecha_inicio: backendCoincideSeleccion ? quincenaBackend.fecha_inicio : null,
                     fecha_fin: backendCoincideSeleccion ? quincenaBackend.fecha_fin : null,
                     procesada: backendCoincideSeleccion ? quincenaBackend.procesada : false,
-                    pagos_finalizados: backendCoincideSeleccion ? quincenaBackend.pagos_finalizados : false
+                    pagos_finalizados: backendCoincideSeleccion ? quincenaBackend.pagos_finalizados : false,
+                    modo: backendCoincideSeleccion ? quincenaBackend.modo : 'seleccionada'
                 }
                 : quincenaBackend;
               if (q.mes && q.numero_quincena && q.anio) {
@@ -1902,7 +1903,18 @@ async function loadNominaDashboard() {
                   const mesesTexto = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
                       'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
                   const mesNombre = mesesTexto[Number(q.mes)] || q.mes;
-                  const estado = q.pagos_finalizados ? 'FINALIZADA' : (q.procesada ? 'EN PROCESO' : 'PENDIENTE');
+                  let estado = 'PENDIENTE';
+                  if (q.pagos_finalizados) {
+                      estado = 'FINALIZADA';
+                  } else if (q.procesada) {
+                      estado = 'EN PROCESO';
+                  } else if (q.modo === 'siguiente') {
+                      estado = 'SIGUIENTE SUGERIDA';
+                  } else if (q.modo === 'seleccionada') {
+                      estado = 'SELECCIONADA';
+                  } else if (q.modo === 'calendario') {
+                      estado = 'ACTUAL';
+                  }
                   const rango = q.fecha_inicio && q.fecha_fin ? ` (${q.fecha_inicio} a ${q.fecha_fin})` : '';
                   if (quinTitleEl) {
                       quinTitleEl.textContent = `${quincenaLabelTitulo} de ${mesNombre} ${q.anio}`;

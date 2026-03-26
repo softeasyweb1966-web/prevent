@@ -68,6 +68,27 @@ def _periodo_siguiente(mes, numero_quincena, anio):
     return mes + 1, 1, anio
 
 
+def _construir_quincena_virtual(mes, numero_quincena, anio, procesada=False, pagos_finalizados=False):
+    fecha_inicio, fecha_fin = _periodo_quincena(anio, mes, numero_quincena)
+    quincena = Quincena(
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin,
+        mes=mes,
+        numero_quincena=numero_quincena,
+        anio=anio,
+        procesada=procesada,
+        pagos_finalizados=pagos_finalizados,
+    )
+    return quincena
+
+
+def _marcar_quincena_dashboard(quincena, modo):
+    if quincena is None:
+        return None
+    quincena.dashboard_modo = modo
+    return quincena
+
+
 def _periodo_mensual(anio, mes):
     ultimo_dia = calendar.monthrange(anio, mes)[1]
     return (
@@ -471,7 +492,11 @@ def _obtener_quincena_dashboard_actual(hoy, mes=None, numero_quincena=None, anio
             anio=anio
         ).first()
         if quincena:
-            return quincena
+            return _marcar_quincena_dashboard(quincena, 'seleccionada')
+        return _marcar_quincena_dashboard(
+            _construir_quincena_virtual(mes, numero_quincena, anio),
+            'seleccionada'
+        )
 
     quincena = Quincena.query.filter(
         Quincena.procesada == True,
@@ -483,14 +508,46 @@ def _obtener_quincena_dashboard_actual(hoy, mes=None, numero_quincena=None, anio
     ).first()
 
     if quincena:
-        return quincena
+        return _marcar_quincena_dashboard(quincena, 'en_proceso')
+
+    ultima_finalizada = Quincena.query.filter(
+        Quincena.pagos_finalizados == True
+    ).order_by(
+        Quincena.anio.desc(),
+        Quincena.mes.desc(),
+        Quincena.numero_quincena.desc()
+    ).first()
+
+    if ultima_finalizada:
+        sig_mes, sig_numero, sig_anio = _periodo_siguiente(
+            ultima_finalizada.mes,
+            ultima_finalizada.numero_quincena,
+            ultima_finalizada.anio
+        )
+        quincena = Quincena.query.filter_by(
+            mes=sig_mes,
+            numero_quincena=sig_numero,
+            anio=sig_anio
+        ).first()
+        if quincena:
+            return _marcar_quincena_dashboard(quincena, 'siguiente')
+        return _marcar_quincena_dashboard(
+            _construir_quincena_virtual(sig_mes, sig_numero, sig_anio),
+            'siguiente'
+        )
 
     mes, numero_quincena, anio = _quincena_referencia_dashboard(hoy, mes, numero_quincena, anio)
-    return Quincena.query.filter_by(
+    quincena = Quincena.query.filter_by(
         mes=mes,
         numero_quincena=numero_quincena,
         anio=anio
     ).first()
+    if quincena:
+        return _marcar_quincena_dashboard(quincena, 'calendario')
+    return _marcar_quincena_dashboard(
+        _construir_quincena_virtual(mes, numero_quincena, anio),
+        'calendario'
+    )
 
 
 def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None, anio_referencia=None):
@@ -510,6 +567,8 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
 
     for mes in range(1, 13):
         for numero_quincena in (1, 2):
+            if (anio, mes, numero_quincena) > (limite_anio, limite_mes, limite_numero):
+                continue
             fecha_inicio, fecha_fin = _periodo_quincena(anio, mes, numero_quincena)
             periodos.append({
                 'key': f'm{mes}_q{numero_quincena}',
@@ -605,9 +664,6 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
             }
 
             if not aplica:
-                if (anio, periodo['mes'], periodo['numero_quincena']) > (limite_anio, limite_mes, limite_numero):
-                    fila['celdas'].append(celda)
-                    continue
                 if modo == 'NA':
                     celda['estado'] = 'NA'
                     celda['texto'] = 'NA'
@@ -617,11 +673,7 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
 
             liquido = liquidos_por_periodo.get((empleado.id, periodo['mes'], periodo['numero_quincena']))
             if not liquido:
-                if (anio, periodo['mes'], periodo['numero_quincena']) > (limite_anio, limite_mes, limite_numero):
-                    celda['estado'] = 'BLANK'
-                    celda['texto'] = ''
-                    celda['titulo'] = 'Quincena fuera del horizonte visible del tablero'
-                elif periodo['fecha_fin'].date() < hoy.date():
+                if periodo['fecha_fin'].date() < hoy.date():
                     celda['estado'] = 'PENDING'
                     celda['texto'] = 'Pend.'
                     celda['titulo'] = 'Quincena vencida sin liquidacion o pago registrado'
@@ -667,6 +719,16 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
 
     return {
         'anio': anio,
+        'referencia': {
+            'mes': mes_referencia,
+            'numero_quincena': numero_referencia,
+            'anio': anio_referencia,
+        },
+        'limite_visible': {
+            'mes': limite_mes,
+            'numero_quincena': limite_numero,
+            'anio': limite_anio,
+        },
         'periodos': [
             {
                 'key': periodo['key'],
@@ -844,7 +906,8 @@ def dashboard_nomina():
                 'fecha_inicio': quincena_actual.fecha_inicio.strftime('%Y-%m-%d') if quincena_actual else None,
                 'fecha_fin': quincena_actual.fecha_fin.strftime('%Y-%m-%d') if quincena_actual else None,
                 'procesada': quincena_actual.procesada if quincena_actual else False,
-                'pagos_finalizados': quincena_actual.pagos_finalizados if quincena_actual else False
+                'pagos_finalizados': quincena_actual.pagos_finalizados if quincena_actual else False,
+                'modo': getattr(quincena_actual, 'dashboard_modo', None),
             }
         }
         
