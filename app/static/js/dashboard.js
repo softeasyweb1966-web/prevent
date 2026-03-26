@@ -842,14 +842,89 @@ async function preliquidarQuincenaSeleccionada() {
         }
 
         if (response.ok) {
-            procesarResultadoLiquidacion(result);
+            const resultadoNormalizado = await expandirResultadoLiquidacion(result);
+            procesarResultadoLiquidacion(resultadoNormalizado);
         } else {
             showError(result.error || 'Error al liquidar quincena');
         }
     } catch (error) {
         console.error('Error al pre-liquidar quincena seleccionada:', error);
-        showError('Error de conexión al liquidar quincena');
+        showError(error.message || 'Error de conexión al liquidar quincena');
     }
+}
+
+async function expandirResultadoLiquidacion(result) {
+    if (Array.isArray(result?.liquidaciones)) {
+        return result;
+    }
+
+    if (!result?.mes || !result?.numero_quincena || !result?.anio) {
+        return result;
+    }
+
+    const params = new URLSearchParams({
+        mes: String(result.mes),
+        numero_quincena: String(result.numero_quincena),
+        anio: String(result.anio)
+    });
+
+    const liquidacionesResponse = await fetch(`/api/nomina/liquidaciones/pendientes?${params.toString()}`, {
+        credentials: 'include'
+    });
+    const liquidacionesRaw = await liquidacionesResponse.json();
+
+    if (!liquidacionesResponse.ok) {
+        throw new Error(liquidacionesRaw.error || 'No se pudo cargar la liquidación existente');
+    }
+
+    const empleadosResponse = await fetch('/api/nomina/empleados?activos=false', {
+        credentials: 'include'
+    });
+    const empleadosRaw = await empleadosResponse.json();
+
+    if (!empleadosResponse.ok) {
+        throw new Error(empleadosRaw.error || 'No se pudo cargar el catálogo de empleados');
+    }
+
+    const empleadosMap = {};
+    (empleadosRaw || []).forEach(emp => {
+        empleadosMap[emp.id] = emp;
+    });
+
+    const liquidaciones = (liquidacionesRaw || []).map(liq => {
+        const empleado = empleadosMap[liq.empleado_id] || {};
+        const sueldoQuincena = Number(liq.sueldo_quincena || 0);
+        const totalIngresos = Number(liq.total_ingresos || 0);
+
+        return {
+            empleado_id: liq.empleado_id,
+            nro_documento: liq.nro_documento,
+            nombre: liq.empleado_nombre || empleado.nombre_completo || 'Empleado',
+            cargo: liq.cargo || empleado.cargo || '',
+            sueldo_base: Number(empleado.sueldo_base || 0),
+            sueldo_quincena: sueldoQuincena,
+            saldo_anterior: Number(liq.saldo_anterior || 0),
+            ingresos_extra: Math.max(0, totalIngresos - sueldoQuincena),
+            pension: Number(liq.pension || 0),
+            salud: Number(liq.salud || 0),
+            caja_compensacion: Number(liq.caja_compensacion || 0),
+            deducciones_otras: Number(liq.deducciones_otras || 0),
+            anticipos: Number(liq.anticipos || 0),
+            prestamos: Number(liq.prestamos || 0),
+            total_ingresos: totalIngresos,
+            total_deducciones: Number(liq.total_deducciones || 0),
+            total_a_pagar: Number(liq.total_a_pagar || 0),
+            novedades_aplicadas: [],
+            liquido_id: liq.liquido_id
+        };
+    });
+
+    return {
+        ...result,
+        total_empleados: liquidaciones.length,
+        total_a_pagar_todos: liquidaciones.reduce((acc, item) => acc + Number(item.total_a_pagar || 0), 0),
+        liquidaciones
+    };
 }
 
 function focusNominaPreLiquidacion() {
@@ -3337,7 +3412,8 @@ async function liquidarQuincena() {
             }
 
             if (response.ok) {
-                procesarResultadoLiquidacion(result);
+                const resultadoNormalizado = await expandirResultadoLiquidacion(result);
+                procesarResultadoLiquidacion(resultadoNormalizado);
                 return;
             }
 
@@ -3345,7 +3421,7 @@ async function liquidarQuincena() {
             return;
         } catch (error) {
             console.error('Error al liquidar quincena automáticamente:', error);
-            showError('Error de conexión al liquidar quincena');
+            showError(error.message || 'Error de conexión al liquidar quincena');
             return;
         }
     }
@@ -3409,13 +3485,14 @@ async function liquidarQuincena() {
         }
 
         if (response.ok) {
-            procesarResultadoLiquidacion(result);
+            const resultadoNormalizado = await expandirResultadoLiquidacion(result);
+            procesarResultadoLiquidacion(resultadoNormalizado);
         } else {
             showError(result.error || 'Error al liquidar quincena');
         }
     } catch (error) {
         console.error('Error:', error);
-        showError('Error de conexión al liquidar quincena');
+        showError(error.message || 'Error de conexión al liquidar quincena');
     }
 }
 
@@ -3427,6 +3504,11 @@ function procesarResultadoLiquidacion(result) {
 }
 
 function mostrarResultadosLiquidacion(data) {
+    if (!data || !Array.isArray(data.liquidaciones)) {
+        showError('La liquidación no devolvió el detalle esperado de empleados.');
+        return;
+    }
+
     // Mostrar información general
     const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
                    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
