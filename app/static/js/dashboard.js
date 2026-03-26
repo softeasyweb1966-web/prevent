@@ -390,18 +390,47 @@ function scrollToModuleSection(elementId) {
     target.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+function focusModuleSection(elementId) {
+    const target = document.getElementById(elementId);
+    if (!target) return;
+
+    const scrollTarget = target.closest('.table-container, .content-area, .recent-section, .module-header') || target;
+    scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (typeof scrollTarget.classList !== 'undefined') {
+        scrollTarget.classList.add('section-highlight');
+        window.setTimeout(() => scrollTarget.classList.remove('section-highlight'), 1400);
+    }
+}
+
 function consultarServicios() {
+    const panelMes = document.getElementById('serviciosMesPanel');
+    const homeHeader = document.getElementById('serviciosHomeHeader');
+    const catalogo = document.getElementById('serviciosCatalogo');
+    const resultados = document.getElementById('serviciosLiquidacionResultados');
+
+    if (panelMes) panelMes.style.display = 'none';
+    if (homeHeader) homeHeader.style.display = '';
+    if (catalogo) catalogo.style.display = '';
+    if (resultados) resultados.style.display = 'none';
+
     if (typeof loadServicesList === 'function') {
         loadServicesList();
     }
-    scrollToModuleSection('serviciosCatalogo');
+
+    window.setTimeout(() => focusModuleSection('serviciosCatalogo'), 120);
 }
 
 function consultarBancos() {
+    const panelMes = document.getElementById('bancosMesPanel');
+    const homeHeader = document.getElementById('bancosHomeHeader');
+    if (panelMes) panelMes.style.display = 'none';
+    if (homeHeader) homeHeader.style.display = '';
+
     if (typeof loadPrestamosResumen === 'function') {
         loadPrestamosResumen();
     }
-    scrollToModuleSection('prestamosTable');
+
+    window.setTimeout(() => focusModuleSection('prestamosTable'), 120);
 }
 
 function toggleImpuestosMesPanel() {

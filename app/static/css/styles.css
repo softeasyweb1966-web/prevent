@@ -1032,3 +1032,18 @@ body {
 .nomina-matriz-total-label {
     text-align: left !important;
 }
+
+.section-highlight {
+    animation: sectionPulse 1.2s ease;
+}
+
+@keyframes sectionPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.25);
+        background-color: rgba(219, 234, 254, 0.9);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+        background-color: transparent;
+    }
+}
