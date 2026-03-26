@@ -5,6 +5,7 @@ let empleadosList = [];
 let tiposNovedadList = [];
 // Contexto actual de período de nómina seleccionado (año/mes/quincena)
 let nominaPeriodoSeleccionado = null;
+let nominaDashboardRequestSeq = 0;
 // Contexto de período actual por módulo (Mes/Año)
 window._bancosPeriodoActual = window._bancosPeriodoActual || null;
 window._comisionesPeriodoActual = window._comisionesPeriodoActual || null;
@@ -1661,12 +1662,14 @@ async function loadModuleDashboardData(moduleName, container) {
 
 // Dashboard específico del módulo de Nómina
 async function loadNominaDashboard() {
-    const totalEmpEl = document.getElementById('nominaTotalEmpleados');
-    const planillaEl = document.getElementById('nominaEmpleadosPlanilla');
-    const pagadaMesEl = document.getElementById('nominaPagadaMes');
-    const pendienteEl = document.getElementById('nominaPendientePagar');
-    const quinEl = document.getElementById('nominaQuincenaActual');
-    const matrizYearEl = document.getElementById('nominaMatrizAnio');
+    const requestSeq = ++nominaDashboardRequestSeq;
+      const totalEmpEl = document.getElementById('nominaTotalEmpleados');
+      const planillaEl = document.getElementById('nominaEmpleadosPlanilla');
+      const pagadaMesEl = document.getElementById('nominaPagadaMes');
+      const pendienteEl = document.getElementById('nominaPendientePagar');
+      const quinEl = document.getElementById('nominaQuincenaActual');
+      const quinTitleEl = document.getElementById('nominaQuincenaActualTitle');
+      const matrizYearEl = document.getElementById('nominaMatrizAnio');
 
     const q1TotalEl = document.getElementById('nominaQ1Total');
     const q1PagadoEl = document.getElementById('nominaQ1Pagado');
@@ -1693,14 +1696,18 @@ async function loadNominaDashboard() {
         quinEl.textContent = 'Cargando información de quincena...';
     }
 
-    try {
-        const resp = await fetch(`/api/dashboard/nomina?${params.toString()}`, { credentials: 'include' });
-        if (!resp.ok) {
-            throw new Error('No se pudo cargar el dashboard de nómina');
-        }
-        const data = await resp.json();
+      try {
+          const resp = await fetch(`/api/dashboard/nomina?${params.toString()}`, { credentials: 'include' });
+          if (!resp.ok) {
+              throw new Error('No se pudo cargar el dashboard de nómina');
+          }
+          const data = await resp.json();
 
-        if (totalEmpEl) totalEmpEl.textContent = data.total_empleados != null ? data.total_empleados : '-';
+          if (requestSeq !== nominaDashboardRequestSeq) {
+              return;
+          }
+
+          if (totalEmpEl) totalEmpEl.textContent = data.total_empleados != null ? data.total_empleados : '-';
         if (planillaEl) planillaEl.textContent = data.empleados_planilla != null ? data.empleados_planilla : '-';
         if (pagadaMesEl) pagadaMesEl.textContent = typeof formatCurrency === 'function'
             ? formatCurrency(data.nomina_pagada_mes || 0)
@@ -1747,9 +1754,9 @@ async function loadNominaDashboard() {
 
         renderNominaMatrizAnual(data.matriz_anual);
 
-        if (quinEl) {
-            const quincenaBackend = data.quincena_actual || {};
-            const backendCoincideSeleccion =
+          if (quinEl) {
+              const quincenaBackend = data.quincena_actual || {};
+              const backendCoincideSeleccion =
                 nominaPeriodoSeleccionado?.mes &&
                 nominaPeriodoSeleccionado?.numero_quincena &&
                 nominaPeriodoSeleccionado?.anio &&
@@ -1768,18 +1775,32 @@ async function loadNominaDashboard() {
                     pagos_finalizados: backendCoincideSeleccion ? quincenaBackend.pagos_finalizados : false
                 }
                 : quincenaBackend;
-            if (q.mes && q.numero_quincena && q.anio) {
-                const quincenaLabel = q.numero_quincena === 1 ? '1ª quincena' : '2ª quincena';
-                const estado = q.pagos_finalizados ? 'FINALIZADA' : (q.procesada ? 'EN PROCESO' : 'PENDIENTE');
-                const rango = q.fecha_inicio && q.fecha_fin ? ` (${q.fecha_inicio} a ${q.fecha_fin})` : '';
-                quinEl.textContent = `${q.mes}/${q.anio} - ${quincenaLabel}${rango} - ${estado}`;
-            } else {
-                quinEl.textContent = 'No hay quincena en proceso registrada.';
-            }
-        }
-    } catch (err) {
-        console.error('Error cargando dashboard de nómina', err);
-        if (quinEl) quinEl.textContent = 'No se pudo cargar el estado de la quincena.';
+              if (q.mes && q.numero_quincena && q.anio) {
+                  const quincenaLabel = q.numero_quincena === 1 ? '1ª quincena' : '2ª quincena';
+                  const quincenaLabelTitulo = q.numero_quincena === 1 ? '1ª Quincena' : '2ª Quincena';
+                  const mesesTexto = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+                  const mesNombre = mesesTexto[Number(q.mes)] || q.mes;
+                  const estado = q.pagos_finalizados ? 'FINALIZADA' : (q.procesada ? 'EN PROCESO' : 'PENDIENTE');
+                  const rango = q.fecha_inicio && q.fecha_fin ? ` (${q.fecha_inicio} a ${q.fecha_fin})` : '';
+                  if (quinTitleEl) {
+                      quinTitleEl.textContent = `${quincenaLabelTitulo} de ${mesNombre} ${q.anio}`;
+                  }
+                  quinEl.textContent = `${q.mes}/${q.anio} - ${quincenaLabel}${rango} - ${estado}`;
+              } else {
+                  if (quinTitleEl) {
+                      quinTitleEl.textContent = 'Quincena en proceso';
+                  }
+                  quinEl.textContent = 'No hay quincena en proceso registrada.';
+              }
+          }
+      } catch (err) {
+          console.error('Error cargando dashboard de nómina', err);
+          if (requestSeq !== nominaDashboardRequestSeq) {
+              return;
+          }
+          if (quinTitleEl) quinTitleEl.textContent = 'Quincena en proceso';
+          if (quinEl) quinEl.textContent = 'No se pudo cargar el estado de la quincena.';
         if (totalEmpEl) totalEmpEl.textContent = '-';
         if (planillaEl) planillaEl.textContent = '-';
         if (pagadaMesEl) pagadaMesEl.textContent = '-';
@@ -1791,9 +1812,9 @@ async function loadNominaDashboard() {
         if (q2PagadoEl) q2PagadoEl.textContent = '-';
         if (q2SaldoEl) q2SaldoEl.textContent = '-';
         if (totalMesEl) totalMesEl.textContent = '-';
-        renderNominaMatrizAnual(null, err.message);
-    }
-}
+          renderNominaMatrizAnual(null, err.message);
+      }
+  }
 
 function formatCurrencyCompact(value) {
     const amount = Number(value || 0);
