@@ -9,6 +9,7 @@ let nominaDashboardRequestSeq = 0;
 // Contexto de período actual por módulo (Mes/Año)
 window._nominaMatrixContext = window._nominaMatrixContext || null;
 window._bancosPeriodoActual = window._bancosPeriodoActual || null;
+window._comercialPeriodoActual = window._comercialPeriodoActual || null;
 window._comisionesPeriodoActual = window._comisionesPeriodoActual || null;
 window._impuestosPeriodoActual = window._impuestosPeriodoActual || null;
 window._comprasPeriodoActual = window._comprasPeriodoActual || null;
@@ -95,21 +96,23 @@ function getNominaPeriodoActivo() {
     window._bancosPeriodoActual = window._bancosPeriodoActual || null;
 })();
 
-(function initComisionesPeriodoFromStorage() {
+(function initComercialPeriodoFromStorage() {
     try {
-        if (!window._comisionesPeriodoActual && window.localStorage) {
-            const raw = localStorage.getItem('comisionesPeriodoActual');
+        if (!window._comercialPeriodoActual && window.localStorage) {
+            const raw = localStorage.getItem('comercialPeriodoActual') || localStorage.getItem('comisionesPeriodoActual');
             if (raw) {
                 const parsed = JSON.parse(raw);
                 if (parsed && typeof parsed.mes === 'number' && typeof parsed.anio === 'number') {
+                    window._comercialPeriodoActual = parsed;
                     window._comisionesPeriodoActual = parsed;
                 }
             }
         }
     } catch (e) {
-        console.warn('No se pudo recuperar periodo de comisiones desde localStorage', e);
+        console.warn('No se pudo recuperar periodo comercial desde localStorage', e);
     }
-    window._comisionesPeriodoActual = window._comisionesPeriodoActual || null;
+    window._comercialPeriodoActual = window._comercialPeriodoActual || null;
+    window._comisionesPeriodoActual = window._comercialPeriodoActual;
 })();
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -380,15 +383,15 @@ function toggleBancosMesPanel() {
     }
 }
 
-function toggleComisionesMesPanel() {
-    const panel = document.getElementById('comisionesMesPanel');
+function toggleComercialMesPanel() {
+    const panel = document.getElementById('comercialMesPanel');
     if (!panel) return;
 
-    const homeHeader = document.getElementById('comisionesHomeHeader');
+    const homeHeader = document.getElementById('comercialHomeHeader');
     const isVisible = panel.style.display === 'block';
-    if (!isVisible && !window._comisionesPeriodoActual) {
-        if (typeof openComisionesPeriodoSeleccion === 'function') {
-            openComisionesPeriodoSeleccion();
+    if (!isVisible && !window._comercialPeriodoActual) {
+        if (typeof openComercialPeriodoSeleccion === 'function') {
+            openComercialPeriodoSeleccion();
             return;
         }
     }
@@ -397,6 +400,10 @@ function toggleComisionesMesPanel() {
     if (homeHeader) {
         homeHeader.style.display = isVisible ? '' : 'none';
     }
+}
+
+function toggleComisionesMesPanel() {
+    toggleComercialMesPanel();
 }
 
 function scrollToModuleSection(elementId) {
@@ -563,38 +570,40 @@ function setupModulosPeriodoActual() {
         }
     }
 
-    // Comisiones
-    const formComisiones = document.getElementById('comisionesPeriodoSeleccionForm');
-    if (formComisiones && !formComisiones.dataset.bound) {
-        const yearInput = document.getElementById('comisiones_periodo_anio');
+    // Comercial
+    const formComercial = document.getElementById('comercialPeriodoSeleccionForm');
+    if (formComercial && !formComercial.dataset.bound) {
+        const yearInput = document.getElementById('comercial_periodo_anio');
         if (yearInput && !yearInput.value) yearInput.value = now.getFullYear();
 
-        formComisiones.addEventListener('submit', (e) => {
+        formComercial.addEventListener('submit', (e) => {
             e.preventDefault();
-            const anio = parseInt(document.getElementById('comisiones_periodo_anio').value, 10);
-            const mes = parseInt(document.getElementById('comisiones_periodo_mes').value, 10);
+            const anio = parseInt(document.getElementById('comercial_periodo_anio').value, 10);
+            const mes = parseInt(document.getElementById('comercial_periodo_mes').value, 10);
             if (!anio || !mes) {
                 showError('Debe seleccionar mes y año para Comisiones.');
                 return;
             }
-            window._comisionesPeriodoActual = { mes, anio };
+            window._comercialPeriodoActual = { mes, anio };
+            window._comisionesPeriodoActual = window._comercialPeriodoActual;
             try {
                 if (window.localStorage) {
-                    localStorage.setItem('comisionesPeriodoActual', JSON.stringify(window._comisionesPeriodoActual));
+                    localStorage.setItem('comercialPeriodoActual', JSON.stringify(window._comercialPeriodoActual));
                 }
             } catch (storageError) {
                 console.warn('No se pudo guardar periodo de comisiones', storageError);
             }
-            actualizarEtiquetaComisionesPeriodo();
-            closeComisionesPeriodoSeleccion();
+            actualizarEtiquetaComercialPeriodo();
+            closeComercialPeriodoSeleccion();
+            loadComercialDashboard();
 
-            const panel = document.getElementById('comisionesMesPanel');
-            const homeHeader = document.getElementById('comisionesHomeHeader');
+            const panel = document.getElementById('comercialMesPanel');
+            const homeHeader = document.getElementById('comercialHomeHeader');
             if (panel) panel.style.display = 'block';
             if (homeHeader) homeHeader.style.display = 'none';
         });
-        formComisiones.dataset.bound = 'true';
-        actualizarEtiquetaComisionesPeriodo();
+        formComercial.dataset.bound = 'true';
+        actualizarEtiquetaComercialPeriodo();
     }
 
     // Impuestos
@@ -718,17 +727,17 @@ function closeBancosPeriodoSeleccion() {
     if (modal) modal.classList.remove('active');
 }
 
-function actualizarEtiquetaComisionesPeriodo() {
-    const label = document.getElementById('comisionesMesSeleccionadoLabel');
-    const resumen = document.getElementById('comisionesMesActual');
+function actualizarEtiquetaComercialPeriodo() {
+    const label = document.getElementById('comercialMesSeleccionadoLabel');
+    const resumen = document.getElementById('comercialMesActual');
 
-    if (!window._comisionesPeriodoActual) {
+    if (!window._comercialPeriodoActual) {
         if (label) label.textContent = 'Período Comisiones (Mes/Año) · selección pendiente';
         if (resumen) resumen.textContent = 'No hay mes en proceso registrado.';
         return;
     }
 
-    const { mes, anio } = window._comisionesPeriodoActual;
+    const { mes, anio } = window._comercialPeriodoActual;
     const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     const mesNombre = meses[mes] || mes;
@@ -737,24 +746,36 @@ function actualizarEtiquetaComisionesPeriodo() {
     if (resumen) resumen.textContent = `Mes en proceso: ${mesNombre} ${anio}`;
 }
 
-function openComisionesPeriodoSeleccion() {
-    const modal = document.getElementById('comisionesPeriodoSeleccionModal');
+function openComercialPeriodoSeleccion() {
+    const modal = document.getElementById('comercialPeriodoSeleccionModal');
     if (!modal) return;
 
     const now = new Date();
-    const base = window._comisionesPeriodoActual || { mes: now.getMonth() + 1, anio: now.getFullYear() };
+    const base = window._comercialPeriodoActual || { mes: now.getMonth() + 1, anio: now.getFullYear() };
 
-    const anioInput = document.getElementById('comisiones_periodo_anio');
-    const mesSelect = document.getElementById('comisiones_periodo_mes');
+    const anioInput = document.getElementById('comercial_periodo_anio');
+    const mesSelect = document.getElementById('comercial_periodo_mes');
     if (anioInput) anioInput.value = base.anio;
     if (mesSelect) mesSelect.value = String(base.mes);
 
     modal.classList.add('active');
 }
 
-function closeComisionesPeriodoSeleccion() {
-    const modal = document.getElementById('comisionesPeriodoSeleccionModal');
+function closeComercialPeriodoSeleccion() {
+    const modal = document.getElementById('comercialPeriodoSeleccionModal');
     if (modal) modal.classList.remove('active');
+}
+
+function actualizarEtiquetaComisionesPeriodo() {
+    actualizarEtiquetaComercialPeriodo();
+}
+
+function openComisionesPeriodoSeleccion() {
+    openComercialPeriodoSeleccion();
+}
+
+function closeComisionesPeriodoSeleccion() {
+    closeComercialPeriodoSeleccion();
 }
 
 function actualizarEtiquetaImpuestosPeriodo() {
@@ -1571,7 +1592,7 @@ function switchModule(moduleName) {
         // Bancos se usa para gestionar préstamos a empleados
         displayName = 'Gestión de Préstamos';
         if (userMenu) userMenu.style.display = '';
-    } else if (moduleName === 'comisiones') {
+    } else if (moduleName === 'comercial') {
         displayName = 'GestiÃ³n de Comisiones';
         if (userMenu) userMenu.style.display = '';
     } else if (moduleName === 'impuestos') {
@@ -1587,8 +1608,8 @@ function switchModule(moduleName) {
         displayName = moduleName.charAt(0).toUpperCase() + moduleName.slice(1);
         if (userMenu) userMenu.style.display = '';
     }
-    if (moduleName === 'comisiones') {
-        displayName = 'Gestion de Comisiones';
+    if (moduleName === 'comercial') {
+        displayName = 'Gestion Comercial';
     }
     document.getElementById('moduleTitle').textContent = displayName;
 
@@ -1606,15 +1627,20 @@ function switchModule(moduleName) {
             loadUsuarios();
         } else if (moduleName === 'dashboard') {
             loadDashboardData();
-        } else if (moduleName === 'comisiones') {
+        } else if (moduleName === 'comercial') {
             try {
-                const panelMes = document.getElementById('comisionesMesPanel');
-                const homeHeader = document.getElementById('comisionesHomeHeader');
+                const panelMes = document.getElementById('comercialMesPanel');
+                const homeHeader = document.getElementById('comercialHomeHeader');
                 if (panelMes) panelMes.style.display = 'none';
                 if (homeHeader) homeHeader.style.display = '';
-                actualizarEtiquetaComisionesPeriodo();
+                actualizarEtiquetaComercialPeriodo();
+                loadComercialDashboard();
+                cargarCatalogoComercialConfig();
+                cargarClientesComercialesConfig();
+                cargarTarifasComercialesConfig();
+                cargarVendedoresConfig();
             } catch (e) {
-                console.error('Error inicializando modulo Comisiones', e);
+                console.error('Error inicializando modulo Comercial', e);
             }
         } else if (moduleName === 'servicios') {
             // Módulo Servicios usa su propio JS para cargar catálogo completo
@@ -2338,19 +2364,24 @@ function openModuleFull(moduleName) {
             document.getElementById('moduleTitle').textContent = moduleName.charAt(0).toUpperCase() + moduleName.slice(1);
             if (userMenu) userMenu.style.display = '';
         }
-        if (moduleName === 'comisiones') {
-            document.getElementById('moduleTitle').textContent = 'Gestion de Comisiones';
+        if (moduleName === 'comercial') {
+            document.getElementById('moduleTitle').textContent = 'Gestion Comercial';
         }
         // load module-specific handlers
         if (moduleName === 'nomina') loadEmpleados();
         else if (moduleName === 'usuarios') loadUsuarios();
         else if (moduleName === 'dashboard') loadDashboardData();
-        else if (moduleName === 'comisiones') {
-            const panelMes = document.getElementById('comisionesMesPanel');
-            const homeHeader = document.getElementById('comisionesHomeHeader');
+        else if (moduleName === 'comercial') {
+            const panelMes = document.getElementById('comercialMesPanel');
+            const homeHeader = document.getElementById('comercialHomeHeader');
             if (panelMes) panelMes.style.display = 'none';
             if (homeHeader) homeHeader.style.display = '';
-            actualizarEtiquetaComisionesPeriodo();
+            actualizarEtiquetaComercialPeriodo();
+            loadComercialDashboard();
+            cargarCatalogoComercialConfig();
+            cargarClientesComercialesConfig();
+            cargarTarifasComercialesConfig();
+            cargarVendedoresConfig();
         }
         else if (moduleName === 'bancos' && typeof loadPrestamosResumen === 'function') loadPrestamosResumen();
     } else {
@@ -2392,6 +2423,60 @@ async function loadDashboardData() {
     } catch (error) {
         console.error('Error cargando dashboard:', error);
     }
+}
+
+async function loadComercialDashboard() {
+    const vendedoresActivosEl = document.getElementById('comercialVendedoresActivos');
+    const clientesActivosEl = document.getElementById('comercialClientesActivos');
+    const carteraPendienteEl = document.getElementById('comercialCarteraPendiente');
+    const rentabilidadMesEl = document.getElementById('comercialRentabilidadMes');
+
+    try {
+        const params = new URLSearchParams();
+        if (window._comercialPeriodoActual?.mes) {
+            params.set('mes', String(window._comercialPeriodoActual.mes));
+        }
+        if (window._comercialPeriodoActual?.anio) {
+            params.set('anio', String(window._comercialPeriodoActual.anio));
+        }
+        const url = params.toString() ? `/api/dashboard/comercial?${params.toString()}` : '/api/dashboard/comercial';
+        const response = await fetch(url, { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar el dashboard comercial');
+        }
+
+        const data = await response.json();
+        if (vendedoresActivosEl) vendedoresActivosEl.textContent = data.vendedores_activos ?? 0;
+        if (clientesActivosEl) clientesActivosEl.textContent = data.clientes_activos ?? 0;
+        if (carteraPendienteEl) carteraPendienteEl.textContent = formatCurrency(data.cartera_pendiente || 0);
+        if (rentabilidadMesEl) rentabilidadMesEl.textContent = formatCurrency(data.rentabilidad_mes || 0);
+
+        if (data.periodo_actual && !window._comercialPeriodoActual) {
+            window._comercialPeriodoActual = data.periodo_actual;
+            window._comisionesPeriodoActual = data.periodo_actual;
+            actualizarEtiquetaComercialPeriodo();
+        }
+    } catch (error) {
+        console.error('Error cargando dashboard comercial:', error);
+        if (vendedoresActivosEl) vendedoresActivosEl.textContent = '-';
+        if (clientesActivosEl) clientesActivosEl.textContent = '-';
+        if (carteraPendienteEl) carteraPendienteEl.textContent = '$0';
+        if (rentabilidadMesEl) rentabilidadMesEl.textContent = '$0';
+    }
+}
+
+function consultarComercial() {
+    const panelMes = document.getElementById('comercialMesPanel');
+    const homeHeader = document.getElementById('comercialHomeHeader');
+    if (panelMes) panelMes.style.display = 'none';
+    if (homeHeader) homeHeader.style.display = '';
+    loadComercialDashboard();
+    cargarCatalogoComercialConfig();
+    cargarClientesComercialesConfig();
+    cargarTarifasComercialesConfig();
+    cargarVendedoresConfig();
+    window.setTimeout(() => focusModuleSection('comercialClientesPanel'), 120);
 }
 
 async function loadEmpleados() {
@@ -2455,6 +2540,9 @@ let areasConfigData = [];
 let cargosConfigData = [];
 let asignacionesLaboralesData = [];
 let vendedoresConfigData = [];
+let clientesComercialesData = [];
+let catalogoComercialData = [];
+let tarifasComercialesData = [];
 
 function setupConsultaEmpleados() {
     const searchInput = document.getElementById('consultaEmpleadoSearch');
@@ -2817,6 +2905,32 @@ function setupEstructuraLaboralForms() {
         asignacionForm.dataset.bound = 'true';
     }
 
+    const clienteComercialForm = document.getElementById('clienteComercialForm');
+    if (clienteComercialForm && !clienteComercialForm.dataset.bound) {
+        clienteComercialForm.addEventListener('submit', guardarClienteComercialConfig);
+        clienteComercialForm.dataset.bound = 'true';
+    }
+
+    const catalogoComercialForm = document.getElementById('catalogoComercialForm');
+    if (catalogoComercialForm && !catalogoComercialForm.dataset.bound) {
+        catalogoComercialForm.addEventListener('submit', guardarCatalogoComercialConfig);
+        catalogoComercialForm.dataset.bound = 'true';
+    }
+
+    const catalogoComercialTipo = document.getElementById('catalogoComercialTipo');
+    if (catalogoComercialTipo && !catalogoComercialTipo.dataset.bound) {
+        catalogoComercialTipo.addEventListener('change', () => {
+            actualizarVisibilidadComponentesCatalogo();
+        });
+        catalogoComercialTipo.dataset.bound = 'true';
+    }
+
+    const tarifaClienteForm = document.getElementById('tarifaClienteForm');
+    if (tarifaClienteForm && !tarifaClienteForm.dataset.bound) {
+        tarifaClienteForm.addEventListener('submit', guardarTarifaClienteConfig);
+        tarifaClienteForm.dataset.bound = 'true';
+    }
+
     const vendedorForm = document.getElementById('vendedorForm');
     if (vendedorForm && !vendedorForm.dataset.bound) {
         vendedorForm.addEventListener('submit', guardarVendedorConfig);
@@ -2845,6 +2959,12 @@ function setupEstructuraLaboralForms() {
     if (reintegroArea && !reintegroArea.dataset.bound) {
         reintegroArea.addEventListener('change', () => fillCargosSelect('reintegroCargoId', true, reintegroArea.value || null));
         reintegroArea.dataset.bound = 'true';
+    }
+
+    const clienteFactura = document.getElementById('clienteComercialRequiereFactura');
+    if (clienteFactura && !clienteFactura.dataset.bound) {
+        clienteFactura.addEventListener('change', actualizarEstadoFacturaClienteComercial);
+        clienteFactura.dataset.bound = 'true';
     }
 }
 
@@ -2999,16 +3119,21 @@ async function cargarAsignacionesLaboralesConfig() {
 }
 
 async function cargarVendedoresConfig() {
-    const tbody = document.getElementById('vendedoresTable');
+    const tbody = document.getElementById('comercialVendedoresTable');
     if (!tbody) return;
 
     try {
-        const response = await fetch('/api/nomina/vendedores', { credentials: 'include' });
+        const response = await fetch('/api/comercial/vendedores', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar la lista de vendedores');
+        }
+
         const vendedores = await response.json();
         vendedoresConfigData = Array.isArray(vendedores) ? vendedores : [];
 
         if (vendedoresConfigData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="loading">No hay vendedores configurados</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay vendedores configurados</td></tr>';
             return;
         }
 
@@ -3016,16 +3141,501 @@ async function cargarVendedoresConfig() {
             <tr>
                 <td>${escapeHtml(vendedor.nombre || 'N/A')}</td>
                 <td>${escapeHtml(vendedor.documento || 'N/A')}</td>
-                <td>${escapeHtml(vendedor.telefono || 'N/A')}</td>
-                <td>${escapeHtml(vendedor.email || 'N/A')}</td>
+                <td>${Number(vendedor.porcentaje_comision_venta || 0).toFixed(2)}%</td>
+                <td>${Number(vendedor.porcentaje_comision_recaudo || 0).toFixed(2)}%</td>
+                <td>${formatCurrency(vendedor.monto_base_comision || 0)}</td>
                 <td>${vendedor.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
                 <td><button class="action-btn action-btn-edit" onclick="editarVendedorConfig(${vendedor.id})">Editar</button></td>
             </tr>
         `).join('');
     } catch (error) {
         console.error('Error cargando vendedores:', error);
-        tbody.innerHTML = '<tr><td colspan="6" class="loading">Error al cargar vendedores</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar vendedores</td></tr>';
     }
+}
+
+async function cargarCatalogoComercialConfig() {
+    const tbody = document.getElementById('comercialCatalogoTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/catalogo', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar el catálogo comercial');
+        }
+
+        const items = await response.json();
+        catalogoComercialData = Array.isArray(items) ? items : [];
+
+        if (catalogoComercialData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="loading">No hay exámenes o paquetes configurados</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = catalogoComercialData.map(item => `
+            <tr>
+                <td>
+                    <strong>${escapeHtml(item.tipo_item || 'N/A')}</strong>
+                    ${item.tipo_item === 'EXAMEN' ? `<div style="color:#666; font-size:0.82rem;">${escapeHtml(item.tipo_examen || 'Sin clasificar')}</div>` : ''}
+                </td>
+                <td>${escapeHtml(item.codigo || 'N/A')}</td>
+                <td>
+                    <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.descripcion || '')}</div>
+                    ${item.tipo_item === 'PAQUETE' ? `<div style="color:#0b5ed7; font-size:0.82rem; margin-top:4px;">Incluye ${item.cantidad_componentes || 0} examen(es): ${escapeHtml(item.resumen_componentes || 'Sin examenes definidos')}</div>` : ''}
+                </td>
+                <td>${formatCurrency(item.tarifa_base || 0)}</td>
+                <td>${item.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
+                <td><button class="action-btn action-btn-edit" onclick="editarItemCatalogoComercial(${item.id})">Editar</button></td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando catálogo comercial:', error);
+        tbody.innerHTML = '<tr><td colspan="6" class="loading">Error al cargar catálogo comercial</td></tr>';
+    }
+}
+
+async function cargarTarifasComercialesConfig() {
+    const tbody = document.getElementById('comercialTarifasTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/tarifas', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar la lista de tarifas comerciales');
+        }
+
+        const tarifas = await response.json();
+        tarifasComercialesData = Array.isArray(tarifas) ? tarifas : [];
+
+        if (tarifasComercialesData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay tarifas diferenciales configuradas</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = tarifasComercialesData.map(tarifa => `
+            <tr>
+                <td>${escapeHtml(tarifa.cliente_nombre || 'N/A')}</td>
+                <td>
+                    <strong>${escapeHtml(tarifa.item_nombre || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(tarifa.tipo_item === 'EXAMEN' ? `${tarifa.tipo_item} / ${tarifa.tipo_examen || 'SIN CLASIFICAR'}` : (tarifa.tipo_item || ''))}</div>
+                </td>
+                <td>${formatCurrency(tarifa.tarifa_base || 0)}</td>
+                <td>${formatCurrency(tarifa.tarifa_negociada || 0)}</td>
+                <td>${escapeHtml([tarifa.vigencia_desde || '', tarifa.vigencia_hasta || ''].filter(Boolean).join(' a ') || 'Abierta')}</td>
+                <td>${tarifa.activo ? '<span class="badge badge-success">Activa</span>' : '<span class="badge badge-danger">Inactiva</span>'}</td>
+                <td><button class="action-btn action-btn-edit" onclick="editarTarifaCliente(${tarifa.id})">Editar</button></td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando tarifas comerciales:', error);
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar tarifas comerciales</td></tr>';
+    }
+}
+
+async function asegurarVendedoresComerciales() {
+    if (Array.isArray(vendedoresConfigData) && vendedoresConfigData.length > 0) {
+        return vendedoresConfigData;
+    }
+
+    const response = await fetch('/api/comercial/vendedores', { credentials: 'include' });
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'No se pudo cargar la lista de vendedores');
+    }
+
+    const vendedores = await response.json();
+    vendedoresConfigData = Array.isArray(vendedores) ? vendedores : [];
+    return vendedoresConfigData;
+}
+
+function renderClienteComercialAdjuntos(containerId, adjuntos) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    if (!Array.isArray(adjuntos) || adjuntos.length === 0) {
+        container.innerHTML = 'Sin adjuntos cargados.';
+        return;
+    }
+
+    container.innerHTML = adjuntos.map(adjunto => `
+        <div style="margin-bottom:6px;">
+            <a href="${adjunto.download_url}" target="_blank" rel="noopener noreferrer">${escapeHtml(adjunto.nombre_original || 'Adjunto')}</a>
+        </div>
+    `).join('');
+}
+
+function actualizarEstadoFacturaClienteComercial() {
+    const requiereFactura = document.getElementById('clienteComercialRequiereFactura')?.checked;
+    const condicion = document.getElementById('clienteComercialCondicion');
+    const fechas = document.getElementById('clienteComercialFechasFacturacion');
+    const fechaSolicitud = document.getElementById('clienteComercialFechaSolicitudFactura');
+    const hint = document.getElementById('clienteComercialFacturaHint');
+
+    if (!condicion || !fechas || !fechaSolicitud || !hint) return;
+
+    if (requiereFactura) {
+        condicion.disabled = false;
+        fechas.disabled = false;
+        fechaSolicitud.disabled = false;
+        hint.textContent = 'Registre las fechas de facturación y, si aplica, la fecha desde la cual el cliente solicitó pasar a facturación.';
+        return;
+    }
+
+    condicion.value = 'EFECTIVO';
+    condicion.disabled = true;
+    fechas.value = '';
+    fechas.disabled = true;
+    fechaSolicitud.value = '';
+    fechaSolicitud.disabled = true;
+    hint.textContent = 'Si el cliente no requiere factura, queda registrado como cliente en efectivo. Cuando solicite facturación, la fecha de solicitud marcará el cambio.';
+}
+
+async function llenarSelectVendedorComercial(selectedId = '') {
+    const select = document.getElementById('clienteComercialVendedorId');
+    if (!select) return;
+
+    try {
+        const vendedores = await asegurarVendedoresComerciales();
+        select.innerHTML = '<option value="">Seleccione un vendedor...</option>';
+        vendedores.forEach(vendedor => {
+            const option = document.createElement('option');
+            option.value = vendedor.id;
+            option.textContent = vendedor.nombre;
+            select.appendChild(option);
+        });
+        if (selectedId) {
+            select.value = String(selectedId);
+        }
+    } catch (error) {
+        console.error('Error cargando vendedores para cliente comercial:', error);
+        select.innerHTML = '<option value="">No disponible</option>';
+    }
+}
+
+async function asegurarClientesComerciales() {
+    if (Array.isArray(clientesComercialesData) && clientesComercialesData.length > 0) {
+        return clientesComercialesData;
+    }
+
+    const response = await fetch('/api/comercial/clientes', { credentials: 'include' });
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'No se pudo cargar la lista de clientes comerciales');
+    }
+
+    const clientes = await response.json();
+    clientesComercialesData = Array.isArray(clientes) ? clientes : [];
+    return clientesComercialesData;
+}
+
+async function asegurarCatalogoComercial() {
+    if (Array.isArray(catalogoComercialData) && catalogoComercialData.length > 0) {
+        return catalogoComercialData;
+    }
+
+    const response = await fetch('/api/comercial/catalogo', { credentials: 'include' });
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'No se pudo cargar el catálogo comercial');
+    }
+
+    const items = await response.json();
+    catalogoComercialData = Array.isArray(items) ? items : [];
+    return catalogoComercialData;
+}
+
+async function llenarSelectClientesComerciales(selectedId = '') {
+    const select = document.getElementById('tarifaClienteClienteId');
+    if (!select) return;
+
+    try {
+        const clientes = await asegurarClientesComerciales();
+        select.innerHTML = '<option value="">Seleccione un cliente...</option>';
+        clientes.forEach(cliente => {
+            const option = document.createElement('option');
+            option.value = cliente.id;
+            option.textContent = cliente.razon_social;
+            select.appendChild(option);
+        });
+        if (selectedId) {
+            select.value = String(selectedId);
+        }
+    } catch (error) {
+        console.error('Error cargando clientes para tarifa:', error);
+        select.innerHTML = '<option value="">No disponible</option>';
+    }
+}
+
+async function llenarSelectCatalogoComercial(selectedId = '') {
+    const select = document.getElementById('tarifaClienteCatalogoItemId');
+    if (!select) return;
+
+    try {
+        const items = await asegurarCatalogoComercial();
+        select.innerHTML = '<option value="">Seleccione un examen o paquete...</option>';
+        items.filter(item => item.activo !== false).forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.id;
+            option.textContent = item.tipo_item === 'EXAMEN'
+                ? `${item.tipo_item} / ${item.tipo_examen || 'SIN CLASIFICAR'} - ${item.nombre}`
+                : `${item.tipo_item} - ${item.nombre}`;
+            select.appendChild(option);
+        });
+        if (selectedId) {
+            select.value = String(selectedId);
+        }
+    } catch (error) {
+        console.error('Error cargando catálogo para tarifa:', error);
+        select.innerHTML = '<option value="">No disponible</option>';
+    }
+}
+
+async function renderCatalogoComercialComponentes(selectedIds = []) {
+    const container = document.getElementById('catalogoComercialComponentesList');
+    if (!container) return;
+
+    try {
+        const items = await asegurarCatalogoComercial();
+        const examenes = items
+            .filter(item => item.tipo_item === 'EXAMEN' && item.tipo_examen)
+            .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+        const selectedSet = new Set((selectedIds || []).map(id => String(id)));
+
+        if (examenes.length === 0) {
+            container.innerHTML = '<div class="catalogo-componentes-empty">Primero crea los examenes del catalogo para poder armar paquetes.</div>';
+            return;
+        }
+
+        container.innerHTML = examenes.map(item => `
+            <label class="catalogo-componentes-item">
+                <input
+                    type="checkbox"
+                    class="catalogo-componente-checkbox"
+                    value="${item.id}"
+                    ${selectedSet.has(String(item.id)) ? 'checked' : ''}
+                >
+                <span>
+                    <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
+                    <small>${escapeHtml(item.tipo_examen || 'Sin clasificar')} · ${escapeHtml(item.codigo || 'Sin codigo')}</small>
+                </span>
+            </label>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando componentes del paquete:', error);
+        container.innerHTML = '<div class="catalogo-componentes-empty">No fue posible cargar los examenes del catalogo.</div>';
+    }
+}
+
+function actualizarVisibilidadComponentesCatalogo() {
+    const tipoSelect = document.getElementById('catalogoComercialTipo');
+    const tipoExamenRow = document.getElementById('catalogoComercialTipoExamenRow');
+    const row = document.getElementById('catalogoComercialComponentesRow');
+    const tipoExamenSelect = document.getElementById('catalogoComercialTipoExamen');
+    if (!tipoSelect || !row || !tipoExamenRow || !tipoExamenSelect) return;
+
+        const esExamen = tipoSelect.value === 'EXAMEN';
+        const esPaquete = tipoSelect.value === 'PAQUETE';
+        tipoExamenSelect.required = esExamen;
+        tipoExamenRow.style.display = esExamen ? 'grid' : 'none';
+        row.style.display = esPaquete ? 'block' : 'none';
+
+    if (!esExamen) {
+        tipoExamenSelect.value = '';
+    }
+
+    if (!esPaquete) {
+        document.querySelectorAll('#catalogoComercialComponentesList .catalogo-componente-checkbox').forEach(input => {
+            input.checked = false;
+        });
+    }
+}
+
+function obtenerComponentesSeleccionadosCatalogo() {
+    return Array.from(
+        document.querySelectorAll('#catalogoComercialComponentesList .catalogo-componente-checkbox:checked')
+    ).map(input => Number(input.value));
+}
+
+async function cargarClientesComercialesConfig() {
+    const tbody = document.getElementById('comercialClientesTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/clientes', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar la lista de clientes comerciales');
+        }
+
+        const clientes = await response.json();
+        clientesComercialesData = Array.isArray(clientes) ? clientes : [];
+
+        if (clientesComercialesData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="loading">No hay clientes comerciales configurados</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = clientesComercialesData.map(cliente => `
+            <tr>
+                <td>
+                    <strong>${escapeHtml(cliente.razon_social || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.nit || cliente.nombre_comercial || 'Sin NIT')}</div>
+                </td>
+                <td>${escapeHtml(cliente.vendedor_nombre || 'N/A')}</td>
+                <td>${escapeHtml(cliente.condicion_comercial || 'N/A')}</td>
+                <td style="max-width:240px;">${escapeHtml(cliente.resumen_facturacion || 'N/A')}</td>
+                <td>
+                    ${escapeHtml(cliente.contacto_facturacion || cliente.contacto_principal || 'N/A')}
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.email_facturacion || cliente.email_contacto_principal || cliente.email_empresa || 'Sin email')}</div>
+                </td>
+                <td>
+                    <div>Legales: ${cliente.documentos_legales_adjuntos?.length || 0}</div>
+                    <div>Pagaré: ${cliente.pagare_adjuntos?.length || 0}</div>
+                </td>
+                <td>${cliente.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
+                <td><button class="action-btn action-btn-edit" onclick="editarClienteComercial(${cliente.id})">Editar</button></td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando clientes comerciales:', error);
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Error al cargar clientes comerciales</td></tr>';
+    }
+}
+
+async function mostrarAgregarClienteComercial() {
+    const form = document.getElementById('clienteComercialForm');
+    if (!form) return;
+
+    form.reset();
+    document.getElementById('clienteComercialId').value = '';
+    document.getElementById('clienteComercialModalTitle').textContent = 'Nuevo Cliente Comercial';
+    document.getElementById('clienteComercialActivo').checked = true;
+    document.getElementById('clienteComercialRequiereFactura').checked = false;
+    document.getElementById('clienteComercialDocumentosCompletos').checked = false;
+    document.getElementById('clienteComercialPagareFirmado').checked = false;
+    renderClienteComercialAdjuntos('clienteComercialDocumentosExistentes', []);
+    renderClienteComercialAdjuntos('clienteComercialPagareExistentes', []);
+    await llenarSelectVendedorComercial();
+    actualizarEstadoFacturaClienteComercial();
+    document.getElementById('clienteComercialModal').classList.add('active');
+}
+
+function closeClienteComercialModal() {
+    document.getElementById('clienteComercialModal').classList.remove('active');
+}
+
+async function editarClienteComercial(id) {
+    const cliente = clientesComercialesData.find(item => item.id === id);
+    if (!cliente) return;
+
+    document.getElementById('clienteComercialId').value = cliente.id;
+    document.getElementById('clienteComercialModalTitle').textContent = 'Editar Cliente Comercial';
+    await llenarSelectVendedorComercial(cliente.vendedor_id || '');
+    document.getElementById('clienteComercialRazonSocial').value = cliente.razon_social || '';
+    document.getElementById('clienteComercialNombreComercial').value = cliente.nombre_comercial || '';
+    document.getElementById('clienteComercialNit').value = cliente.nit || '';
+    document.getElementById('clienteComercialCiudad').value = cliente.ciudad || '';
+    document.getElementById('clienteComercialDireccion').value = cliente.direccion || '';
+    document.getElementById('clienteComercialTelefonoEmpresa').value = cliente.telefono_empresa || '';
+    document.getElementById('clienteComercialEmailEmpresa').value = cliente.email_empresa || '';
+    document.getElementById('clienteComercialContactoPrincipal').value = cliente.contacto_principal || '';
+    document.getElementById('clienteComercialCelularPrincipal').value = cliente.celular_contacto_principal || '';
+    document.getElementById('clienteComercialEmailPrincipal').value = cliente.email_contacto_principal || '';
+    document.getElementById('clienteComercialContactoFacturacion').value = cliente.contacto_facturacion || '';
+    document.getElementById('clienteComercialCelularFacturacion').value = cliente.celular_facturacion || '';
+    document.getElementById('clienteComercialEmailFacturacion').value = cliente.email_facturacion || '';
+    document.getElementById('clienteComercialCondicion').value = cliente.condicion_comercial || 'EFECTIVO';
+    document.getElementById('clienteComercialActivo').checked = cliente.activo !== false;
+    document.getElementById('clienteComercialRequiereFactura').checked = cliente.requiere_factura === true;
+    document.getElementById('clienteComercialFechasFacturacion').value = cliente.fechas_facturacion || '';
+    document.getElementById('clienteComercialFechaSolicitudFactura').value = cliente.fecha_solicitud_factura || '';
+    document.getElementById('clienteComercialExamenes').value = cliente.examenes_convenidos || '';
+    document.getElementById('clienteComercialServicios').value = cliente.servicios_convenidos || '';
+    document.getElementById('clienteComercialTarifas').value = cliente.tarifas_convenidas || '';
+    document.getElementById('clienteComercialDocumentosCompletos').checked = cliente.documentos_legales_completos === true;
+    document.getElementById('clienteComercialDocumentosDetalle').value = cliente.documentos_legales_detalle || '';
+    document.getElementById('clienteComercialPagareFirmado').checked = cliente.pagare_firmado === true;
+    document.getElementById('clienteComercialPagareDetalle').value = cliente.pagare_detalle || '';
+    document.getElementById('clienteComercialObservaciones').value = cliente.observaciones || '';
+    renderClienteComercialAdjuntos('clienteComercialDocumentosExistentes', cliente.documentos_legales_adjuntos || []);
+    renderClienteComercialAdjuntos('clienteComercialPagareExistentes', cliente.pagare_adjuntos || []);
+    actualizarEstadoFacturaClienteComercial();
+    document.getElementById('clienteComercialModal').classList.add('active');
+}
+
+function mostrarAgregarItemCatalogoComercial() {
+    const form = document.getElementById('catalogoComercialForm');
+    if (!form) return;
+
+    form.reset();
+    renderCatalogoComercialComponentes();
+    document.getElementById('catalogoComercialId').value = '';
+    document.getElementById('catalogoComercialModalTitle').textContent = 'Nuevo Item Comercial';
+    document.getElementById('catalogoComercialTipo').value = 'EXAMEN';
+    document.getElementById('catalogoComercialTipoExamen').value = '';
+    document.getElementById('catalogoComercialTarifaBase').value = '0';
+    document.getElementById('catalogoComercialActivo').checked = true;
+    actualizarVisibilidadComponentesCatalogo();
+    document.getElementById('catalogoComercialModal').classList.add('active');
+}
+
+function closeCatalogoComercialModal() {
+    document.getElementById('catalogoComercialModal').classList.remove('active');
+}
+
+async function editarItemCatalogoComercial(id) {
+    const item = catalogoComercialData.find(entry => entry.id === id);
+    if (!item) return;
+
+    await renderCatalogoComercialComponentes(item.componentes_ids || []);
+    document.getElementById('catalogoComercialId').value = item.id;
+    document.getElementById('catalogoComercialModalTitle').textContent = 'Editar Item Comercial';
+    document.getElementById('catalogoComercialTipo').value = item.tipo_item || 'EXAMEN';
+    document.getElementById('catalogoComercialTipoExamen').value = item.tipo_examen || '';
+    document.getElementById('catalogoComercialCodigo').value = item.codigo || '';
+    document.getElementById('catalogoComercialNombre').value = item.nombre || '';
+    document.getElementById('catalogoComercialTarifaBase').value = item.tarifa_base || 0;
+    document.getElementById('catalogoComercialDescripcion').value = item.descripcion || '';
+    document.getElementById('catalogoComercialActivo').checked = item.activo !== false;
+    actualizarVisibilidadComponentesCatalogo();
+    document.getElementById('catalogoComercialModal').classList.add('active');
+}
+
+async function mostrarAgregarTarifaCliente() {
+    const form = document.getElementById('tarifaClienteForm');
+    if (!form) return;
+
+    form.reset();
+    document.getElementById('tarifaClienteId').value = '';
+    document.getElementById('tarifaClienteModalTitle').textContent = 'Nueva Tarifa por Cliente';
+    document.getElementById('tarifaClienteTarifaNegociada').value = '0';
+    document.getElementById('tarifaClienteActivo').checked = true;
+    await llenarSelectClientesComerciales();
+    await llenarSelectCatalogoComercial();
+    document.getElementById('tarifaClienteModal').classList.add('active');
+}
+
+function closeTarifaClienteModal() {
+    document.getElementById('tarifaClienteModal').classList.remove('active');
+}
+
+async function editarTarifaCliente(id) {
+    const tarifa = tarifasComercialesData.find(entry => entry.id === id);
+    if (!tarifa) return;
+
+    document.getElementById('tarifaClienteId').value = tarifa.id;
+    document.getElementById('tarifaClienteModalTitle').textContent = 'Editar Tarifa por Cliente';
+    await llenarSelectClientesComerciales(tarifa.cliente_id || '');
+    await llenarSelectCatalogoComercial(tarifa.catalogo_item_id || '');
+    document.getElementById('tarifaClienteTarifaNegociada').value = tarifa.tarifa_negociada || 0;
+    document.getElementById('tarifaClienteVigenciaDesde').value = tarifa.vigencia_desde || '';
+    document.getElementById('tarifaClienteVigenciaHasta').value = tarifa.vigencia_hasta || '';
+    document.getElementById('tarifaClienteObservacion').value = tarifa.observacion || '';
+    document.getElementById('tarifaClienteActivo').checked = tarifa.activo !== false;
+    document.getElementById('tarifaClienteModal').classList.add('active');
 }
 
 function mostrarAgregarArea() {
@@ -3100,6 +3710,9 @@ function mostrarAgregarVendedor() {
     document.getElementById('vendedorForm').reset();
     document.getElementById('vendedorId').value = '';
     document.getElementById('vendedorModalTitle').textContent = 'Nuevo Vendedor';
+    document.getElementById('vendedorComisionVenta').value = '0';
+    document.getElementById('vendedorComisionRecaudo').value = '0';
+    document.getElementById('vendedorMontoBaseComision').value = '0';
     document.getElementById('vendedorActivo').checked = true;
     document.getElementById('vendedorModal').classList.add('active');
 }
@@ -3117,6 +3730,9 @@ function editarVendedorConfig(id) {
     document.getElementById('vendedorDocumento').value = vendedor.documento || '';
     document.getElementById('vendedorTelefono').value = vendedor.telefono || '';
     document.getElementById('vendedorEmail').value = vendedor.email || '';
+    document.getElementById('vendedorComisionVenta').value = vendedor.porcentaje_comision_venta || 0;
+    document.getElementById('vendedorComisionRecaudo').value = vendedor.porcentaje_comision_recaudo || 0;
+    document.getElementById('vendedorMontoBaseComision').value = vendedor.monto_base_comision || 0;
     document.getElementById('vendedorDescripcion').value = vendedor.descripcion || '';
     document.getElementById('vendedorActivo').checked = vendedor.activo !== false;
     document.getElementById('vendedorModalTitle').textContent = 'Editar Vendedor';
@@ -3213,24 +3829,206 @@ async function guardarAsignacionLaboralConfig(event) {
 async function guardarVendedorConfig(event) {
     event.preventDefault();
     const id = document.getElementById('vendedorId').value;
-    const response = await fetch(id ? `/api/nomina/vendedores/${id}` : '/api/nomina/vendedores', {
-        method: id ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-            nombre: document.getElementById('vendedorNombre').value.trim(),
-            documento: document.getElementById('vendedorDocumento').value.trim() || null,
-            telefono: document.getElementById('vendedorTelefono').value.trim() || null,
-            email: document.getElementById('vendedorEmail').value.trim() || null,
-            descripcion: document.getElementById('vendedorDescripcion').value.trim() || null,
-            activo: document.getElementById('vendedorActivo').checked
-        })
+    const porcentajeVenta = parseFloat(document.getElementById('vendedorComisionVenta').value || '0');
+    const porcentajeRecaudo = parseFloat(document.getElementById('vendedorComisionRecaudo').value || '0');
+    const montoBase = parseFloat(document.getElementById('vendedorMontoBaseComision').value || '0');
+
+    if (Number.isNaN(porcentajeVenta) || porcentajeVenta < 0 || porcentajeVenta > 100) {
+        return showError('La comisión de venta debe estar entre 0 y 100.');
+    }
+
+    if (Number.isNaN(porcentajeRecaudo) || porcentajeRecaudo < 0 || porcentajeRecaudo > 100) {
+        return showError('La comisión de recaudo debe estar entre 0 y 100.');
+    }
+
+    if (Number.isNaN(montoBase) || montoBase < 0) {
+        return showError('El monto base de comisión no puede ser negativo.');
+    }
+
+    try {
+        const response = await fetch(id ? `/api/comercial/vendedores/${id}` : '/api/comercial/vendedores', {
+            method: id ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                nombre: document.getElementById('vendedorNombre').value.trim(),
+                documento: document.getElementById('vendedorDocumento').value.trim() || null,
+                telefono: document.getElementById('vendedorTelefono').value.trim() || null,
+                email: document.getElementById('vendedorEmail').value.trim() || null,
+                porcentaje_comision_venta: porcentajeVenta,
+                porcentaje_comision_recaudo: porcentajeRecaudo,
+                monto_base_comision: montoBase,
+                descripcion: document.getElementById('vendedorDescripcion').value.trim() || null,
+                activo: document.getElementById('vendedorActivo').checked
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) return showError(data.error || 'Error al guardar vendedor');
+        showSuccess(id ? 'Vendedor actualizado' : 'Vendedor creado');
+        closeVendedorModal();
+        await Promise.all([
+            cargarVendedoresConfig(),
+            loadComercialDashboard()
+        ]);
+    } catch (error) {
+        console.error('Error guardando vendedor:', error);
+        showError('Error de conexión al guardar vendedor');
+    }
+}
+
+async function guardarClienteComercialConfig(event) {
+    event.preventDefault();
+    const id = document.getElementById('clienteComercialId').value;
+    const vendedorId = document.getElementById('clienteComercialVendedorId').value;
+    const razonSocial = document.getElementById('clienteComercialRazonSocial').value.trim();
+
+    if (!vendedorId) {
+        return showError('Debe seleccionar un vendedor responsable.');
+    }
+
+    if (!razonSocial) {
+        return showError('La razón social es obligatoria.');
+    }
+
+    const formData = new FormData();
+    formData.append('vendedor_id', vendedorId);
+    formData.append('razon_social', razonSocial);
+    formData.append('nombre_comercial', document.getElementById('clienteComercialNombreComercial').value.trim());
+    formData.append('nit', document.getElementById('clienteComercialNit').value.trim());
+    formData.append('ciudad', document.getElementById('clienteComercialCiudad').value.trim());
+    formData.append('direccion', document.getElementById('clienteComercialDireccion').value.trim());
+    formData.append('telefono_empresa', document.getElementById('clienteComercialTelefonoEmpresa').value.trim());
+    formData.append('email_empresa', document.getElementById('clienteComercialEmailEmpresa').value.trim());
+    formData.append('contacto_principal', document.getElementById('clienteComercialContactoPrincipal').value.trim());
+    formData.append('celular_contacto_principal', document.getElementById('clienteComercialCelularPrincipal').value.trim());
+    formData.append('email_contacto_principal', document.getElementById('clienteComercialEmailPrincipal').value.trim());
+    formData.append('contacto_facturacion', document.getElementById('clienteComercialContactoFacturacion').value.trim());
+    formData.append('celular_facturacion', document.getElementById('clienteComercialCelularFacturacion').value.trim());
+    formData.append('email_facturacion', document.getElementById('clienteComercialEmailFacturacion').value.trim());
+    formData.append('condicion_comercial', document.getElementById('clienteComercialCondicion').value);
+    formData.append('requiere_factura', document.getElementById('clienteComercialRequiereFactura').checked ? 'true' : 'false');
+    formData.append('fechas_facturacion', document.getElementById('clienteComercialFechasFacturacion').value.trim());
+    formData.append('fecha_solicitud_factura', document.getElementById('clienteComercialFechaSolicitudFactura').value);
+    formData.append('examenes_convenidos', document.getElementById('clienteComercialExamenes').value.trim());
+    formData.append('servicios_convenidos', document.getElementById('clienteComercialServicios').value.trim());
+    formData.append('tarifas_convenidas', document.getElementById('clienteComercialTarifas').value.trim());
+    formData.append('documentos_legales_completos', document.getElementById('clienteComercialDocumentosCompletos').checked ? 'true' : 'false');
+    formData.append('documentos_legales_detalle', document.getElementById('clienteComercialDocumentosDetalle').value.trim());
+    formData.append('pagare_firmado', document.getElementById('clienteComercialPagareFirmado').checked ? 'true' : 'false');
+    formData.append('pagare_detalle', document.getElementById('clienteComercialPagareDetalle').value.trim());
+    formData.append('observaciones', document.getElementById('clienteComercialObservaciones').value.trim());
+    formData.append('activo', document.getElementById('clienteComercialActivo').checked ? 'true' : 'false');
+
+    Array.from(document.getElementById('clienteComercialDocumentosAdjuntos').files || []).forEach(file => {
+        formData.append('documentos_legales_adjuntos', file);
     });
-    const data = await response.json();
-    if (!response.ok) return showError(data.error || 'Error al guardar vendedor');
-    showSuccess(id ? 'Vendedor actualizado' : 'Vendedor creado');
-    closeVendedorModal();
-    await cargarVendedoresConfig();
+    Array.from(document.getElementById('clienteComercialPagareAdjuntos').files || []).forEach(file => {
+        formData.append('pagare_adjuntos', file);
+    });
+
+    try {
+        const response = await fetch(id ? `/api/comercial/clientes/${id}` : '/api/comercial/clientes', {
+            method: id ? 'PUT' : 'POST',
+            credentials: 'include',
+            body: formData
+        });
+        const data = await response.json();
+        if (!response.ok) return showError(data.error || 'Error al guardar cliente comercial');
+        showSuccess(id ? 'Cliente comercial actualizado' : 'Cliente comercial creado');
+        closeClienteComercialModal();
+        await Promise.all([
+            cargarClientesComercialesConfig(),
+            loadComercialDashboard()
+        ]);
+    } catch (error) {
+        console.error('Error guardando cliente comercial:', error);
+        showError('Error de conexión al guardar cliente comercial');
+    }
+}
+
+async function guardarCatalogoComercialConfig(event) {
+    event.preventDefault();
+    const id = document.getElementById('catalogoComercialId').value;
+    const tipoItem = document.getElementById('catalogoComercialTipo').value;
+    const tipoExamen = document.getElementById('catalogoComercialTipoExamen').value;
+    const tarifaBase = parseFloat(document.getElementById('catalogoComercialTarifaBase').value || '0');
+    const componentesIds = obtenerComponentesSeleccionadosCatalogo();
+
+    if (Number.isNaN(tarifaBase) || tarifaBase < 0) {
+        return showError('La tarifa base no puede ser negativa.');
+    }
+
+    if (tipoItem === 'PAQUETE' && componentesIds.length === 0) {
+        return showError('Selecciona al menos un examen para armar el paquete.');
+    }
+
+    if (tipoItem === 'EXAMEN' && !tipoExamen) {
+        return showError('Selecciona el tipo de examen: CONSULTA, LABORATORIO o PARACLINICO.');
+    }
+
+    try {
+        const response = await fetch(id ? `/api/comercial/catalogo/${id}` : '/api/comercial/catalogo', {
+            method: id ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                tipo_item: tipoItem,
+                tipo_examen: tipoItem === 'EXAMEN' ? tipoExamen : null,
+                codigo: document.getElementById('catalogoComercialCodigo').value.trim() || null,
+                nombre: document.getElementById('catalogoComercialNombre').value.trim(),
+                tarifa_base: tarifaBase,
+                descripcion: document.getElementById('catalogoComercialDescripcion').value.trim() || null,
+                activo: document.getElementById('catalogoComercialActivo').checked,
+                componentes_ids: tipoItem === 'PAQUETE' ? componentesIds : []
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) return showError(data.error || 'Error al guardar item comercial');
+        showSuccess(id ? 'Item comercial actualizado' : 'Item comercial creado');
+        closeCatalogoComercialModal();
+        await Promise.all([
+            cargarCatalogoComercialConfig(),
+            cargarTarifasComercialesConfig()
+        ]);
+    } catch (error) {
+        console.error('Error guardando item comercial:', error);
+        showError('Error de conexión al guardar item comercial');
+    }
+}
+
+async function guardarTarifaClienteConfig(event) {
+    event.preventDefault();
+    const id = document.getElementById('tarifaClienteId').value;
+    const tarifaNegociada = parseFloat(document.getElementById('tarifaClienteTarifaNegociada').value || '0');
+
+    if (Number.isNaN(tarifaNegociada) || tarifaNegociada < 0) {
+        return showError('La tarifa del cliente no puede ser negativa.');
+    }
+
+    try {
+        const response = await fetch(id ? `/api/comercial/tarifas/${id}` : '/api/comercial/tarifas', {
+            method: id ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                cliente_id: document.getElementById('tarifaClienteClienteId').value,
+                catalogo_item_id: document.getElementById('tarifaClienteCatalogoItemId').value,
+                tarifa_negociada: tarifaNegociada,
+                vigencia_desde: document.getElementById('tarifaClienteVigenciaDesde').value || null,
+                vigencia_hasta: document.getElementById('tarifaClienteVigenciaHasta').value || null,
+                observacion: document.getElementById('tarifaClienteObservacion').value.trim() || null,
+                activo: document.getElementById('tarifaClienteActivo').checked
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) return showError(data.error || 'Error al guardar tarifa comercial');
+        showSuccess(id ? 'Tarifa comercial actualizada' : 'Tarifa comercial creada');
+        closeTarifaClienteModal();
+        await cargarTarifasComercialesConfig();
+    } catch (error) {
+        console.error('Error guardando tarifa comercial:', error);
+        showError('Error de conexión al guardar tarifa comercial');
+    }
 }
 
 async function guardarRetiroEmpleado(event) {
@@ -5204,6 +6002,11 @@ switchModule = function(moduleName) {
         cargarAreasConfig();
         cargarCargosConfig();
         cargarAsignacionesLaboralesConfig();
+    } else if (moduleName === 'comercial') {
+        loadComercialDashboard();
+        cargarCatalogoComercialConfig();
+        cargarClientesComercialesConfig();
+        cargarTarifasComercialesConfig();
         cargarVendedoresConfig();
     }
 };

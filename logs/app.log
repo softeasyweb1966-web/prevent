@@ -3608,3 +3608,300 @@ WHERE pg_catalog.pg_class.relname = %(table_name)s AND pg_catalog.pg_class.relki
 2026-03-25 22:51:12,976 - app - INFO - [DB] Dialecto activo: sqlite
 2026-03-25 22:51:12,976 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
 2026-03-25 22:51:13,871 - app.routes.auth - INFO - Usuario logueado: admin
+2026-03-25 23:17:02,361 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-25 23:17:02,382 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-25 23:17:02,453 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-25 23:17:02,453 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-25 23:17:02,453 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-03-25 23:17:02,465 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-25 23:17:02,465 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-25 23:17:02,465 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-03-25 23:17:02,763 - app.routes.nomina - INFO - Quincena liquidada: 3/2026 - 1
+2026-03-25 23:17:34,925 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-25 23:17:34,999 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-25 23:17:34,999 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-25 23:17:34,999 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-03-25 23:41:10,783 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-25 23:41:10,868 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-25 23:41:10,868 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-25 23:41:10,868 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-03-25 23:45:34,657 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-25 23:45:34,724 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-25 23:45:34,724 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-25 23:45:34,724 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-03-25 23:57:04,342 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-25 23:57:04,478 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-25 23:57:04,478 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-25 23:57:04,478 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-03-26 00:19:32,911 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-26 00:19:33,035 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-26 00:19:33,035 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-26 00:19:33,035 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-03-26 00:45:52,181 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-26 00:45:52,269 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-26 00:45:52,269 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-26 00:45:52,345 - app - INFO - [OK] Tablas de base de datos creadas/verificadas
+2026-03-26 00:45:52,470 - app - INFO - [DB] Usuario administrador 'admin' ya existe
+2026-03-26 14:04:51,028 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-26 14:04:51,028 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-26 14:04:51,090 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-26 14:04:51,090 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-26 14:04:51,106 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-26 14:04:51,106 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-26 14:04:51,106 - app - INFO - [OK] Tablas de base de datos creadas/verificadas
+2026-03-26 14:04:51,124 - app - INFO - [OK] Tablas de base de datos creadas/verificadas
+2026-03-26 14:04:51,251 - app - INFO - [DB] Usuario administrador 'admin' ya existe
+2026-03-26 14:04:51,262 - app - INFO - [DB] Usuario administrador 'admin' ya existe
+2026-03-26 14:07:43,197 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-26 14:07:43,267 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-26 14:07:43,267 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-26 14:07:43,279 - app - INFO - [OK] Tablas de base de datos creadas/verificadas
+2026-03-26 14:07:43,401 - app - INFO - [DB] Usuario administrador 'admin' ya existe
+2026-03-26 15:16:12,317 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-03-26 15:16:12,379 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-03-26 15:16:12,379 - app - INFO - [DB] Dialecto activo: sqlite
+2026-03-26 15:16:12,391 - app - INFO - [OK] Tablas de base de datos creadas/verificadas
+2026-03-26 15:16:12,505 - app - INFO - [DB] Usuario administrador 'admin' ya existe
+2026-04-15 19:53:32,526 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-04-15 19:53:32,578 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-04-15 19:53:32,578 - app - INFO - [DB] Dialecto activo: sqlite
+2026-04-15 19:53:32,594 - app - INFO - [OK] Tablas de base de datos creadas/verificadas
+2026-04-15 19:53:32,653 - app - INFO - [DB] Usuario administrador 'admin' ya existe
+2026-04-15 19:57:12,732 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-04-15 19:57:12,832 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-04-15 19:57:12,832 - app - INFO - [DB] Dialecto activo: sqlite
+2026-04-15 19:57:12,832 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-15 19:57:12,870 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://192.168.0.6:8080
+2026-04-15 19:57:12,870 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-04-15 19:57:19,855 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 19:57:19] "GET / HTTP/1.1" 200 -
+2026-04-15 19:57:19,882 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 19:57:19] "GET /static/css/styles.css?v=1774557786 HTTP/1.1" 200 -
+2026-04-15 19:57:19,884 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 19:57:19] "GET /static/js/main.js?v=1770570564 HTTP/1.1" 200 -
+2026-04-15 19:57:19,967 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 19:57:19] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-04-15 19:57:44,107 - app.routes.auth - WARNING - Intento de login fallido para usuario inexistente: Admin
+2026-04-15 19:57:44,107 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 19:57:44] "[31m[1mPOST /api/auth/login HTTP/1.1[0m" 401 -
+2026-04-15 19:57:47,481 - app.routes.auth - WARNING - Intento de login fallido para usuario inexistente: Admin
+2026-04-15 19:57:47,481 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 19:57:47] "[31m[1mPOST /api/auth/login HTTP/1.1[0m" 401 -
+2026-04-15 20:10:35,825 - app.routes.auth - INFO - Usuario logueado: admin
+2026-04-15 20:10:35,841 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:35] "POST /api/auth/login HTTP/1.1" 200 -
+2026-04-15 20:10:35,916 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:35] "GET /dashboard HTTP/1.1" 200 -
+2026-04-15 20:10:35,958 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:35] "GET /static/js/dashboard.js?v=1776300745 HTTP/1.1" 200 -
+2026-04-15 20:10:35,959 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:35] "GET /static/js/servicios.js?v=1774564771 HTTP/1.1" 200 -
+2026-04-15 20:10:35,960 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:35] "[36mGET /static/css/styles.css?v=1774557786 HTTP/1.1[0m" 304 -
+2026-04-15 20:10:35,961 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:35] "[36mGET /static/js/main.js?v=1770570564 HTTP/1.1[0m" 304 -
+2026-04-15 20:10:35,962 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:35] "GET /static/js/prestamos.js?v=1774564771 HTTP/1.1" 200 -
+2026-04-15 20:10:36,049 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:36] "[32mGET /api/dashboard/bancos?anio=2026&referencia_mes=4&referencia_anio=2026 HTTP/1.1[0m" 302 -
+2026-04-15 20:10:36,051 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:36] "[32mGET /api/servicios/list HTTP/1.1[0m" 302 -
+2026-04-15 20:10:36,056 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:36] "[32mGET /api/servicios/periodo-actual HTTP/1.1[0m" 302 -
+2026-04-15 20:10:36,060 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:36] "[32mGET /api/bancos/prestamos?activos=true HTTP/1.1[0m" 302 -
+2026-04-15 20:10:36,110 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:36] "[31m[1mGET /api/auth/login?next=/api/dashboard/bancos?anio%3D2026%26referencia_mes%3D4%26referencia_anio%3D2026 HTTP/1.1[0m" 405 -
+2026-04-15 20:10:36,114 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:36] "[31m[1mGET /api/auth/login?next=/api/servicios/list HTTP/1.1[0m" 405 -
+2026-04-15 20:10:36,115 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:36] "[31m[1mGET /api/auth/login?next=/api/servicios/periodo-actual HTTP/1.1[0m" 405 -
+2026-04-15 20:10:36,122 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:36] "[31m[1mGET /api/auth/login?next=/api/bancos/prestamos?activos%3Dtrue HTTP/1.1[0m" 405 -
+2026-04-15 20:10:36,136 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:36] "[32mGET /api/dashboard/servicios?anio=2026&referencia_mes=4&referencia_anio=2026 HTTP/1.1[0m" 302 -
+2026-04-15 20:10:36,144 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:36] "[31m[1mGET /api/auth/login?next=/api/dashboard/servicios?anio%3D2026%26referencia_mes%3D4%26referencia_anio%3D2026 HTTP/1.1[0m" 405 -
+2026-04-15 20:10:46,652 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:46] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-15 20:10:46,655 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:46] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-15 20:10:46,658 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:46] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-15 20:10:46,665 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:46] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-15 20:10:46,688 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:46] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-15 20:10:46,689 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:46] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-15 20:10:46,695 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:46] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-15 20:10:46,699 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:46] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-15 20:10:50,951 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:50] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-15 20:10:50,952 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:50] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-15 20:10:50,959 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:50] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-15 20:10:50,964 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:50] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-15 20:10:50,966 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:50] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-15 20:10:50,970 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:50] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-15 20:10:50,973 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:50] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-15 20:10:50,977 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:10:50] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-15 20:11:02,122 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:11:02] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-15 20:11:02,124 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:11:02] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-15 20:11:02,130 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:11:02] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-15 20:11:02,132 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:11:02] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-15 20:11:02,135 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:11:02] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-15 20:11:02,139 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:11:02] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-15 20:11:02,142 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:11:02] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-15 20:11:02,147 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:11:02] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-15 20:11:11,079 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:11:11] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-15 20:11:11,083 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:11:11] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-15 20:11:11,089 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:11:11] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-15 20:11:11,092 - werkzeug - INFO - 192.168.0.6 - - [15/Apr/2026 20:11:11] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-21 11:21:24,659 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-04-21 11:21:24,783 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-04-21 11:21:24,784 - app - INFO - [DB] Dialecto activo: sqlite
+2026-04-21 11:21:24,784 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-21 11:21:24,819 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://192.168.0.3:8080
+2026-04-21 11:21:24,819 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-04-21 11:21:50,183 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:21:50] "GET / HTTP/1.1" 200 -
+2026-04-21 11:21:50,225 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:21:50] "GET /static/css/styles.css?v=1774557786 HTTP/1.1" 200 -
+2026-04-21 11:21:50,232 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:21:50] "GET /static/js/main.js?v=1770570564 HTTP/1.1" 200 -
+2026-04-21 11:21:50,368 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:21:50] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-04-21 11:22:03,667 - app.routes.auth - INFO - Usuario logueado: admin
+2026-04-21 11:22:03,683 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:03] "POST /api/auth/login HTTP/1.1" 200 -
+2026-04-21 11:22:03,795 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:03] "GET /dashboard HTTP/1.1" 200 -
+2026-04-21 11:22:03,844 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:03] "[36mGET /static/css/styles.css?v=1774557786 HTTP/1.1[0m" 304 -
+2026-04-21 11:22:03,867 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:03] "GET /static/js/servicios.js?v=1774564771 HTTP/1.1" 200 -
+2026-04-21 11:22:03,867 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:03] "GET /static/js/dashboard.js?v=1776788427 HTTP/1.1" 200 -
+2026-04-21 11:22:03,867 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:03] "GET /static/js/prestamos.js?v=1774564771 HTTP/1.1" 200 -
+2026-04-21 11:22:03,881 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:03] "[36mGET /static/js/main.js?v=1770570564 HTTP/1.1[0m" 304 -
+2026-04-21 11:22:04,055 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:04] "[32mGET /api/dashboard/bancos?anio=2026&referencia_mes=4&referencia_anio=2026 HTTP/1.1[0m" 302 -
+2026-04-21 11:22:04,055 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:04] "[32mGET /api/servicios/list HTTP/1.1[0m" 302 -
+2026-04-21 11:22:04,063 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:04] "[32mGET /api/servicios/periodo-actual HTTP/1.1[0m" 302 -
+2026-04-21 11:22:04,082 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:04] "[32mGET /api/bancos/prestamos?activos=true HTTP/1.1[0m" 302 -
+2026-04-21 11:22:04,168 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:04] "[31m[1mGET /api/auth/login?next=/api/dashboard/bancos?anio%3D2026%26referencia_mes%3D4%26referencia_anio%3D2026 HTTP/1.1[0m" 405 -
+2026-04-21 11:22:04,172 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:04] "[31m[1mGET /api/auth/login?next=/api/servicios/list HTTP/1.1[0m" 405 -
+2026-04-21 11:22:04,176 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:04] "[31m[1mGET /api/auth/login?next=/api/servicios/periodo-actual HTTP/1.1[0m" 405 -
+2026-04-21 11:22:04,184 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:04] "[31m[1mGET /api/auth/login?next=/api/bancos/prestamos?activos%3Dtrue HTTP/1.1[0m" 405 -
+2026-04-21 11:22:04,213 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:04] "[32mGET /api/dashboard/servicios?anio=2026&referencia_mes=4&referencia_anio=2026 HTTP/1.1[0m" 302 -
+2026-04-21 11:22:04,226 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:04] "[31m[1mGET /api/auth/login?next=/api/dashboard/servicios?anio%3D2026%26referencia_mes%3D4%26referencia_anio%3D2026 HTTP/1.1[0m" 405 -
+2026-04-21 11:22:15,429 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:15] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-21 11:22:15,431 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:15] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-21 11:22:15,437 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:15] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-21 11:22:15,446 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:15] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-21 11:22:15,501 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:15] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-21 11:22:15,507 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:15] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-21 11:22:15,516 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:15] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-21 11:22:15,540 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:15] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-21 11:22:40,135 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:40] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-21 11:22:40,137 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:40] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-21 11:22:40,141 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:40] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-21 11:22:40,148 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:22:40] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-21 11:41:29,267 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-04-21 11:41:29,363 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-04-21 11:41:29,363 - app - INFO - [DB] Dialecto activo: sqlite
+2026-04-21 11:41:29,363 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-21 11:42:31,265 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-04-21 11:42:31,350 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-04-21 11:42:31,350 - app - INFO - [DB] Dialecto activo: sqlite
+2026-04-21 11:42:31,350 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-21 11:42:37,833 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-04-21 11:42:37,904 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-04-21 11:42:37,904 - app - INFO - [DB] Dialecto activo: sqlite
+2026-04-21 11:42:37,904 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-21 11:46:24,139 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-04-21 11:46:24,221 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-04-21 11:46:24,221 - app - INFO - [DB] Dialecto activo: sqlite
+2026-04-21 11:46:24,221 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-21 11:46:24,245 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://192.168.0.3:8080
+2026-04-21 11:46:24,245 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-04-21 11:46:27,561 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:27] "GET / HTTP/1.1" 200 -
+2026-04-21 11:46:27,610 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:27] "[36mGET /static/css/styles.css?v=1774557786 HTTP/1.1[0m" 304 -
+2026-04-21 11:46:27,614 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:27] "[36mGET /static/js/main.js?v=1770570564 HTTP/1.1[0m" 304 -
+2026-04-21 11:46:33,168 - app.routes.auth - INFO - Usuario logueado: admin
+2026-04-21 11:46:33,168 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "POST /api/auth/login HTTP/1.1" 200 -
+2026-04-21 11:46:33,321 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "GET /dashboard HTTP/1.1" 200 -
+2026-04-21 11:46:33,365 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "[36mGET /static/css/styles.css?v=1774557786 HTTP/1.1[0m" 304 -
+2026-04-21 11:46:33,370 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "GET /static/js/dashboard.js?v=1776789569 HTTP/1.1" 200 -
+2026-04-21 11:46:33,372 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "[36mGET /static/js/servicios.js?v=1774564771 HTTP/1.1[0m" 304 -
+2026-04-21 11:46:33,384 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "[36mGET /static/js/prestamos.js?v=1774564771 HTTP/1.1[0m" 304 -
+2026-04-21 11:46:33,384 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "[36mGET /static/js/main.js?v=1770570564 HTTP/1.1[0m" 304 -
+2026-04-21 11:46:33,488 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "[32mGET /api/dashboard/bancos?anio=2026&referencia_mes=4&referencia_anio=2026 HTTP/1.1[0m" 302 -
+2026-04-21 11:46:33,493 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "[32mGET /api/servicios/list HTTP/1.1[0m" 302 -
+2026-04-21 11:46:33,498 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "[32mGET /api/dashboard/servicios?anio=2026&referencia_mes=4&referencia_anio=2026 HTTP/1.1[0m" 302 -
+2026-04-21 11:46:33,507 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "[32mGET /api/bancos/prestamos?activos=true HTTP/1.1[0m" 302 -
+2026-04-21 11:46:33,534 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "[31m[1mGET /api/auth/login?next=/api/dashboard/bancos?anio%3D2026%26referencia_mes%3D4%26referencia_anio%3D2026 HTTP/1.1[0m" 405 -
+2026-04-21 11:46:33,546 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "[31m[1mGET /api/auth/login?next=/api/servicios/list HTTP/1.1[0m" 405 -
+2026-04-21 11:46:33,549 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "[31m[1mGET /api/auth/login?next=/api/dashboard/servicios?anio%3D2026%26referencia_mes%3D4%26referencia_anio%3D2026 HTTP/1.1[0m" 405 -
+2026-04-21 11:46:33,562 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:33] "[31m[1mGET /api/auth/login?next=/api/bancos/prestamos?activos%3Dtrue HTTP/1.1[0m" 405 -
+2026-04-21 11:46:37,543 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:37] "[32mGET /api/comercial/clientes HTTP/1.1[0m" 302 -
+2026-04-21 11:46:37,545 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:37] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-21 11:46:37,552 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:37] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-21 11:46:37,559 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:37] "[32mGET /api/comercial/clientes HTTP/1.1[0m" 302 -
+2026-04-21 11:46:37,561 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:37] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-21 11:46:37,569 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:37] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-21 11:46:37,632 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:37] "[31m[1mGET /api/auth/login?next=/api/comercial/clientes HTTP/1.1[0m" 405 -
+2026-04-21 11:46:37,639 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:37] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-21 11:46:37,643 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:37] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-21 11:46:37,659 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:37] "[31m[1mGET /api/auth/login?next=/api/comercial/clientes HTTP/1.1[0m" 405 -
+2026-04-21 11:46:37,673 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:37] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-21 11:46:37,687 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:37] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-21 11:46:40,568 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:40] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-21 11:46:40,585 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:46:40] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-21 11:47:52,683 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:47:52] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-21 11:47:52,686 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:47:52] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-21 11:56:42,425 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-04-21 11:56:42,523 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-04-21 11:56:42,523 - app - INFO - [DB] Dialecto activo: sqlite
+2026-04-21 11:56:42,523 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-21 11:58:00,912 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-04-21 11:58:01,023 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-04-21 11:58:01,023 - app - INFO - [DB] Dialecto activo: sqlite
+2026-04-21 11:58:01,023 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-21 11:58:01,056 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://192.168.0.3:8080
+2026-04-21 11:58:01,056 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-04-21 11:58:03,752 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:03] "GET / HTTP/1.1" 200 -
+2026-04-21 11:58:03,802 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:03] "[36mGET /static/css/styles.css?v=1774557786 HTTP/1.1[0m" 304 -
+2026-04-21 11:58:03,821 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:03] "[36mGET /static/js/main.js?v=1770570564 HTTP/1.1[0m" 304 -
+2026-04-21 11:58:08,177 - app.routes.auth - INFO - Usuario logueado: admin
+2026-04-21 11:58:08,193 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "POST /api/auth/login HTTP/1.1" 200 -
+2026-04-21 11:58:08,320 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "GET /dashboard HTTP/1.1" 200 -
+2026-04-21 11:58:08,360 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "[36mGET /static/css/styles.css?v=1774557786 HTTP/1.1[0m" 304 -
+2026-04-21 11:58:08,380 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "GET /static/js/dashboard.js?v=1776790586 HTTP/1.1" 200 -
+2026-04-21 11:58:08,385 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "[36mGET /static/js/servicios.js?v=1774564771 HTTP/1.1[0m" 304 -
+2026-04-21 11:58:08,391 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "[36mGET /static/js/prestamos.js?v=1774564771 HTTP/1.1[0m" 304 -
+2026-04-21 11:58:08,397 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "[36mGET /static/js/main.js?v=1770570564 HTTP/1.1[0m" 304 -
+2026-04-21 11:58:08,542 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "[32mGET /api/dashboard/bancos?anio=2026&referencia_mes=4&referencia_anio=2026 HTTP/1.1[0m" 302 -
+2026-04-21 11:58:08,547 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "[32mGET /api/servicios/list HTTP/1.1[0m" 302 -
+2026-04-21 11:58:08,550 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "[32mGET /api/dashboard/servicios?anio=2026&referencia_mes=4&referencia_anio=2026 HTTP/1.1[0m" 302 -
+2026-04-21 11:58:08,560 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "[32mGET /api/bancos/prestamos?activos=true HTTP/1.1[0m" 302 -
+2026-04-21 11:58:08,595 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "[31m[1mGET /api/auth/login?next=/api/dashboard/bancos?anio%3D2026%26referencia_mes%3D4%26referencia_anio%3D2026 HTTP/1.1[0m" 405 -
+2026-04-21 11:58:08,604 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "[31m[1mGET /api/auth/login?next=/api/servicios/list HTTP/1.1[0m" 405 -
+2026-04-21 11:58:08,611 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "[31m[1mGET /api/auth/login?next=/api/dashboard/servicios?anio%3D2026%26referencia_mes%3D4%26referencia_anio%3D2026 HTTP/1.1[0m" 405 -
+2026-04-21 11:58:08,626 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:08] "[31m[1mGET /api/auth/login?next=/api/bancos/prestamos?activos%3Dtrue HTTP/1.1[0m" 405 -
+2026-04-21 11:58:12,727 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[32mGET /api/comercial/catalogo HTTP/1.1[0m" 302 -
+2026-04-21 11:58:12,729 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-21 11:58:12,733 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[32mGET /api/comercial/tarifas HTTP/1.1[0m" 302 -
+2026-04-21 11:58:12,743 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[32mGET /api/comercial/clientes HTTP/1.1[0m" 302 -
+2026-04-21 11:58:12,749 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-21 11:58:12,749 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[32mGET /api/comercial/catalogo HTTP/1.1[0m" 302 -
+2026-04-21 11:58:12,764 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-21 11:58:12,788 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[32mGET /api/comercial/clientes HTTP/1.1[0m" 302 -
+2026-04-21 11:58:12,789 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[32mGET /api/comercial/tarifas HTTP/1.1[0m" 302 -
+2026-04-21 11:58:12,800 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-21 11:58:12,862 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[31m[1mGET /api/auth/login?next=/api/comercial/catalogo HTTP/1.1[0m" 405 -
+2026-04-21 11:58:12,869 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-21 11:58:12,876 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[31m[1mGET /api/auth/login?next=/api/comercial/tarifas HTTP/1.1[0m" 405 -
+2026-04-21 11:58:12,903 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[31m[1mGET /api/auth/login?next=/api/comercial/clientes HTTP/1.1[0m" 405 -
+2026-04-21 11:58:12,916 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-21 11:58:12,930 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[31m[1mGET /api/auth/login?next=/api/comercial/catalogo HTTP/1.1[0m" 405 -
+2026-04-21 11:58:12,952 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-21 11:58:12,969 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[31m[1mGET /api/auth/login?next=/api/comercial/tarifas HTTP/1.1[0m" 405 -
+2026-04-21 11:58:12,976 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[31m[1mGET /api/auth/login?next=/api/comercial/clientes HTTP/1.1[0m" 405 -
+2026-04-21 11:58:12,991 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:12] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-21 11:58:15,489 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:15] "[32mGET /api/comercial/clientes HTTP/1.1[0m" 302 -
+2026-04-21 11:58:15,503 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:15] "[31m[1mGET /api/auth/login?next=/api/comercial/clientes HTTP/1.1[0m" 405 -
+2026-04-21 11:58:15,515 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:15] "[32mGET /api/comercial/catalogo HTTP/1.1[0m" 302 -
+2026-04-21 11:58:15,519 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:15] "[31m[1mGET /api/auth/login?next=/api/comercial/catalogo HTTP/1.1[0m" 405 -
+2026-04-21 11:58:31,442 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:31] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-21 11:58:31,442 - werkzeug - INFO - 192.168.0.3 - - [21/Apr/2026 11:58:31] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-21 12:11:34,378 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-04-21 12:11:34,464 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-04-21 12:11:34,464 - app - INFO - [DB] Dialecto activo: sqlite
+2026-04-21 12:11:34,464 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-21 12:11:51,974 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-04-21 12:11:52,048 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-04-21 12:11:52,048 - app - INFO - [DB] Dialecto activo: sqlite
+2026-04-21 12:11:52,064 - app - INFO - [OK] Tablas de base de datos creadas/verificadas
+2026-04-21 12:11:52,159 - app - INFO - [DB] Usuario administrador 'admin' ya existe
+2026-04-21 12:17:34,787 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-04-21 12:17:34,866 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-04-21 12:17:34,866 - app - INFO - [DB] Dialecto activo: sqlite
+2026-04-21 12:17:34,866 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-21 12:18:02,834 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-04-21 12:18:02,933 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-04-21 12:18:02,933 - app - INFO - [DB] Dialecto activo: sqlite
+2026-04-21 12:18:02,945 - app - INFO - [OK] Tablas de base de datos creadas/verificadas
+2026-04-21 12:18:03,090 - app - INFO - [DB] Usuario administrador 'admin' ya existe

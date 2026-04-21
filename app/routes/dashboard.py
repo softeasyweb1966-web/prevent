@@ -10,6 +10,8 @@ from app.models import (
     ServicioNovedad,
     ServicioPago,
     ServicioPeriodo,
+    ClienteComercial,
+    Vendedor,
     Novedad,
     NovedadAplicada,
     TipoNovedad,
@@ -1190,19 +1192,42 @@ def dashboard_bancos():
         return jsonify({'error': 'Error al cargar dashboard bancos'}), 500
 
 
+@dashboard_bp.route('/comercial', methods=['GET'])
+@login_required
+def dashboard_comercial():
+    try:
+        hoy = datetime.utcnow()
+        referencia_mes = request.args.get('referencia_mes', type=int) or request.args.get('mes', type=int) or hoy.month
+        referencia_anio = request.args.get('referencia_anio', type=int) or request.args.get('anio', type=int) or hoy.year
+
+        total_vendedores = Vendedor.query.count()
+        vendedores_activos = Vendedor.query.filter_by(activo=True).count()
+        clientes_activos = ClienteComercial.query.filter_by(activo=True).count()
+
+        return jsonify({
+            'nombre': 'Comercial',
+            'periodicidad': 'Mensual',
+            'total_vendedores': int(total_vendedores),
+            'vendedores_activos': int(vendedores_activos),
+            'clientes_activos': int(clientes_activos),
+            'cartera_pendiente': 0.0,
+            'comisiones_mes': 0.0,
+            'rentabilidad_mes': 0.0,
+            'periodo_actual': {
+                'mes': referencia_mes,
+                'anio': referencia_anio,
+            },
+            'mensaje': 'Modulo comercial base listo para crecer con clientes, cartera, alertas y comisiones',
+        }), 200
+    except Exception as e:
+        logger.error(f"Error dashboard comercial: {str(e)}")
+        return jsonify({'error': 'Error al cargar dashboard comercial'}), 500
+
+
 @dashboard_bp.route('/comisiones', methods=['GET'])
 @login_required
 def dashboard_comisiones():
-    try:
-        return jsonify({
-            'nombre': 'Comisiones',
-            'periodicidad': 'Mensual',
-            'total_registros': 0,
-            'mensaje': 'Modulo base de comisiones listo para desarrollo'
-        }), 200
-    except Exception as e:
-        logger.error(f"Error dashboard comisiones: {str(e)}")
-        return jsonify({'error': 'Error al cargar dashboard comisiones'}), 500
+    return dashboard_comercial()
 
 
 @dashboard_bp.route('/impuestos', methods=['GET'])

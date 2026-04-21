@@ -21,8 +21,8 @@
             <li><a href="#" class="menu-item" data-module="bancos">
                 <span class="icon">🏦</span> Bancos
             </a></li>
-            <li><a href="#" class="menu-item" data-module="comisiones">
-                <span class="icon">CM</span> Comisiones
+            <li><a href="#" class="menu-item" data-module="comercial">
+                <span class="icon">CM</span> Comercial
             </a></li>
             <li><a href="#" class="menu-item" data-module="impuestos">
                 <span class="icon">📋</span> Impuestos
@@ -1303,34 +1303,6 @@
                     </table>
                 </div>
 
-                <div class="table-container">
-                    <div class="module-header" style="margin-bottom:12px;">
-                        <h3>Vendedores</h3>
-                        <div class="button-group module-actions">
-                            <button class="btn btn-secondary" onclick="mostrarAgregarVendedor()" aria-label="Nuevo Vendedor">
-                                <span class="btn-icon">+</span><span class="btn-label">Nuevo Vendedor</span>
-                            </button>
-                        </div>
-                    </div>
-                    <p style="margin-top:0; color:#666;">Catálogo base de vendedores para el futuro módulo de comisiones.</p>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Nombre</th>
-                                <th>Documento</th>
-                                <th>Teléfono</th>
-                                <th>Email</th>
-                                <th>Estado</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody id="vendedoresTable">
-                            <tr>
-                                <td colspan="6" class="loading">Pendiente de implementar catálogo de vendedores</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
             </div>
             
             <!-- Módulo Bancos / Préstamos de Empresa -->
@@ -1640,63 +1612,72 @@
                 <p class="placeholder">Este módulo está en desarrollo. La barra de botones ya sigue la filosofía de períodos (Mes / Historial).</p>
             </div>
             
-            <div id="comisionesView" class="module-view">
-                <div class="module-header" id="comisionesHomeHeader">
+            <div id="comercialView" class="module-view">
+                <div class="module-header" id="comercialHomeHeader">
                     <div class="button-group module-actions">
-                        <button class="btn btn-primary" onclick="notImplemented('Comisiones: Nueva Comision')" aria-label="Nueva Comision">
-                            <span class="btn-icon">+</span><span class="btn-label">Nueva Comisión</span>
+                        <button class="btn btn-primary" onclick="mostrarAgregarClienteComercial()" aria-label="Nuevo Cliente">
+                            <span class="btn-icon">+</span><span class="btn-label">Nuevo Cliente</span>
                         </button>
-                        <button class="btn btn-primary" onclick="notImplemented('Comisiones: Consultar Comisiones')" aria-label="Consultar Comisiones">
-                            <span class="btn-icon">?</span><span class="btn-label">Consultar Comisiones</span>
+                        <button class="btn btn-primary" onclick="mostrarAgregarItemCatalogoComercial()" aria-label="Nuevo Examen o Paquete">
+                            <span class="btn-icon">+</span><span class="btn-label">Nuevo Examen/Paquete</span>
                         </button>
-                        <button class="btn btn-primary" onclick="toggleComisionesMesPanel()" aria-label="Mes">
-                            <span class="btn-icon">M</span><span class="btn-label">Mes</span>
+                        <button class="btn btn-primary" onclick="mostrarAgregarTarifaCliente()" aria-label="Nueva Tarifa Cliente">
+                            <span class="btn-icon">$</span><span class="btn-label">Tarifa Cliente</span>
                         </button>
-                        <button class="btn btn-primary" onclick="notImplemented('Comisiones: Historial')" aria-label="Ver Historial">
-                            <span class="btn-icon">H</span><span class="btn-label">Ver Historial</span>
+                        <button class="btn btn-primary" onclick="mostrarAgregarVendedor()" aria-label="Nuevo Vendedor">
+                            <span class="btn-icon">+</span><span class="btn-label">Nuevo Vendedor</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="consultarComercial()" aria-label="Consultar Comercial">
+                            <span class="btn-icon">?</span><span class="btn-label">Consultar</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="toggleComercialMesPanel()" aria-label="Mes">
+                            <span class="btn-icon">📅</span><span class="btn-label">Mes</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="notImplemented('Comercial: Historial')" aria-label="Ver Historial">
+                            <span class="btn-icon">📜</span><span class="btn-label">Ver Historial</span>
                         </button>
                     </div>
                 </div>
 
-                <div id="comisionesMesActualPanel" class="recent-section" style="margin-bottom: 16px;">
+                <div id="comercialMesActualPanel" class="recent-section" style="margin-bottom: 16px;">
                     <h2 style="margin-bottom: 4px;">Mes en proceso</h2>
-                    <p id="comisionesMesActual" style="margin:0; color:#555; font-size:0.95rem;">No hay mes en proceso registrado.</p>
+                    <p id="comercialMesActual" style="margin:0; color:#555; font-size:0.95rem;">No hay mes en proceso registrado.</p>
                 </div>
 
-                <div id="comisionesDashboardResumen" class="stats-grid" style="margin-bottom: 16px;">
+                <div id="comercialDashboardResumen" class="stats-grid" style="margin-bottom: 16px;">
                     <div class="stat-card">
-                        <h3>Comisiones activas</h3>
-                        <p class="stat-number">-</p>
+                        <h3>Vendedores activos</h3>
+                        <p class="stat-number" id="comercialVendedoresActivos">-</p>
                     </div>
                     <div class="stat-card">
-                        <h3>Equipo liquidable</h3>
-                        <p class="stat-number">-</p>
+                        <h3>Clientes activos</h3>
+                        <p class="stat-number" id="comercialClientesActivos">0</p>
                     </div>
                     <div class="stat-card">
-                        <h3>Total mes</h3>
-                        <p class="stat-number">-</p>
+                        <h3>Cartera pendiente</h3>
+                        <p class="stat-number" id="comercialCarteraPendiente">$0</p>
                     </div>
                     <div class="stat-card">
-                        <h3>Estado periodo</h3>
-                        <p class="stat-number">Pend.</p>
+                        <h3>Rentabilidad mes</h3>
+                        <p class="stat-number" id="comercialRentabilidadMes">$0</p>
                     </div>
                 </div>
 
-                <div id="comisionesPeriodoSeleccionModal" class="modal">
+                <div id="comercialPeriodoSeleccionModal" class="modal">
                     <div class="modal-content" style="max-width: 520px; width: 95%;">
                         <div class="modal-header">
-                            <h2>Seleccionar Período de Comisiones</h2>
-                            <span class="close" onclick="closeComisionesPeriodoSeleccion()">&times;</span>
+                            <h2>Seleccionar Período Comercial</h2>
+                            <span class="close" onclick="closeComercialPeriodoSeleccion()">&times;</span>
                         </div>
-                        <form id="comisionesPeriodoSeleccionForm">
+                        <form id="comercialPeriodoSeleccionForm">
                             <div class="form-row">
                                 <div class="form-group">
-                                    <label for="comisiones_periodo_anio">Año *</label>
-                                    <input id="comisiones_periodo_anio" type="number" min="2000" required />
+                                    <label for="comercial_periodo_anio">Año *</label>
+                                    <input id="comercial_periodo_anio" type="number" min="2000" required />
                                 </div>
                                 <div class="form-group">
-                                    <label for="comisiones_periodo_mes">Mes *</label>
-                                    <select id="comisiones_periodo_mes" required>
+                                    <label for="comercial_periodo_mes">Mes *</label>
+                                    <select id="comercial_periodo_mes" required>
                                         <option value="">Seleccione mes...</option>
                                         <option value="1">Enero</option>
                                         <option value="2">Febrero</option>
@@ -1714,33 +1695,156 @@
                                 </div>
                             </div>
                             <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" onclick="closeComisionesPeriodoSeleccion()">Cancelar</button>
+                                <button type="button" class="btn btn-secondary" onclick="closeComercialPeriodoSeleccion()">Cancelar</button>
                                 <button type="submit" class="btn btn-primary">Confirmar período</button>
                             </div>
                         </form>
                     </div>
                 </div>
 
-                <div id="comisionesMesPanel" class="module-header" style="margin-bottom: 16px; display: none;">
+                <div id="comercialMesPanel" class="module-header" style="margin-bottom: 16px; display: none;">
                     <div class="period-aux period-aux-center">
                         <h3 class="quincena-title">Gestión de Mes</h3>
-                        <p id="comisionesMesSeleccionadoLabel" style="margin-top:0; margin-bottom:4px; color:#555; font-size:0.9rem;">Período Comisiones (Mes/Año) · selección pendiente</p>
+                        <p id="comercialMesSeleccionadoLabel" style="margin-top:0; margin-bottom:4px; color:#555; font-size:0.9rem;">Período Comercial (Mes/Año) · selección pendiente</p>
                         <div class="period-workflow">
                             <div class="period-workflow-steps">
-                                <button type="button" class="btn btn-step active" data-module="comisiones" data-step="resumen" onclick="setGenericWorkflowStep('comisiones', 'resumen')">1. Pre-Liquidación</button>
-                                <button type="button" class="btn btn-step" data-module="comisiones" data-step="novedades" onclick="setGenericWorkflowStep('comisiones', 'novedades')">2. Novedades</button>
-                                <button type="button" class="btn btn-step" data-module="comisiones" data-step="pagos" onclick="setGenericWorkflowStep('comisiones', 'pagos')">3. Pagos</button>
+                                <button type="button" class="btn btn-step active" data-module="comercial" data-step="resumen" onclick="setGenericWorkflowStep('comercial', 'resumen')">1. Resumen</button>
+                                <button type="button" class="btn btn-step" data-module="comercial" data-step="novedades" onclick="setGenericWorkflowStep('comercial', 'novedades')">2. Cartera</button>
+                                <button type="button" class="btn btn-step" data-module="comercial" data-step="pagos" onclick="setGenericWorkflowStep('comercial', 'pagos')">3. Comisiones</button>
                             </div>
                             <div class="period-workflow-actions">
-                                <button id="btnComisionesFinalizarNovedadesPanel" type="button" class="btn btn-outline btn-step" style="display:none;" onclick="notImplemented('Comisiones: FINALIZAR NOVEDADES mes')">Finalizar Novedades</button>
-                                <button id="btnComisionesFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="notImplemented('Comisiones: FINALIZAR PAGO mes')">Finalizar Pago Mes</button>
+                                <button id="btnComercialFinalizarNovedadesPanel" type="button" class="btn btn-outline btn-step" style="display:none;" onclick="notImplemented('Comercial: FINALIZAR CARTERA mes')">Finalizar Cartera</button>
+                                <button id="btnComercialFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="notImplemented('Comercial: FINALIZAR COMISIONES mes')">Finalizar Mes</button>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <h2>Módulo Comisiones</h2>
-                <p class="placeholder">Este módulo queda creado con la misma filosofía de operación por períodos. El siguiente paso será definir su estructura funcional y de base de datos.</p>
+                <div id="comercialResumenOperativo" class="recent-section" style="margin-bottom: 16px;">
+                    <h2>Base Comercial</h2>
+                    <p style="margin-top:0; color:#555;">Este módulo nace con la misma lógica visual de los demás y absorbe el catálogo de vendedores. El siguiente crecimiento natural será clientes, documentos, tarifas, atenciones, facturas, recaudos, alertas y liquidación de comisiones.</p>
+                </div>
+
+                <div id="comercialCatalogoPanel" class="table-container" style="margin-bottom: 16px;">
+                    <div class="module-header" style="margin-bottom:12px;">
+                        <h3>Catálogo General de Exámenes y Paquetes</h3>
+                        <div class="button-group module-actions">
+                            <button class="btn btn-secondary" onclick="mostrarAgregarItemCatalogoComercial()" aria-label="Nuevo Item Comercial">
+                                <span class="btn-icon">+</span><span class="btn-label">Nuevo Item</span>
+                            </button>
+                        </div>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Tipo</th>
+                                <th>Código</th>
+                                <th>Nombre</th>
+                                <th>Tarifa Base</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="comercialCatalogoTable">
+                            <tr>
+                                <td colspan="6" class="loading">Cargando catálogo comercial...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="comercialClientesPanel" class="table-container" style="margin-bottom: 16px;">
+                    <div class="module-header" style="margin-bottom:12px;">
+                        <h3>Clientes Comerciales</h3>
+                        <div class="button-group module-actions">
+                            <button class="btn btn-secondary" onclick="mostrarAgregarClienteComercial()" aria-label="Nuevo Cliente Comercial">
+                                <span class="btn-icon">+</span><span class="btn-label">Nuevo Cliente</span>
+                            </button>
+                        </div>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Cliente</th>
+                                <th>Vendedor</th>
+                                <th>Condición</th>
+                                <th>Facturación</th>
+                                <th>Contacto</th>
+                                <th>Documentos</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="comercialClientesTable">
+                            <tr>
+                                <td colspan="8" class="loading">Cargando clientes comerciales...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="comercialTarifasPanel" class="table-container" style="margin-bottom: 16px;">
+                    <div class="module-header" style="margin-bottom:12px;">
+                        <h3>Tarifas Diferenciales por Cliente</h3>
+                        <div class="button-group module-actions">
+                            <button class="btn btn-secondary" onclick="mostrarAgregarTarifaCliente()" aria-label="Nueva Tarifa Comercial">
+                                <span class="btn-icon">$</span><span class="btn-label">Nueva Tarifa</span>
+                            </button>
+                        </div>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Cliente</th>
+                                <th>Item</th>
+                                <th>Tarifa Base</th>
+                                <th>Tarifa Cliente</th>
+                                <th>Vigencia</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="comercialTarifasTable">
+                            <tr>
+                                <td colspan="7" class="loading">Cargando tarifas comerciales...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="comercialVendedoresPanel" class="table-container">
+                    <div class="module-header" style="margin-bottom:12px;">
+                        <h3>Vendedores</h3>
+                        <div class="button-group module-actions">
+                            <button class="btn btn-secondary" onclick="mostrarAgregarVendedor()" aria-label="Nuevo Vendedor">
+                                <span class="btn-icon">+</span><span class="btn-label">Nuevo Vendedor</span>
+                            </button>
+                        </div>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Documento</th>
+                                <th>% Venta</th>
+                                <th>% Recaudo</th>
+                                <th>Monto Base</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="comercialVendedoresTable">
+                            <tr>
+                                <td colspan="7" class="loading">Cargando vendedores...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="recent-section" style="margin-top: 16px;">
+                    <h2>Siguiente Etapa</h2>
+                    <p style="margin:0; color:#555;">Clientes, documentos, condiciones comerciales, cartera, alertas, punto de equilibrio y rentabilidad mensual/acumulada se montarán sobre esta base sin romper la uniformidad del aplicativo.</p>
+                </div>
             </div>
 
             <div id="comprasView" class="module-view">
@@ -2365,6 +2469,20 @@
                     <input type="email" id="vendedorEmail" maxlength="120">
                 </div>
             </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="vendedorComisionVenta">% Comisión Venta</label>
+                    <input type="number" id="vendedorComisionVenta" min="0" max="100" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label for="vendedorComisionRecaudo">% Comisión Recaudo</label>
+                    <input type="number" id="vendedorComisionRecaudo" min="0" max="100" step="0.01">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="vendedorMontoBaseComision">Monto Base Comisión</label>
+                <input type="number" id="vendedorMontoBaseComision" min="0" step="0.01">
+            </div>
             <div class="form-group">
                 <label for="vendedorDescripcion">Descripción</label>
                 <textarea id="vendedorDescripcion" rows="3"></textarea>
@@ -2378,6 +2496,323 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeVendedorModal()">Cancelar</button>
                 <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="clienteComercialModal" class="modal">
+    <div class="modal-content" style="max-width: 980px; width: 96%;">
+        <div class="modal-header">
+            <h2 id="clienteComercialModalTitle">Nuevo Cliente Comercial</h2>
+            <span class="close" onclick="closeClienteComercialModal()">&times;</span>
+        </div>
+        <form id="clienteComercialForm" enctype="multipart/form-data">
+            <input type="hidden" id="clienteComercialId">
+
+            <div class="recent-section" style="margin-bottom: 16px;">
+                <h3 style="margin-top:0;">Relación Comercial</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="clienteComercialVendedorId">Vendedor responsable *</label>
+                        <select id="clienteComercialVendedorId" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialCondicion">Condición comercial *</label>
+                        <select id="clienteComercialCondicion" required>
+                            <option value="EFECTIVO">EFECTIVO</option>
+                            <option value="CREDITO">CREDITO</option>
+                            <option value="MIXTO">MIXTO</option>
+                        </select>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="clienteComercialActivo" checked>
+                            Cliente activo
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="recent-section" style="margin-bottom: 16px;">
+                <h3 style="margin-top:0;">Datos de la Empresa</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="clienteComercialRazonSocial">Razón social *</label>
+                        <input type="text" id="clienteComercialRazonSocial" maxlength="200" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialNombreComercial">Nombre comercial</label>
+                        <input type="text" id="clienteComercialNombreComercial" maxlength="200">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="clienteComercialNit">NIT</label>
+                        <input type="text" id="clienteComercialNit" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialCiudad">Ciudad</label>
+                        <input type="text" id="clienteComercialCiudad" maxlength="120">
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialDireccion">Dirección</label>
+                        <input type="text" id="clienteComercialDireccion" maxlength="255">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="clienteComercialTelefonoEmpresa">Teléfono empresa</label>
+                        <input type="text" id="clienteComercialTelefonoEmpresa" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialEmailEmpresa">Email empresa</label>
+                        <input type="email" id="clienteComercialEmailEmpresa" maxlength="120">
+                    </div>
+                </div>
+            </div>
+
+            <div class="recent-section" style="margin-bottom: 16px;">
+                <h3 style="margin-top:0;">Contactos</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="clienteComercialContactoPrincipal">Contacto principal</label>
+                        <input type="text" id="clienteComercialContactoPrincipal" maxlength="150">
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialCelularPrincipal">Celular principal</label>
+                        <input type="text" id="clienteComercialCelularPrincipal" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialEmailPrincipal">Email principal</label>
+                        <input type="email" id="clienteComercialEmailPrincipal" maxlength="120">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="clienteComercialContactoFacturacion">Contacto facturación</label>
+                        <input type="text" id="clienteComercialContactoFacturacion" maxlength="150">
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialCelularFacturacion">Celular facturación</label>
+                        <input type="text" id="clienteComercialCelularFacturacion" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialEmailFacturacion">Email facturación</label>
+                        <input type="email" id="clienteComercialEmailFacturacion" maxlength="120">
+                    </div>
+                </div>
+            </div>
+
+            <div class="recent-section" style="margin-bottom: 16px;">
+                <h3 style="margin-top:0;">Facturación y Condiciones</h3>
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="clienteComercialRequiereFactura">
+                            Requiere factura
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialFechasFacturacion">Fechas de facturación</label>
+                        <input type="text" id="clienteComercialFechasFacturacion" maxlength="120" placeholder="Ej. 5 y 20 de cada mes">
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialFechaSolicitudFactura">Fecha solicitud de factura</label>
+                        <input type="date" id="clienteComercialFechaSolicitudFactura">
+                    </div>
+                </div>
+                <p id="clienteComercialFacturaHint" style="margin-top:0; color:#666; font-size:0.92rem;">Si el cliente no requiere factura, queda registrado como cliente en efectivo. Cuando solicite facturación, la fecha de solicitud marcará el cambio.</p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="clienteComercialExamenes">Exámenes convenidos</label>
+                        <textarea id="clienteComercialExamenes" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialServicios">Servicios convenidos</label>
+                        <textarea id="clienteComercialServicios" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="clienteComercialTarifas">Tarifas convenidas</label>
+                    <textarea id="clienteComercialTarifas" rows="3" placeholder="Detalle de tarifas, rangos o acuerdos comerciales"></textarea>
+                </div>
+            </div>
+
+            <div class="recent-section" style="margin-bottom: 16px;">
+                <h3 style="margin-top:0;">Documentos y Soportes</h3>
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="clienteComercialDocumentosCompletos">
+                            Documentos legales completos
+                        </label>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="clienteComercialPagareFirmado">
+                            Pagaré firmado
+                        </label>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="clienteComercialDocumentosDetalle">Detalle documentos legales</label>
+                        <textarea id="clienteComercialDocumentosDetalle" rows="3" placeholder="RUT, cámara de comercio, cédula representante, contrato, etc."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialPagareDetalle">Detalle pagaré / crédito</label>
+                        <textarea id="clienteComercialPagareDetalle" rows="3" placeholder="Condición del pagaré, fecha firma, observaciones de crédito"></textarea>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="clienteComercialDocumentosAdjuntos">Adjuntar documentos legales</label>
+                        <input type="file" id="clienteComercialDocumentosAdjuntos" multiple>
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialPagareAdjuntos">Adjuntar pagaré</label>
+                        <input type="file" id="clienteComercialPagareAdjuntos" multiple>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Documentos legales cargados</label>
+                        <div id="clienteComercialDocumentosExistentes" class="recent-section" style="padding:12px; min-height: 52px;">Sin adjuntos cargados.</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Pagarés cargados</label>
+                        <div id="clienteComercialPagareExistentes" class="recent-section" style="padding:12px; min-height: 52px;">Sin adjuntos cargados.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="clienteComercialObservaciones">Observaciones comerciales</label>
+                <textarea id="clienteComercialObservaciones" rows="3"></textarea>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeClienteComercialModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar Cliente</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="catalogoComercialModal" class="modal">
+    <div class="modal-content" style="max-width: 720px;">
+        <div class="modal-header">
+            <h2 id="catalogoComercialModalTitle">Nuevo Item Comercial</h2>
+            <span class="close" onclick="closeCatalogoComercialModal()">&times;</span>
+        </div>
+        <form id="catalogoComercialForm">
+            <input type="hidden" id="catalogoComercialId">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="catalogoComercialTipo">Tipo *</label>
+                    <select id="catalogoComercialTipo" required>
+                        <option value="EXAMEN">EXAMEN</option>
+                        <option value="PAQUETE">PAQUETE</option>
+                        <option value="SERVICIO">SERVICIO</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="catalogoComercialCodigo">Código</label>
+                    <input type="text" id="catalogoComercialCodigo" maxlength="50">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="catalogoComercialNombre">Nombre *</label>
+                    <input type="text" id="catalogoComercialNombre" maxlength="200" required>
+                </div>
+                <div class="form-group">
+                    <label for="catalogoComercialTarifaBase">Tarifa base *</label>
+                    <input type="number" id="catalogoComercialTarifaBase" min="0" step="0.01" required>
+                </div>
+            </div>
+            <div class="form-row" id="catalogoComercialTipoExamenRow" style="display:none;">
+                <div class="form-group">
+                    <label for="catalogoComercialTipoExamen">Tipo de examen *</label>
+                    <select id="catalogoComercialTipoExamen">
+                        <option value="">Seleccione...</option>
+                        <option value="CONSULTA">CONSULTA</option>
+                        <option value="LABORATORIO">LABORATORIO</option>
+                        <option value="PARACLINICO">PARACLINICO</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="catalogoComercialDescripcion">Descripción</label>
+                <textarea id="catalogoComercialDescripcion" rows="3"></textarea>
+            </div>
+            <div class="form-group" id="catalogoComercialComponentesRow" style="display:none;">
+                <label>Examenes que incluye el paquete *</label>
+                <div class="catalogo-componentes-box" id="catalogoComercialComponentesList">
+                    <div class="catalogo-componentes-empty">Cargando examenes del catalogo...</div>
+                </div>
+                <small class="form-help">Solo aplica cuando el item es tipo PAQUETE. Si cambias el item a EXAMEN o SERVICIO, esta composicion se limpia.</small>
+            </div>
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" id="catalogoComercialActivo" checked>
+                    Item activo
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeCatalogoComercialModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar Item</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="tarifaClienteModal" class="modal">
+    <div class="modal-content" style="max-width: 760px;">
+        <div class="modal-header">
+            <h2 id="tarifaClienteModalTitle">Nueva Tarifa por Cliente</h2>
+            <span class="close" onclick="closeTarifaClienteModal()">&times;</span>
+        </div>
+        <form id="tarifaClienteForm">
+            <input type="hidden" id="tarifaClienteId">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="tarifaClienteClienteId">Cliente *</label>
+                    <select id="tarifaClienteClienteId" required></select>
+                </div>
+                <div class="form-group">
+                    <label for="tarifaClienteCatalogoItemId">Examen / Paquete *</label>
+                    <select id="tarifaClienteCatalogoItemId" required></select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="tarifaClienteTarifaNegociada">Tarifa cliente *</label>
+                    <input type="number" id="tarifaClienteTarifaNegociada" min="0" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label for="tarifaClienteVigenciaDesde">Vigencia desde</label>
+                    <input type="date" id="tarifaClienteVigenciaDesde">
+                </div>
+                <div class="form-group">
+                    <label for="tarifaClienteVigenciaHasta">Vigencia hasta</label>
+                    <input type="date" id="tarifaClienteVigenciaHasta">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="tarifaClienteObservacion">Observación comercial</label>
+                <textarea id="tarifaClienteObservacion" rows="3"></textarea>
+            </div>
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" id="tarifaClienteActivo" checked>
+                    Tarifa activa
+                </label>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeTarifaClienteModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar Tarifa</button>
             </div>
         </form>
     </div>

@@ -83,6 +83,11 @@ def register_shell_context(app):
     def make_shell_context():
         from app.models import (
             ConceptoAutomatico,
+            ClienteComercial,
+            ClienteComercialAdjunto,
+            ClienteComercialTarifa,
+            ComercialCatalogoItem,
+            ComercialPaqueteDetalle,
             Empleado,
             LiquidoQuincena,
             Pago,
@@ -99,6 +104,7 @@ def register_shell_context(app):
             ServicioPeriodo,
             TipoNovedad,
             Usuario,
+            Vendedor,
             db,
         )
 
@@ -110,6 +116,11 @@ def register_shell_context(app):
             "Empleado": Empleado,
             "TipoNovedad": TipoNovedad,
             "ConceptoAutomatico": ConceptoAutomatico,
+            "ClienteComercial": ClienteComercial,
+            "ClienteComercialAdjunto": ClienteComercialAdjunto,
+            "ClienteComercialTarifa": ClienteComercialTarifa,
+            "ComercialCatalogoItem": ComercialCatalogoItem,
+            "ComercialPaqueteDetalle": ComercialPaqueteDetalle,
             "Quincena": Quincena,
             "LiquidoQuincena": LiquidoQuincena,
             "Pago": Pago,
@@ -121,6 +132,7 @@ def register_shell_context(app):
             "PrestamoNovedad": PrestamoNovedad,
             "PrestamoPago": PrestamoPago,
             "ParametroDescuento": ParametroDescuento,
+            "Vendedor": Vendedor,
         }
 
 
@@ -270,6 +282,7 @@ def register_blueprints(app):
     from app.routes import (
         auth_bp,
         bancos_bp,
+        comercial_bp,
         dashboard_bp,
         nomina_bp,
         parametros_bp,
@@ -299,6 +312,7 @@ def register_blueprints(app):
                 'parametros': '/api/parametros',
                 'servicios': '/api/servicios',
                 'bancos': '/api/bancos',
+                'comercial': '/api/comercial',
             },
             'instrucciones': 'Primero: POST /api/auth/login con usuario y contrasena',
         }
@@ -337,6 +351,7 @@ def register_blueprints(app):
     app.register_blueprint(parametros_bp)
     app.register_blueprint(servicios_bp)
     app.register_blueprint(bancos_bp)
+    app.register_blueprint(comercial_bp)
 
 
 def setup_logging():

@@ -20,7 +20,8 @@ servicios_bp = Blueprint('servicios', __name__, url_prefix='/api/servicios')
 
 # Blueprint de bancos / préstamos de empresa
 bancos_bp = Blueprint('bancos', __name__, url_prefix='/api/bancos')
+comercial_bp = Blueprint('comercial', __name__, url_prefix='/api/comercial')
 
 # Importar las rutas
-from app.routes import auth, dashboard, nomina, usuarios, parametros, servicios, bancos
+from app.routes import auth, dashboard, nomina, usuarios, parametros, servicios, bancos, comercial
 

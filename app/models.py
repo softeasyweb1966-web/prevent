@@ -206,13 +206,180 @@ class Vendedor(db.Model):
     documento = db.Column(db.String(30), unique=True, index=True)
     telefono = db.Column(db.String(50))
     email = db.Column(db.String(120))
+    porcentaje_comision_venta = db.Column(Numeric(5, 2), default=0)
+    porcentaje_comision_recaudo = db.Column(Numeric(5, 2), default=0)
+    monto_base_comision = db.Column(Numeric(15, 2), default=0)
     descripcion = db.Column(db.Text)
     activo = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    clientes_comerciales = db.relationship(
+        'ClienteComercial',
+        backref='vendedor',
+        lazy='dynamic'
+    )
 
     def __repr__(self):
         return f'<Vendedor {self.nombre}>'
+
+
+class ClienteComercial(db.Model):
+    """Ficha maestra del cliente comercial relacionado por vendedor"""
+    __tablename__ = 'clientes_comerciales'
+
+    id = db.Column(db.Integer, primary_key=True)
+    vendedor_id = db.Column(db.Integer, db.ForeignKey('vendedores.id'), nullable=False, index=True)
+    razon_social = db.Column(db.String(200), nullable=False, index=True)
+    nombre_comercial = db.Column(db.String(200))
+    nit = db.Column(db.String(50), unique=True, index=True)
+    ciudad = db.Column(db.String(120))
+    direccion = db.Column(db.String(255))
+    telefono_empresa = db.Column(db.String(50))
+    email_empresa = db.Column(db.String(120))
+    contacto_principal = db.Column(db.String(150))
+    celular_contacto_principal = db.Column(db.String(50))
+    email_contacto_principal = db.Column(db.String(120))
+    contacto_facturacion = db.Column(db.String(150))
+    celular_facturacion = db.Column(db.String(50))
+    email_facturacion = db.Column(db.String(120))
+    condicion_comercial = db.Column(db.String(20), nullable=False, default='EFECTIVO')
+    requiere_factura = db.Column(db.Boolean, default=False, nullable=False)
+    fechas_facturacion = db.Column(db.String(120))
+    fecha_solicitud_factura = db.Column(db.DateTime)
+    examenes_convenidos = db.Column(db.Text)
+    servicios_convenidos = db.Column(db.Text)
+    tarifas_convenidas = db.Column(db.Text)
+    documentos_legales_completos = db.Column(db.Boolean, default=False, nullable=False)
+    documentos_legales_detalle = db.Column(db.Text)
+    pagare_firmado = db.Column(db.Boolean, default=False, nullable=False)
+    pagare_detalle = db.Column(db.Text)
+    observaciones = db.Column(db.Text)
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    adjuntos = db.relationship(
+        'ClienteComercialAdjunto',
+        backref='cliente',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
+    tarifas = db.relationship(
+        'ClienteComercialTarifa',
+        backref='cliente',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
+
+    def __repr__(self):
+        return f'<ClienteComercial {self.razon_social}>'
+
+
+class ClienteComercialAdjunto(db.Model):
+    """Soportes cargados para la ficha comercial del cliente"""
+    __tablename__ = 'clientes_comerciales_adjuntos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes_comerciales.id'), nullable=False, index=True)
+    tipo_documento = db.Column(db.String(30), nullable=False, index=True)
+    nombre_original = db.Column(db.String(255), nullable=False)
+    nombre_guardado = db.Column(db.String(255), nullable=False)
+    ruta_relativa = db.Column(db.String(500), nullable=False)
+    mime_type = db.Column(db.String(120))
+    tamano_bytes = db.Column(db.Integer)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<ClienteComercialAdjunto {self.tipo_documento} - {self.nombre_original}>'
+
+
+class ComercialCatalogoItem(db.Model):
+    """Catalogo general de examenes, paquetes y otros items comerciales"""
+    __tablename__ = 'comercial_catalogo_items'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tipo_item = db.Column(db.String(20), nullable=False, index=True)
+    tipo_examen = db.Column(db.String(20), index=True)
+    nombre = db.Column(db.String(200), nullable=False, index=True)
+    codigo = db.Column(db.String(50), unique=True, index=True)
+    descripcion = db.Column(db.Text)
+    tarifa_base = db.Column(Numeric(15, 2), default=0)
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    tarifas_cliente = db.relationship(
+        'ClienteComercialTarifa',
+        backref='item_catalogo',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
+    paquete_componentes = db.relationship(
+        'ComercialPaqueteDetalle',
+        foreign_keys='ComercialPaqueteDetalle.paquete_id',
+        back_populates='paquete',
+        lazy='select',
+        cascade='all, delete-orphan'
+    )
+    examen_en_paquetes = db.relationship(
+        'ComercialPaqueteDetalle',
+        foreign_keys='ComercialPaqueteDetalle.examen_id',
+        back_populates='examen',
+        lazy='dynamic'
+    )
+
+    def __repr__(self):
+        return f'<ComercialCatalogoItem {self.tipo_item} - {self.nombre}>'
+
+
+class ComercialPaqueteDetalle(db.Model):
+    """Relaciona un paquete comercial con los examenes que lo componen"""
+    __tablename__ = 'comercial_paquetes_detalle'
+
+    id = db.Column(db.Integer, primary_key=True)
+    paquete_id = db.Column(db.Integer, db.ForeignKey('comercial_catalogo_items.id'), nullable=False, index=True)
+    examen_id = db.Column(db.Integer, db.ForeignKey('comercial_catalogo_items.id'), nullable=False, index=True)
+    cantidad = db.Column(db.Integer, nullable=False, default=1)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    paquete = db.relationship(
+        'ComercialCatalogoItem',
+        foreign_keys=[paquete_id],
+        back_populates='paquete_componentes'
+    )
+    examen = db.relationship(
+        'ComercialCatalogoItem',
+        foreign_keys=[examen_id],
+        back_populates='examen_en_paquetes'
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint('paquete_id', 'examen_id', name='uq_paquete_examen_comercial'),
+    )
+
+    def __repr__(self):
+        return f'<ComercialPaqueteDetalle paquete={self.paquete_id} examen={self.examen_id}>'
+
+
+class ClienteComercialTarifa(db.Model):
+    """Tarifa negociada por cliente para un item comercial"""
+    __tablename__ = 'clientes_comerciales_tarifas'
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes_comerciales.id'), nullable=False, index=True)
+    catalogo_item_id = db.Column(db.Integer, db.ForeignKey('comercial_catalogo_items.id'), nullable=False, index=True)
+    tarifa_negociada = db.Column(Numeric(15, 2), nullable=False, default=0)
+    vigencia_desde = db.Column(db.DateTime)
+    vigencia_hasta = db.Column(db.DateTime)
+    observacion = db.Column(db.Text)
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('cliente_id', 'catalogo_item_id', name='uq_cliente_catalogo_tarifa'),
+    )
+
+    def __repr__(self):
+        return f'<ClienteComercialTarifa cliente={self.cliente_id} item={self.catalogo_item_id}>'
 
 
 class TipoNovedad(db.Model):
