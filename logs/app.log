@@ -3905,3 +3905,54 @@ WHERE pg_catalog.pg_class.relname = %(table_name)s AND pg_catalog.pg_class.relki
 2026-04-21 12:18:02,933 - app - INFO - [DB] Dialecto activo: sqlite
 2026-04-21 12:18:02,945 - app - INFO - [OK] Tablas de base de datos creadas/verificadas
 2026-04-21 12:18:03,090 - app - INFO - [DB] Usuario administrador 'admin' ya existe
+2026-04-24 15:18:40,704 - app - INFO - [DB] DATABASE_URL configurada: (sin DATABASE_URL)
+2026-04-24 15:18:40,838 - app - INFO - [DB] Conexion activa: sqlite:///C:\python\PREVENT\instance\prevent.db
+2026-04-24 15:18:40,838 - app - INFO - [DB] Dialecto activo: sqlite
+2026-04-24 15:18:40,838 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-24 15:18:40,877 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://192.168.0.10:8080
+2026-04-24 15:18:40,877 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-04-24 15:18:45,626 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:45] "GET / HTTP/1.1" 200 -
+2026-04-24 15:18:45,699 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:45] "GET /static/css/styles.css?v=1776791373 HTTP/1.1" 200 -
+2026-04-24 15:18:45,746 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:45] "GET /static/js/main.js?v=1770570564 HTTP/1.1" 200 -
+2026-04-24 15:18:45,821 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:45] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-04-24 15:18:57,676 - app.routes.auth - INFO - Usuario logueado: admin
+2026-04-24 15:18:57,685 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:57] "POST /api/auth/login HTTP/1.1" 200 -
+2026-04-24 15:18:57,938 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:57] "GET /dashboard HTTP/1.1" 200 -
+2026-04-24 15:18:57,981 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:57] "[36mGET /static/css/styles.css?v=1776791373 HTTP/1.1[0m" 304 -
+2026-04-24 15:18:57,989 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:57] "[36mGET /static/js/main.js?v=1770570564 HTTP/1.1[0m" 304 -
+2026-04-24 15:18:58,079 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:58] "GET /static/js/servicios.js?v=1774564771 HTTP/1.1" 200 -
+2026-04-24 15:18:58,083 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:58] "GET /static/js/prestamos.js?v=1774564771 HTTP/1.1" 200 -
+2026-04-24 15:18:58,174 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:58] "GET /static/js/dashboard.js?v=1776791843 HTTP/1.1" 200 -
+2026-04-24 15:18:58,263 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:58] "[32mGET /api/servicios/list HTTP/1.1[0m" 302 -
+2026-04-24 15:18:58,269 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:58] "[32mGET /api/servicios/periodo-actual HTTP/1.1[0m" 302 -
+2026-04-24 15:18:58,271 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:58] "[32mGET /api/dashboard/bancos?anio=2026&referencia_mes=4&referencia_anio=2026 HTTP/1.1[0m" 302 -
+2026-04-24 15:18:58,279 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:58] "[32mGET /api/bancos/prestamos?activos=true HTTP/1.1[0m" 302 -
+2026-04-24 15:18:58,393 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:58] "[31m[1mGET /api/auth/login?next=/api/servicios/periodo-actual HTTP/1.1[0m" 405 -
+2026-04-24 15:18:58,398 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:58] "[31m[1mGET /api/auth/login?next=/api/dashboard/bancos?anio%3D2026%26referencia_mes%3D4%26referencia_anio%3D2026 HTTP/1.1[0m" 405 -
+2026-04-24 15:18:58,400 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:58] "[31m[1mGET /api/auth/login?next=/api/servicios/list HTTP/1.1[0m" 405 -
+2026-04-24 15:18:58,425 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:58] "[31m[1mGET /api/auth/login?next=/api/bancos/prestamos?activos%3Dtrue HTTP/1.1[0m" 405 -
+2026-04-24 15:18:58,446 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:58] "[32mGET /api/dashboard/servicios?anio=2026&referencia_mes=4&referencia_anio=2026 HTTP/1.1[0m" 302 -
+2026-04-24 15:18:58,465 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:18:58] "[31m[1mGET /api/auth/login?next=/api/dashboard/servicios?anio%3D2026%26referencia_mes%3D4%26referencia_anio%3D2026 HTTP/1.1[0m" 405 -
+2026-04-24 15:19:04,754 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-24 15:19:04,757 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[32mGET /api/comercial/catalogo HTTP/1.1[0m" 302 -
+2026-04-24 15:19:04,762 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[32mGET /api/comercial/clientes HTTP/1.1[0m" 302 -
+2026-04-24 15:19:04,767 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[32mGET /api/comercial/tarifas HTTP/1.1[0m" 302 -
+2026-04-24 15:19:04,776 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[32mGET /api/dashboard/comercial HTTP/1.1[0m" 302 -
+2026-04-24 15:19:04,777 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-24 15:19:04,787 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[32mGET /api/comercial/catalogo HTTP/1.1[0m" 302 -
+2026-04-24 15:19:04,800 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[32mGET /api/comercial/clientes HTTP/1.1[0m" 302 -
+2026-04-24 15:19:04,811 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[32mGET /api/comercial/tarifas HTTP/1.1[0m" 302 -
+2026-04-24 15:19:04,822 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[32mGET /api/comercial/vendedores HTTP/1.1[0m" 302 -
+2026-04-24 15:19:04,895 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-24 15:19:04,899 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[31m[1mGET /api/auth/login?next=/api/comercial/catalogo HTTP/1.1[0m" 405 -
+2026-04-24 15:19:04,903 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[31m[1mGET /api/auth/login?next=/api/comercial/clientes HTTP/1.1[0m" 405 -
+2026-04-24 15:19:04,907 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[31m[1mGET /api/auth/login?next=/api/comercial/tarifas HTTP/1.1[0m" 405 -
+2026-04-24 15:19:04,915 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
+2026-04-24 15:19:04,936 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[31m[1mGET /api/auth/login?next=/api/dashboard/comercial HTTP/1.1[0m" 405 -
+2026-04-24 15:19:04,956 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[31m[1mGET /api/auth/login?next=/api/comercial/catalogo HTTP/1.1[0m" 405 -
+2026-04-24 15:19:04,980 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[31m[1mGET /api/auth/login?next=/api/comercial/clientes HTTP/1.1[0m" 405 -
+2026-04-24 15:19:04,991 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:04] "[31m[1mGET /api/auth/login?next=/api/comercial/tarifas HTTP/1.1[0m" 405 -
+2026-04-24 15:19:05,007 - werkzeug - INFO - 192.168.0.10 - - [24/Apr/2026 15:19:05] "[31m[1mGET /api/auth/login?next=/api/comercial/vendedores HTTP/1.1[0m" 405 -
