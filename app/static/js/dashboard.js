@@ -1588,6 +1588,9 @@ function switchModule(moduleName) {
     } else if (moduleName === 'comercial') {
         displayName = 'GestiÃ³n de Comisiones';
         if (userMenu) userMenu.style.display = '';
+    } else if (moduleName === 'recepcion') {
+        displayName = 'Consulta Clientes';
+        if (userMenu) userMenu.style.display = '';
     } else if (moduleName === 'impuestos') {
         displayName = 'Gestión de Impuestos';
         if (userMenu) userMenu.style.display = '';
@@ -1629,6 +1632,12 @@ function switchModule(moduleName) {
                 inicializarModuloComercial(window._comercialSeccionActual || 'inicio');
             } catch (e) {
                 console.error('Error inicializando modulo Comercial', e);
+            }
+        } else if (moduleName === 'recepcion') {
+            try {
+                inicializarModuloRecepcion();
+            } catch (e) {
+                console.error('Error inicializando modulo Recepcion', e);
             }
         } else if (moduleName === 'servicios') {
             // Módulo Servicios usa su propio JS para cargar catálogo completo
@@ -2630,6 +2639,7 @@ let tarifasComercialesData = [];
 let clienteComercialTarifaContext = null;
 let catalogoComercialComponentesSeleccionados = [];
 let catalogoComercialExamenesDisponibles = [];
+let recepcionClienteActivoId = null;
 const COMERCIAL_SECTION_CONFIG = {
     inicio: {
         panels: [],
@@ -2792,6 +2802,204 @@ function abrirResultadoConsultaComercial(sectionName, id) {
     const config = getComercialSectionConfig(sectionName);
     if (typeof config.edit === 'function') {
         config.edit(Number(id));
+    }
+}
+
+function resetRecepcionConsulta() {
+    recepcionClienteActivoId = null;
+
+    const detallePanel = document.getElementById('recepcionClienteDetalle');
+    const consultaPanel = document.getElementById('recepcionConsultaPanel');
+    const input = document.getElementById('recepcionClientesSearch');
+    const titulo = document.getElementById('recepcionClienteDetalleTitulo');
+    const puntos = document.getElementById('recepcionClientePuntosAtencion');
+    const contacto = document.getElementById('recepcionClienteContactoPrincipal');
+    const celular = document.getElementById('recepcionClienteCelularPrincipal');
+    const items = document.getElementById('recepcionClienteItems');
+
+    if (detallePanel) detallePanel.style.display = 'none';
+    if (consultaPanel) consultaPanel.style.display = 'block';
+    if (input) input.value = '';
+    if (titulo) titulo.textContent = 'Cliente';
+    if (puntos) puntos.textContent = 'Sin instrucciones registradas.';
+    if (contacto) contacto.textContent = 'Sin contacto registrado.';
+    if (celular) celular.textContent = 'Sin celular registrado.';
+    if (items) items.innerHTML = '<div class="loading">Selecciona un cliente para ver su detalle.</div>';
+}
+
+function construirTarjetasRecepcionCliente(cliente, tarifasCliente, catalogoMap) {
+    if (Array.isArray(tarifasCliente) && tarifasCliente.length > 0) {
+        return tarifasCliente.map(tarifa => {
+            const itemCatalogo = catalogoMap.get(String(tarifa.catalogo_item_id));
+            const descripcion = tarifa.tipo_item === 'PAQUETE'
+                ? (itemCatalogo?.resumen_componentes || 'Paquete sin componentes detallados')
+                : (tarifa.clasificacion_resumen || tarifa.tipo_item || 'Item convenido');
+            const vigencia = [tarifa.vigencia_desde, tarifa.vigencia_hasta].filter(Boolean).join(' a ');
+            const valorMostrar = tarifa.tarifa_negociada || tarifa.tarifa_base || 0;
+
+            return `
+                <div class="recepcion-cliente-item">
+                    <div>
+                        <strong>${escapeHtml(tarifa.item_nombre || 'Item convenido')}</strong>
+                        <div class="recepcion-cliente-item-meta">${escapeHtml(descripcion)}</div>
+                        ${vigencia ? `<div class="recepcion-cliente-item-meta">Vigencia: ${escapeHtml(vigencia)}</div>` : ''}
+                    </div>
+                    <div class="recepcion-cliente-item-price">${formatCurrency(valorMostrar)}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    const notasConvenio = [
+        cliente.examenes_convenidos ? `Examenes: ${cliente.examenes_convenidos}` : '',
+        cliente.servicios_convenidos ? `Paquetes/Servicios: ${cliente.servicios_convenidos}` : '',
+        cliente.tarifas_convenidas ? `Observaciones de tarifa: ${cliente.tarifas_convenidas}` : ''
+    ].filter(Boolean);
+
+    if (notasConvenio.length === 0) {
+        return '<div class="loading">Este cliente no tiene examenes o paquetes convenidos registrados.</div>';
+    }
+
+    return notasConvenio.map(texto => `
+        <div class="recepcion-cliente-item">
+            <div>
+                <strong>Convenio registrado</strong>
+                <div class="recepcion-cliente-item-meta">${escapeHtml(texto)}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function abrirClienteRecepcion(id) {
+    let cliente = (clientesComercialesData || []).find(item => Number(item.id) === Number(id));
+    if (!cliente) {
+        await asegurarClientesComerciales();
+        cliente = (clientesComercialesData || []).find(item => Number(item.id) === Number(id));
+    }
+    if (!cliente) {
+        showError('No fue posible cargar el cliente seleccionado.');
+        return;
+    }
+
+    try {
+        const [tarifas, catalogo] = await Promise.all([
+            asegurarTarifasComerciales(),
+            asegurarCatalogoComercial()
+        ]);
+        const catalogoMap = new Map((catalogo || []).map(item => [String(item.id), item]));
+        const tarifasCliente = (tarifas || [])
+            .filter(tarifa => String(tarifa.cliente_id) === String(cliente.id) && tarifa.activo !== false)
+            .sort((a, b) => (a.item_nombre || '').localeCompare(b.item_nombre || ''));
+
+        recepcionClienteActivoId = Number(cliente.id);
+
+        const detallePanel = document.getElementById('recepcionClienteDetalle');
+        const consultaPanel = document.getElementById('recepcionConsultaPanel');
+        const titulo = document.getElementById('recepcionClienteDetalleTitulo');
+        const puntos = document.getElementById('recepcionClientePuntosAtencion');
+        const contacto = document.getElementById('recepcionClienteContactoPrincipal');
+        const celular = document.getElementById('recepcionClienteCelularPrincipal');
+        const items = document.getElementById('recepcionClienteItems');
+
+        if (titulo) {
+            titulo.textContent = cliente.razon_social || cliente.nombre_comercial || 'Cliente';
+        }
+        if (puntos) {
+            puntos.textContent = cliente.puntos_atencion_recepcion || 'Sin instrucciones registradas.';
+        }
+        if (contacto) {
+            contacto.textContent = cliente.contacto_principal || cliente.contacto_facturacion || 'Sin contacto registrado.';
+        }
+        if (celular) {
+            celular.textContent = [
+                cliente.celular_contacto_principal || cliente.celular_facturacion || '',
+                cliente.email_contacto_principal || cliente.email_facturacion || cliente.email_empresa || ''
+            ].filter(Boolean).join(' · ') || 'Sin celular registrado.';
+        }
+        if (items) {
+            items.innerHTML = construirTarjetasRecepcionCliente(cliente, tarifasCliente, catalogoMap);
+        }
+        if (consultaPanel) consultaPanel.style.display = 'none';
+        if (detallePanel) detallePanel.style.display = 'block';
+        window.setTimeout(() => focusModuleSection('recepcionClienteDetalle'), 120);
+    } catch (error) {
+        console.error('Error abriendo cliente en recepcion:', error);
+        showError(error.message || 'No fue posible cargar la guia del cliente.');
+    }
+}
+
+function renderRecepcionClientesResults() {
+    const input = document.getElementById('recepcionClientesSearch');
+    const results = document.getElementById('recepcionClientesResults');
+    const summary = document.getElementById('recepcionClientesResumen');
+    if (!results || !summary) return;
+
+    const query = String(input?.value || '').trim().toLowerCase();
+    const clientes = Array.isArray(clientesComercialesData) ? clientesComercialesData : [];
+    const base = clientes
+        .filter(cliente => cliente.activo !== false)
+        .sort((a, b) => (a.razon_social || a.nombre_comercial || '').localeCompare(b.razon_social || b.nombre_comercial || ''));
+
+    const filtered = !query
+        ? base.slice(0, 30)
+        : base.filter(cliente => [
+            cliente.razon_social,
+            cliente.nombre_comercial,
+            cliente.nit,
+            cliente.contacto_principal,
+            cliente.contacto_facturacion,
+            cliente.email_empresa,
+            cliente.vendedor_nombre
+        ].some(value => String(value || '').toLowerCase().includes(query)));
+
+    if (filtered.length === 0) {
+        summary.textContent = query
+            ? 'No encontramos clientes con esa busqueda.'
+            : 'No hay clientes comerciales activos disponibles.';
+        results.innerHTML = '<div class="comercial-search-empty">No hay coincidencias. Prueba con otro nombre, NIT o contacto.</div>';
+        return;
+    }
+
+    summary.textContent = query
+        ? `${filtered.length} resultado(s). Selecciona un cliente para ver su guia de recepcion.`
+        : `${base.length} cliente(s) activo(s). Puedes seleccionar uno o escribir para filtrar.`;
+
+    results.innerHTML = filtered.map(cliente => `
+        <button type="button" class="comercial-search-item" onclick="abrirClienteRecepcion(${Number(cliente.id)})">
+            <strong>${escapeHtml(cliente.razon_social || cliente.nombre_comercial || 'Cliente sin nombre')}</strong>
+            <div class="comercial-search-subtitle">${escapeHtml([cliente.nit || 'Sin NIT', cliente.nombre_comercial || '', cliente.vendedor_nombre || ''].filter(Boolean).join(' · '))}</div>
+            <div class="comercial-search-meta">${escapeHtml([cliente.contacto_principal || cliente.contacto_facturacion || 'Sin contacto', cliente.celular_contacto_principal || cliente.celular_facturacion || '', cliente.condicion_comercial || ''].filter(Boolean).join(' · '))}</div>
+        </button>
+    `).join('');
+}
+
+function volverConsultaRecepcion() {
+    resetRecepcionConsulta();
+    renderRecepcionClientesResults();
+    const input = document.getElementById('recepcionClientesSearch');
+    if (input) input.focus();
+    window.setTimeout(() => focusModuleSection('recepcionConsultaPanel'), 120);
+}
+
+async function inicializarModuloRecepcion() {
+    resetRecepcionConsulta();
+
+    const results = document.getElementById('recepcionClientesResults');
+    const summary = document.getElementById('recepcionClientesResumen');
+    if (results) results.innerHTML = '<div class="loading">Cargando clientes...</div>';
+    if (summary) summary.textContent = 'Cargando clientes para recepcion...';
+
+    try {
+        await Promise.all([
+            asegurarClientesComerciales(),
+            asegurarTarifasComerciales(),
+            asegurarCatalogoComercial()
+        ]);
+        renderRecepcionClientesResults();
+    } catch (error) {
+        console.error('Error inicializando recepcion:', error);
+        if (summary) summary.textContent = 'No fue posible cargar la consulta de clientes.';
+        if (results) results.innerHTML = '<div class="comercial-search-empty">No fue posible cargar los clientes de recepcion.</div>';
     }
 }
 

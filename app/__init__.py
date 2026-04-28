@@ -24,6 +24,29 @@ def _safe_database_url(raw_url):
         return "(url invalida)"
 
 
+def _validate_database_url(app):
+    """Exige PostgreSQL como base oficial del proyecto."""
+    configured_url = app.config.get("SQLALCHEMY_DATABASE_URI")
+    if not configured_url:
+        raise RuntimeError(
+            "DATABASE_URL no esta definida. PREVENT ya no usa SQLite; "
+            "configura una URL valida de PostgreSQL antes de iniciar la app."
+        )
+
+    try:
+        parsed_url = make_url(configured_url)
+    except Exception as exc:
+        raise RuntimeError(
+            "La URL configurada en DATABASE_URL no es valida para SQLAlchemy."
+        ) from exc
+
+    if not parsed_url.drivername.startswith("postgresql"):
+        raise RuntimeError(
+            "La base configurada no es PostgreSQL. "
+            "PREVENT ya no usa SQLite ni otros motores en esta instancia."
+        )
+
+
 def _seed_admin_user(app):
     """Crear un administrador por defecto de manera idempotente."""
     from werkzeug.security import generate_password_hash
@@ -423,6 +446,7 @@ def create_app(config_name='development'):
 
     app = Flask(__name__)
     app.config.from_object(config[config_name])
+    _validate_database_url(app)
 
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         os.makedirs(app.config['UPLOAD_FOLDER'])

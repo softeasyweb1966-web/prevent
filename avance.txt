@@ -1,0 +1,133 @@
+AVANCE MODULO COMERCIAL
+Fecha: 27/04/2026
+
+RESUMEN GENERAL
+---------------
+Hoy se avanzo en el modulo comercial, especialmente en:
+- seguimiento a clientes
+- registro de documentos comerciales
+- registro de pagos y recibos
+- manejo de atenciones para clientes en efectivo
+- organizacion de la pantalla para que sea mas clara
+- definicion del camino para trabajar con PostgreSQL
+
+
+LO QUE SE HIZO HOY
+------------------
+
+1. Seguimiento a clientes
+- Se corrigio el problema donde al abrir un cliente aparecia informacion de otro.
+- Se mejoro la limpieza de pantalla al salir de opciones o cambiar de modulo.
+- Se ajusto la apertura del seguimiento para que entre limpio, mostrando solo:
+  - menu superior
+  - tarjetas resumen
+  - area central vacia hasta seleccionar una opcion
+
+2. Menu superior de seguimiento
+- Se reorganizo el seguimiento a clientes para trabajar con menu superior.
+- Quedaron las opciones:
+  - Nueva Atencion
+  - Nuevo Documento
+  - Registrar Pago
+  - Volver al cliente
+- Se ajusto la presentacion visual de los botones:
+  - mismo tamano
+  - una sola linea
+  - mejor ubicacion en la cabecera
+- Se corrigio para que al dar clic no dejara paneles visibles detras de la ventana emergente.
+
+3. Atenciones para clientes en efectivo
+- Se creo la logica de Atenciones como base del control comercial.
+- Cada atencion genera automaticamente un cargo para seguimiento.
+- Se dejo controlado que:
+  - solo se puedan usar examenes o paquetes convenidos
+  - no se pueda cambiar manualmente la tarifa convenida
+- Se ajusto el modelo para permitir:
+  - varios pacientes en una misma atencion
+  - varios examenes para un mismo paciente
+- El paciente paso a ser parte del detalle de la atencion.
+
+4. Documentos comerciales y pagos
+- Se mantuvo el flujo de documentos comerciales ligado al seguimiento.
+- Se dejo listo el registro de pagos y abonos sobre documentos.
+- Se mejoro el manejo de recibo de caja dentro del pago.
+- Cuando el pago viene de una atencion, el sistema puede precargar informacion util del paciente o del detalle.
+
+5. Formatos y usabilidad
+- Se mejoro la visual de varios botones y ayudas en pantalla.
+- Se agrego formato con separador de miles a campos monetarios como:
+  - Tarifa cliente
+  - Valor documento
+- Se corrigio el error por el cual Valor documento solo dejaba escribir tres digitos.
+
+6. Base de datos
+- Se reviso el estado real del proyecto respecto a SQLite y PostgreSQL.
+- Se confirmo que:
+  - hoy esta corriendo localmente en SQLite
+  - pero el proyecto ya esta preparado para PostgreSQL
+- Se encontro un backup logico mas solido de PostgreSQL en:
+  - backups/pg_logical_backup_20260325_031434
+- Se creo documentacion de PostgreSQL en:
+  - postgress.txt
+  - POSTGRES_TRABAJO_LOCAL.md
+- Se creo el script:
+  - restore_postgres_logical.py
+  para restaurar el backup solido a una base PostgreSQL destino.
+- Se hizo el cambio para que la aplicacion ya no use SQLite como fallback.
+- Se creo el script:
+  - migrar_sqlite_restante_a_postgres.py
+  para pasar a PostgreSQL lo que siga existiendo solo en la SQLite local y cuya tabla destino este vacia.
+
+
+DECISIONES IMPORTANTES TOMADAS
+------------------------------
+- La unidad base de control para clientes en efectivo o mixtos debe ser la atencion.
+- La factura no debe ser el origen del control; debe ser una consolidacion posterior cuando aplique.
+- No se usara SQLite como base maestra.
+- La base oficial debe pasar a PostgreSQL.
+- La informacion historica fuerte se tomara del backup PostgreSQL.
+- Las pruebas recientes del modulo comercial se pueden volver a digitar si es necesario.
+
+
+LO QUE FALTA EN EL MODULO COMERCIAL
+----------------------------------
+
+1. PostgreSQL como base oficial
+- Definir la DATABASE_URL final o la password del postgres local.
+- Crear la base destino.
+- Ejecutar migraciones.
+- Restaurar el backup solido.
+- Ejecutar la migracion complementaria desde SQLite hacia PostgreSQL.
+- Arrancar la app ya solo contra PostgreSQL.
+
+2. Rehacer o cargar pruebas comerciales
+- Volver a registrar en PostgreSQL las pruebas recientes del modulo comercial que hoy estan en SQLite si se consideran necesarias.
+
+3. Revisar flujo completo de comercial en PostgreSQL
+- Probar:
+  - clientes comerciales
+  - convenios
+  - tarifas por cliente
+  - atenciones
+  - documentos comerciales
+  - pagos y recibos de caja
+
+4. Afinar seguimiento a clientes
+- Limpiar aun mas encabezados internos si siguen sobrando.
+- Revisar que cada opcion del menu superior siempre abra en estado limpio.
+- Validar visualmente todos los modales y sus cruces.
+
+5. Definir alcance final para clientes mixtos
+- Confirmar si los pagos anticipados se manejaran como saldo a favor.
+- Confirmar si mas adelante se necesitara aplicar un solo pago a varias atenciones.
+- Confirmar si se dejara consolidacion de atenciones a factura en una fase posterior.
+
+6. Validaciones y endurecimiento
+- Validar tipos y tamanos de archivos adjuntos para comprobantes.
+- Revisar si hace falta consecutivo formal de recibo de caja.
+- Probar reglas de negocio con casos reales de vendedores.
+
+
+SIGUIENTE PASO RECOMENDADO
+-------------------------
+El siguiente paso recomendado es dejar listo PostgreSQL como base oficial y montar primero la informacion mas solida del backup historico. Despues de eso se deben probar nuevamente los flujos del modulo comercial sobre esa base.

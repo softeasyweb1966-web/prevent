@@ -6874,3 +6874,154 @@ WHERE clientes_comerciales.id = ?]
 2026-04-27 23:00:48,881 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:00:48] "GET /api/bancos/prestamos?activos=true HTTP/1.1" 200 -
 2026-04-27 23:00:48,963 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:00:48] "GET /api/dashboard/bancos?anio=2026&referencia_mes=4&referencia_anio=2026 HTTP/1.1" 200 -
 2026-04-27 23:00:48,983 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:00:48] "GET /api/dashboard/servicios?anio=2026&referencia_mes=1&referencia_anio=2026 HTTP/1.1" 200 -
+2026-04-27 23:23:19,037 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@localhost:5432/prevent
+2026-04-27 23:23:19,184 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@localhost:5432/prevent
+2026-04-27 23:23:19,184 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:23:19,408 - app - WARNING - [WARN] No se pudieron crear tablas automaticamente: 'utf-8' codec can't decode byte 0xf3 in position 85: invalid continuation byte
+2026-04-27 23:23:19,408 - app - WARNING - [WARN] Usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:23:19,683 - app - WARNING - [WARN] No se pudo crear/verificar el admin por defecto: 'utf-8' codec can't decode byte 0xf3 in position 85: invalid continuation byte
+2026-04-27 23:23:19,727 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://192.168.0.10:8080
+2026-04-27 23:23:19,728 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-04-27 23:23:19,728 - werkzeug - INFO -  * Restarting with stat
+2026-04-27 23:23:21,702 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@localhost:5432/prevent
+2026-04-27 23:23:21,842 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@localhost:5432/prevent
+2026-04-27 23:23:21,842 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:23:21,961 - app - WARNING - [WARN] No se pudieron crear tablas automaticamente: 'utf-8' codec can't decode byte 0xf3 in position 85: invalid continuation byte
+2026-04-27 23:23:21,961 - app - WARNING - [WARN] Usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:23:22,199 - app - WARNING - [WARN] No se pudo crear/verificar el admin por defecto: 'utf-8' codec can't decode byte 0xf3 in position 85: invalid continuation byte
+2026-04-27 23:23:22,218 - werkzeug - WARNING -  * Debugger is active!
+2026-04-27 23:23:22,221 - werkzeug - INFO -  * Debugger PIN: 792-480-490
+2026-04-27 23:23:28,735 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:23:28] "[35m[1mGET / HTTP/1.1[0m" 500 -
+2026-04-27 23:23:28,826 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:23:28] "GET /?__debugger__=yes&cmd=resource&f=style.css HTTP/1.1" 200 -
+2026-04-27 23:23:28,871 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:23:28] "GET /?__debugger__=yes&cmd=resource&f=debugger.js HTTP/1.1" 200 -
+2026-04-27 23:23:29,025 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:23:29] "GET /?__debugger__=yes&cmd=resource&f=console.png HTTP/1.1" 200 -
+2026-04-27 23:23:29,119 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:23:29] "[36mGET /?__debugger__=yes&cmd=resource&f=console.png HTTP/1.1[0m" 304 -
+2026-04-27 23:25:39,778 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@localhost:5432/prevent
+2026-04-27 23:25:39,900 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@localhost:5432/prevent
+2026-04-27 23:25:39,900 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:25:39,900 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:25:39,964 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://192.168.0.10:8080
+2026-04-27 23:25:39,964 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-04-27 23:25:39,967 - werkzeug - INFO -  * Restarting with stat
+2026-04-27 23:25:42,032 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@localhost:5432/prevent
+2026-04-27 23:25:42,143 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@localhost:5432/prevent
+2026-04-27 23:25:42,143 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:25:42,143 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:25:42,161 - werkzeug - WARNING -  * Debugger is active!
+2026-04-27 23:25:42,167 - werkzeug - INFO -  * Debugger PIN: 792-480-490
+2026-04-27 23:25:45,735 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:25:45] "[35m[1mGET / HTTP/1.1[0m" 500 -
+2026-04-27 23:25:45,778 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:25:45] "[36mGET /?__debugger__=yes&cmd=resource&f=style.css HTTP/1.1[0m" 304 -
+2026-04-27 23:25:45,786 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:25:45] "[36mGET /?__debugger__=yes&cmd=resource&f=debugger.js HTTP/1.1[0m" 304 -
+2026-04-27 23:25:46,040 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:25:46] "[36mGET /?__debugger__=yes&cmd=resource&f=console.png HTTP/1.1[0m" 304 -
+2026-04-27 23:26:13,616 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@localhost:5432/prevent_utf8
+2026-04-27 23:26:13,721 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@localhost:5432/prevent_utf8
+2026-04-27 23:26:13,721 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:26:13,721 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:26:18,518 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@localhost:5432/prevent_utf8
+2026-04-27 23:26:18,637 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@localhost:5432/prevent_utf8
+2026-04-27 23:26:18,637 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:26:18,637 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:26:22,241 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@localhost:5432/prevent_utf8
+2026-04-27 23:26:22,347 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@localhost:5432/prevent_utf8
+2026-04-27 23:26:22,347 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:26:22,347 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:26:22,395 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://192.168.0.10:8080
+2026-04-27 23:26:22,398 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-04-27 23:26:22,400 - werkzeug - INFO -  * Restarting with stat
+2026-04-27 23:26:24,123 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@localhost:5432/prevent_utf8
+2026-04-27 23:26:24,219 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@localhost:5432/prevent_utf8
+2026-04-27 23:26:24,219 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:26:24,219 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:26:24,236 - werkzeug - WARNING -  * Debugger is active!
+2026-04-27 23:26:24,241 - werkzeug - INFO -  * Debugger PIN: 792-480-490
+2026-04-27 23:26:33,350 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:26:33] "[35m[1mGET / HTTP/1.1[0m" 500 -
+2026-04-27 23:26:33,393 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:26:33] "[36mGET /?__debugger__=yes&cmd=resource&f=style.css HTTP/1.1[0m" 304 -
+2026-04-27 23:26:33,410 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:26:33] "[36mGET /?__debugger__=yes&cmd=resource&f=debugger.js HTTP/1.1[0m" 304 -
+2026-04-27 23:26:33,627 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:26:33] "[36mGET /?__debugger__=yes&cmd=resource&f=console.png HTTP/1.1[0m" 304 -
+2026-04-27 23:33:33,434 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:33:33,451 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:33:33,542 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:33:33,542 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:33:33,542 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:33:33,559 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:33:33,559 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:33:33,559 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:33:56,253 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:33:56,301 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:33:56,348 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:33:56,348 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:33:56,348 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:33:56,395 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:33:56,395 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:33:56,395 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:34:12,151 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:34:12,253 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:34:12,253 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:34:12,255 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:36:46,435 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:36:46,531 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:36:46,531 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:36:46,531 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:36:50,048 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:36:50,127 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:36:50,127 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:36:50,127 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:37:08,886 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:37:08,966 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:37:08,966 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:37:08,966 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:38:06,938 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:38:07,048 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:38:07,064 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:38:07,064 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:38:07,110 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://192.168.0.10:8080
+2026-04-27 23:38:07,110 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-04-27 23:38:07,114 - werkzeug - INFO -  * Restarting with stat
+2026-04-27 23:38:09,000 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:38:09,088 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:38:09,088 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:38:09,088 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-04-27 23:38:09,105 - werkzeug - WARNING -  * Debugger is active!
+2026-04-27 23:38:09,117 - werkzeug - INFO -  * Debugger PIN: 792-480-490
+2026-04-27 23:38:14,243 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:14] "GET / HTTP/1.1" 200 -
+2026-04-27 23:38:14,279 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:14] "[36mGET /static/css/styles.css?v=1777345787 HTTP/1.1[0m" 304 -
+2026-04-27 23:38:14,281 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:14] "[36mGET /static/js/main.js?v=1770570564 HTTP/1.1[0m" 304 -
+2026-04-27 23:38:18,815 - app.routes.auth - INFO - Usuario logueado: admin
+2026-04-27 23:38:18,831 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:18] "POST /api/auth/login HTTP/1.1" 200 -
+2026-04-27 23:38:18,959 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:18] "GET /dashboard HTTP/1.1" 200 -
+2026-04-27 23:38:19,010 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:19] "[36mGET /static/css/styles.css?v=1777345787 HTTP/1.1[0m" 304 -
+2026-04-27 23:38:19,014 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:19] "[36mGET /static/js/dashboard.js?v=1777348799 HTTP/1.1[0m" 304 -
+2026-04-27 23:38:19,021 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:19] "[36mGET /static/js/servicios.js?v=1774564771 HTTP/1.1[0m" 304 -
+2026-04-27 23:38:19,023 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:19] "[36mGET /static/js/prestamos.js?v=1774564771 HTTP/1.1[0m" 304 -
+2026-04-27 23:38:19,040 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:19] "[36mGET /static/js/main.js?v=1770570564 HTTP/1.1[0m" 304 -
+2026-04-27 23:38:19,303 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:19] "GET /api/servicios/list HTTP/1.1" 200 -
+2026-04-27 23:38:19,334 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:19] "GET /api/dashboard/bancos?anio=2026&referencia_mes=4&referencia_anio=2026 HTTP/1.1" 200 -
+2026-04-27 23:38:19,363 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:19] "GET /api/bancos/prestamos?activos=true HTTP/1.1" 200 -
+2026-04-27 23:38:19,380 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:19] "GET /api/dashboard/servicios?anio=2026&referencia_mes=1&referencia_anio=2026 HTTP/1.1" 200 -
+2026-04-27 23:38:22,644 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:22] "GET /api/dashboard/nomina?anio=2026 HTTP/1.1" 200 -
+2026-04-27 23:38:22,651 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:22] "GET /api/nomina/empleados HTTP/1.1" 200 -
+2026-04-27 23:38:26,508 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:26] "GET /api/servicios/list HTTP/1.1" 200 -
+2026-04-27 23:38:26,552 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:26] "GET /api/dashboard/servicios?anio=2026&referencia_mes=1&referencia_anio=2026 HTTP/1.1" 200 -
+2026-04-27 23:38:26,567 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:26] "GET /api/servicios/novedades/list HTTP/1.1" 200 -
+2026-04-27 23:38:29,517 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:29] "GET /api/bancos/prestamos HTTP/1.1" 200 -
+2026-04-27 23:38:29,579 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:29] "GET /api/dashboard/bancos?anio=2026&referencia_mes=4&referencia_anio=2026 HTTP/1.1" 200 -
+2026-04-27 23:38:36,513 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:36] "[33mGET /api/dashboard/recepcion HTTP/1.1[0m" 404 -
+2026-04-27 23:38:51,418 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:51] "GET /api/comercial/clientes HTTP/1.1" 200 -
+2026-04-27 23:38:51,438 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:51] "GET /api/comercial/tarifas HTTP/1.1" 200 -
+2026-04-27 23:38:59,119 - werkzeug - INFO - 192.168.0.10 - - [27/Apr/2026 23:38:59] "[33mGET /api/dashboard/recepcion HTTP/1.1[0m" 404 -
+2026-04-27 23:40:10,697 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:40:10,835 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-04-27 23:40:10,835 - app - INFO - [DB] Dialecto activo: postgresql
+2026-04-27 23:40:10,835 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'

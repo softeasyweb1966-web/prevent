@@ -8,14 +8,37 @@ RESUMEN RAPIDO
 - La SQLite actual contiene principalmente pruebas recientes del modulo comercial.
 - Primero se debe apuntar DATABASE_URL a PostgreSQL, luego correr migraciones y despues restaurar el backup.
 - El script de restauracion ya esta listo: restore_postgres_logical.py
-- Para ejecutar la migracion real falta la DATABASE_URL final o la password del postgres local.
+- Tambien existe un script para subir a PostgreSQL lo que siga solo en SQLite: migrar_sqlite_restante_a_postgres.py
+- Ya se dejo lista una base local PostgreSQL funcional: prevent_utf8
+- Ya se reseteo la clave local del usuario postgres.
+
+
+DATOS LOCALES ACTUALES DE POSTGRESQL
+------------------------------------
+Servidor:
+- 127.0.0.1
+
+Puerto:
+- 5432
+
+Base local de trabajo:
+- prevent_utf8
+
+Usuario:
+- postgres
+
+Password local actual:
+- PreventPg2026_Local!
+
+DATABASE_URL local:
+- postgresql+psycopg2://postgres:PreventPg2026_Local!@127.0.0.1:5432/prevent_utf8
 
 
 1. Estado actual
 ----------------
 - El proyecto PREVENT ya esta preparado para trabajar con PostgreSQL.
 - La aplicacion toma la conexion desde la variable de entorno DATABASE_URL.
-- Si DATABASE_URL no existe, el proyecto cae a SQLite local.
+- La aplicacion ya no debe caer a SQLite local.
 - La meta del proyecto es dejar de trabajar con SQLite y usar solo PostgreSQL.
 
 
@@ -56,7 +79,8 @@ La SQLite actual tiene principalmente:
 Recomendacion:
 - Restaurar primero el backup de PostgreSQL
 - Ejecutar las migraciones actuales del proyecto
-- Luego volver a digitar las pruebas recientes del modulo comercial
+- Luego migrar automaticamente desde SQLite las tablas que sigan faltando en PostgreSQL
+- Y solo volver a digitar manualmente aquello que no convenga conservar como prueba
 
 
 5. Conexion a PostgreSQL
@@ -101,10 +125,36 @@ Si la base destino ya tiene datos y se quiere reemplazar:
 
 .\.venv\Scripts\python.exe .\restore_postgres_logical.py --backup-dir .\backups\pg_logical_backup_20260325_031434 --clean-target
 
+Paso 4.1:
+Migrar desde SQLite lo que siga faltando en PostgreSQL y cuya tabla destino este vacia:
+
+.\.venv\Scripts\python.exe .\migrar_sqlite_restante_a_postgres.py
+
 Paso 5:
 Arrancar la aplicacion:
 
 cmd /c .venv\Scripts\python.exe .\run.py
+
+Paso 6:
+Ver inventario de datos en PostgreSQL:
+
+.\.venv\Scripts\python.exe .\ver_postgres_resumen.py
+
+Ese script deja un archivo:
+
+postgres_resumen.json
+
+Resultado actual del inventario local:
+- empleados: 20
+- quincenas: 5
+- liquidos_quincena: 79
+- pagos: 50
+- servicios: 16
+- vendedores: 3
+- clientes_comerciales: 2
+- clientes_atenciones: 1
+- clientes_seguimiento_documentos: 3
+- clientes_seguimiento_pagos: 2
 
 
 8. Script creado para restauracion
@@ -119,6 +169,11 @@ Ese script:
 - inserta los datos en PostgreSQL
 - reinicia secuencias
 - genera reporte de restauracion
+
+Tambien se creo este archivo para migrar a PostgreSQL las tablas que hoy solo existan en SQLite
+o que sigan vacias en el destino:
+
+migrar_sqlite_restante_a_postgres.py
 
 
 9. Limitacion actual encontrada
@@ -137,6 +192,8 @@ Por eso, para terminar la migracion real, hace falta una de estas dos cosas:
 - logs/app.log
 - backups/pg_logical_backup_20260325_031434/manifest.json
 - restore_postgres_logical.py
+- migrar_sqlite_restante_a_postgres.py
+- ver_postgres_resumen.py
 - POSTGRES_TRABAJO_LOCAL.md
 
 
@@ -147,4 +204,5 @@ No usar SQLite como base maestra.
 Trabajar asi:
 - PostgreSQL como base oficial
 - backup logico del 25/03/2026 como punto de partida
-- modulo comercial actual volverlo a registrar manualmente si es necesario
+- migracion complementaria desde SQLite para lo que hoy siga faltando
+- y solo registro manual del modulo comercial si alguna prueba no conviene conservar

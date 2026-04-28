@@ -37,6 +37,11 @@ TABLE_ORDER = [
     "prestamos_pagos",
     "novedades_aplicadas",
 ]
+TABLE_COLUMN_FALLBACKS = {
+    "empleados": {
+        "estado_laboral": lambda row: "ACTIVO",
+    },
+}
 
 
 def normalize_database_url(url):
@@ -214,6 +219,18 @@ def load_rows_from_backup(backup_dir: Path, table_info):
     return json.loads(json_path.read_text(encoding="utf-8"))
 
 
+def apply_fallback_columns(table_name, row_payload, target_column_map):
+    fallback_map = TABLE_COLUMN_FALLBACKS.get(table_name, {})
+    for column_name, resolver in fallback_map.items():
+        if column_name not in target_column_map:
+            continue
+        current_value = row_payload.get(column_name)
+        if current_value is not None:
+            continue
+        row_payload[column_name] = resolver(row_payload) if callable(resolver) else resolver
+    return row_payload
+
+
 def restore_table(conn, inspector, backup_dir: Path, table_name: str, table_info):
     rows = load_rows_from_backup(backup_dir, table_info)
     if not rows:
@@ -225,6 +242,10 @@ def restore_table(conn, inspector, backup_dir: Path, table_name: str, table_info
     target_column_map = {column["name"]: column for column in target_columns_info}
     source_columns = list(rows[0].keys()) if rows else []
     common_columns = [column for column in source_columns if column in target_column_map]
+    fallback_columns = [
+        column for column in TABLE_COLUMN_FALLBACKS.get(table_name, {})
+        if column in target_column_map and column not in common_columns
+    ]
 
     detail = (
         f" - {table_name}: backup={len(rows)} filas, "
@@ -238,17 +259,18 @@ def restore_table(conn, inspector, backup_dir: Path, table_name: str, table_info
         print(f" - {table_name}: sin columnas compatibles, omitida")
         return 0, skipped
 
+    insert_columns = common_columns + fallback_columns
     payload = []
     for row in rows:
-        payload.append(
-            {
-                column: coerce_value(row.get(column), target_column_map[column]["type"])
-                for column in common_columns
-            }
-        )
+        row_payload = {
+            column: coerce_value(row.get(column), target_column_map[column]["type"])
+            for column in common_columns
+        }
+        row_payload = apply_fallback_columns(table_name, row_payload, target_column_map)
+        payload.append(row_payload)
 
-    quoted_columns = ", ".join(quote_identifier(column) for column in common_columns)
-    bind_columns = ", ".join(f":{column}" for column in common_columns)
+    quoted_columns = ", ".join(quote_identifier(column) for column in insert_columns)
+    bind_columns = ", ".join(f":{column}" for column in insert_columns)
     insert_sql = text(
         f"INSERT INTO {quote_identifier(table_name)} ({quoted_columns}) VALUES ({bind_columns})"
     )
