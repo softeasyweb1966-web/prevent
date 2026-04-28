@@ -1,7 +1,9 @@
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+import json
 import logging
 import os
+import unicodedata
 import uuid
 
 from flask import current_app, jsonify, request, send_file
@@ -12,6 +14,10 @@ from werkzeug.utils import secure_filename
 from app.models import (
     ClienteComercial,
     ClienteComercialAdjunto,
+    ClienteAtencion,
+    ClienteAtencionDetalle,
+    ClienteSeguimientoDocumento,
+    ClienteSeguimientoPago,
     ClienteComercialTarifa,
     ComercialCatalogoItem,
     ComercialPaqueteDetalle,
@@ -26,6 +32,12 @@ logger = logging.getLogger(__name__)
 CONDICIONES_COMERCIALES = {'EFECTIVO', 'CREDITO', 'MIXTO'}
 TIPOS_CATALOGO_COMERCIAL = {'EXAMEN', 'PAQUETE', 'SERVICIO'}
 TIPOS_EXAMEN_COMERCIAL = {'CONSULTA', 'LABORATORIO', 'PARACLINICO'}
+TIPOS_SUBTIPO_LABORATORIO = {'REMITIDO', 'REALIZADO'}
+TIPOS_SEGUIMIENTO_DOCUMENTO = {'FACTURA', 'CUENTA_COBRO', 'VENTA_DIRECTA', 'INGRESO_SIN_FACTURA'}
+ESTADOS_SEGUIMIENTO_DOCUMENTO = {'PENDIENTE', 'PARCIAL', 'PAGADO', 'VENCIDO', 'ANULADO'}
+TIPOS_SEGUIMIENTO_PAGO = {'ABONO', 'PAGO_TOTAL'}
+MEDIOS_SEGUIMIENTO_PAGO = {'EFECTIVO', 'TRANSFERENCIA'}
+CANALES_TRANSFERENCIA = {'NEQUI', 'DAVIPLATA', 'BANCO'}
 
 
 def _normalize_optional_text(value):
@@ -117,6 +129,76 @@ def _parse_int_list_field(data, field_name):
     return parsed
 
 
+def _normalize_choice(value):
+    normalized = _normalize_optional_text(value)
+    if normalized is None:
+        return None
+    return str(normalized).strip().upper()
+
+
+def _normalize_text_for_matching(value):
+    normalized = unicodedata.normalize('NFD', str(value or ''))
+    normalized = ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
+    return ' '.join(normalized.lower().strip().split())
+
+
+def _split_convenio_tokens(value):
+    tokens = []
+    for line in str(value or '').replace('\r', '\n').split('\n'):
+        for token in line.split(','):
+            cleaned = token.strip()
+            if cleaned:
+                tokens.append(cleaned)
+    return tokens
+
+
+def _build_clasificacion_examen(tipo_item, tipo_examen, subtipo_laboratorio):
+    if tipo_item != 'EXAMEN':
+        return None, None, True
+
+    tipo_examen = _normalize_choice(tipo_examen)
+    subtipo_laboratorio = _normalize_choice(subtipo_laboratorio)
+
+    if tipo_examen is not None and tipo_examen not in TIPOS_EXAMEN_COMERCIAL:
+        raise ValueError('El tipo de examen debe ser CONSULTA, LABORATORIO o PARACLINICO')
+
+    if tipo_examen != 'LABORATORIO':
+        subtipo_laboratorio = None
+
+    if subtipo_laboratorio is not None and subtipo_laboratorio not in TIPOS_SUBTIPO_LABORATORIO:
+        raise ValueError('El subtipo de laboratorio debe ser REMITIDO o REALIZADO')
+
+    clasificacion_completa = bool(tipo_examen) and (
+        tipo_examen != 'LABORATORIO' or bool(subtipo_laboratorio)
+    )
+
+    return tipo_examen, subtipo_laboratorio, clasificacion_completa
+
+
+def _format_subtipo_laboratorio(subtipo_laboratorio):
+    if subtipo_laboratorio == 'REMITIDO':
+        return 'REMITIDO'
+    if subtipo_laboratorio == 'REALIZADO':
+        return 'REALIZADO EN LABORATORIO'
+    return None
+
+
+def _format_clasificacion_catalogo(item):
+    if item.tipo_item != 'EXAMEN':
+        return item.tipo_item
+
+    if not item.tipo_examen:
+        return 'PENDIENTE DE CLASIFICAR'
+
+    if item.tipo_examen != 'LABORATORIO':
+        return item.tipo_examen
+
+    subtipo = _format_subtipo_laboratorio(item.subtipo_laboratorio)
+    if subtipo:
+        return f'LABORATORIO / {subtipo}'
+    return 'LABORATORIO / SUBTIPO PENDIENTE'
+
+
 def _build_vendedor_payload(data):
     nombre = (data.get('nombre') or '').strip()
     if not nombre:
@@ -159,6 +241,26 @@ def _build_cliente_payload(data):
     if not razon_social:
         raise ValueError('La razón social es obligatoria')
 
+    direccion = (data.get('direccion') or '').strip()
+    if not direccion:
+        raise ValueError('La dirección es obligatoria')
+
+    telefono_empresa = (data.get('telefono_empresa') or '').strip()
+    if not telefono_empresa:
+        raise ValueError('El teléfono de la empresa es obligatorio')
+
+    email_empresa = (data.get('email_empresa') or '').strip()
+    if not email_empresa:
+        raise ValueError('El email de la empresa es obligatorio')
+
+    contacto_principal = (data.get('contacto_principal') or '').strip()
+    if not contacto_principal:
+        raise ValueError('El contacto principal es obligatorio')
+
+    celular_contacto_principal = (data.get('celular_contacto_principal') or '').strip()
+    if not celular_contacto_principal:
+        raise ValueError('El celular principal es obligatorio')
+
     condicion = str(data.get('condicion_comercial') or 'EFECTIVO').strip().upper()
     if condicion not in CONDICIONES_COMERCIALES:
         raise ValueError('La condición comercial debe ser EFECTIVO, CREDITO o MIXTO')
@@ -181,15 +283,16 @@ def _build_cliente_payload(data):
         'nombre_comercial': _normalize_optional_text(data.get('nombre_comercial')),
         'nit': _normalize_optional_text(data.get('nit')),
         'ciudad': _normalize_optional_text(data.get('ciudad')),
-        'direccion': _normalize_optional_text(data.get('direccion')),
-        'telefono_empresa': _normalize_optional_text(data.get('telefono_empresa')),
-        'email_empresa': _normalize_optional_text(data.get('email_empresa')),
-        'contacto_principal': _normalize_optional_text(data.get('contacto_principal')),
-        'celular_contacto_principal': _normalize_optional_text(data.get('celular_contacto_principal')),
+        'direccion': direccion,
+        'telefono_empresa': telefono_empresa,
+        'email_empresa': email_empresa,
+        'contacto_principal': contacto_principal,
+        'celular_contacto_principal': celular_contacto_principal,
         'email_contacto_principal': _normalize_optional_text(data.get('email_contacto_principal')),
         'contacto_facturacion': _normalize_optional_text(data.get('contacto_facturacion')),
         'celular_facturacion': _normalize_optional_text(data.get('celular_facturacion')),
         'email_facturacion': _normalize_optional_text(data.get('email_facturacion')),
+        'puntos_atencion_recepcion': _normalize_optional_text(data.get('puntos_atencion_recepcion')),
         'condicion_comercial': condicion,
         'requiere_factura': requiere_factura,
         'fechas_facturacion': fechas_facturacion,
@@ -206,25 +309,42 @@ def _build_cliente_payload(data):
     }
 
 
+def _validar_pagare_cliente(payload, cliente=None):
+    if payload.get('condicion_comercial') not in {'CREDITO', 'MIXTO'}:
+        return
+
+    if payload.get('pagare_firmado') is not True:
+        raise ValueError('Para clientes con condición crédito o mixta debe confirmar el pagaré diligenciado y firmado')
+
+    nuevos_pagare = [archivo for archivo in request.files.getlist('pagare_adjuntos') if getattr(archivo, 'filename', '')]
+    tiene_pagare_existente = bool(cliente and cliente.adjuntos.filter_by(tipo_documento='PAGARE').count())
+
+    if not nuevos_pagare and not tiene_pagare_existente:
+        raise ValueError('Debe cargar el pagaré firmado para clientes con condición crédito o mixta')
+
+
 def _build_catalogo_item_payload(data):
     tipo_item = str(data.get('tipo_item') or '').strip().upper()
-    tipo_examen = _normalize_optional_text(data.get('tipo_examen'))
+    tipo_examen = data.get('tipo_examen')
+    subtipo_laboratorio = data.get('subtipo_laboratorio')
     nombre = (data.get('nombre') or '').strip()
 
     if tipo_item not in TIPOS_CATALOGO_COMERCIAL:
         raise ValueError('El tipo de item debe ser EXAMEN, PAQUETE o SERVICIO')
     if not nombre:
         raise ValueError('El nombre del item comercial es obligatorio')
-    if tipo_item == 'EXAMEN':
-        tipo_examen = str(tipo_examen or '').strip().upper()
-        if tipo_examen not in TIPOS_EXAMEN_COMERCIAL:
-            raise ValueError('Debe seleccionar si el examen es CONSULTA, LABORATORIO o PARACLINICO')
-    else:
-        tipo_examen = None
+
+    tipo_examen, subtipo_laboratorio, clasificacion_completa = _build_clasificacion_examen(
+        tipo_item,
+        tipo_examen,
+        subtipo_laboratorio,
+    )
 
     return {
         'tipo_item': tipo_item,
         'tipo_examen': tipo_examen,
+        'subtipo_laboratorio': subtipo_laboratorio,
+        'clasificacion_completa': clasificacion_completa,
         'nombre': nombre,
         'codigo': _normalize_optional_text(data.get('codigo')),
         'descripcion': _normalize_optional_text(data.get('descripcion')),
@@ -255,10 +375,17 @@ def _build_paquete_componentes_payload(data, *, item_id=None, tipo_item=None):
 
     examenes_invalidos = [
         examen.nombre for examen in examenes
-        if examen.tipo_item != 'EXAMEN' or examen.tipo_examen not in TIPOS_EXAMEN_COMERCIAL
+        if (
+            examen.tipo_item != 'EXAMEN'
+            or examen.tipo_examen not in TIPOS_EXAMEN_COMERCIAL
+            or not examen.clasificacion_completa
+        )
     ]
     if examenes_invalidos:
-        raise ValueError('Los componentes del paquete deben ser examenes clasificados como CONSULTA, LABORATORIO o PARACLINICO')
+        raise ValueError(
+            'Los componentes del paquete deben ser examenes completamente clasificados '
+            'como CONSULTA, PARACLINICO o LABORATORIO con subtipo definido'
+        )
 
     return componentes_ids
 
@@ -284,6 +411,428 @@ def _build_tarifa_cliente_payload(data):
         'observacion': _normalize_optional_text(data.get('observacion')),
         'activo': _parse_bool(data.get('activo'), True),
     }
+
+
+def _build_seguimiento_documento_payload(data, cliente, documento=None):
+    tipo_documento = str(data.get('tipo_documento') or '').strip().upper()
+    if tipo_documento not in TIPOS_SEGUIMIENTO_DOCUMENTO:
+        raise ValueError('El tipo de documento debe ser FACTURA, CUENTA_COBRO, VENTA_DIRECTA o INGRESO_SIN_FACTURA')
+
+    numero_documento = _normalize_optional_text(data.get('numero_documento'))
+    if tipo_documento in {'FACTURA', 'CUENTA_COBRO'} and not numero_documento:
+        raise ValueError('Debes registrar el número del documento para facturas o cuentas de cobro')
+
+    fecha_documento = _parse_date_field(data, 'fecha_documento')
+    if not fecha_documento:
+        raise ValueError('La fecha del documento es obligatoria')
+
+    genera_cartera = _parse_bool(data.get('genera_cartera'), False)
+    fecha_vencimiento = _parse_date_field(data, 'fecha_vencimiento')
+    if genera_cartera and not fecha_vencimiento:
+        raise ValueError('Debes registrar la fecha de vencimiento cuando el documento genera cartera')
+    if fecha_vencimiento and fecha_vencimiento < fecha_documento:
+        raise ValueError('La fecha de vencimiento no puede ser anterior a la fecha del documento')
+
+    valor_documento = _parse_decimal_field(data, 'valor_documento', minimum=0.01)
+    saldo_actual_raw = data.get('saldo_actual')
+    if saldo_actual_raw not in (None, ''):
+        saldo_actual = _parse_decimal_field(data, 'saldo_actual', minimum=0)
+    elif documento and Decimal(str(documento.saldo_actual or 0)) != Decimal(str(documento.valor_documento or 0)):
+        saldo_actual = Decimal(str(documento.saldo_actual or 0))
+    else:
+        saldo_actual = valor_documento
+
+    if saldo_actual > valor_documento:
+        raise ValueError('El saldo actual no puede ser mayor que el valor del documento')
+
+    estado_documento = str(data.get('estado_documento') or (documento.estado_documento if documento else 'PENDIENTE')).strip().upper()
+    if estado_documento not in ESTADOS_SEGUIMIENTO_DOCUMENTO:
+        estado_documento = 'PENDIENTE'
+
+    return {
+        'cliente_id': cliente.id,
+        'vendedor_id': documento.vendedor_id if documento else cliente.vendedor_id,
+        'tipo_documento': tipo_documento,
+        'numero_documento': numero_documento,
+        'fecha_documento': fecha_documento,
+        'fecha_vencimiento': fecha_vencimiento,
+        'valor_documento': valor_documento,
+        'saldo_actual': saldo_actual,
+        'genera_cartera': genera_cartera,
+        'estado_documento': estado_documento,
+        'observaciones': _normalize_optional_text(data.get('observaciones')),
+    }
+
+
+def _build_seguimiento_pago_payload(data, documento, pago=None):
+    fecha_pago = _parse_date_field(data, 'fecha_pago')
+    if not fecha_pago:
+        raise ValueError('La fecha del pago es obligatoria')
+
+    valor_pago = _parse_decimal_field(data, 'valor_pago', minimum=0.01)
+    tipo_pago = str(data.get('tipo_pago') or 'ABONO').strip().upper()
+    if tipo_pago not in TIPOS_SEGUIMIENTO_PAGO:
+        raise ValueError('El tipo de pago debe ser ABONO o PAGO_TOTAL')
+
+    medio_pago = str(data.get('medio_pago') or 'EFECTIVO').strip().upper()
+    if medio_pago not in MEDIOS_SEGUIMIENTO_PAGO:
+        raise ValueError('El medio de pago debe ser EFECTIVO o TRANSFERENCIA')
+
+    canal_transferencia = _normalize_optional_text(data.get('canal_transferencia'))
+    if medio_pago == 'TRANSFERENCIA':
+        canal_transferencia = str(canal_transferencia or '').strip().upper()
+        if canal_transferencia not in CANALES_TRANSFERENCIA:
+            raise ValueError('Debes indicar si la transferencia fue por Nequi, Daviplata o Banco')
+    else:
+        canal_transferencia = None
+
+    fecha_recibo = _parse_date_field(data, 'fecha_recibo')
+    paciente_documento = _normalize_optional_text(data.get('paciente_documento'))
+    paciente_nombre = _normalize_optional_text(data.get('paciente_nombre'))
+    fecha_atencion = _parse_date_field(data, 'fecha_atencion')
+    examenes_realizados = _normalize_optional_text(data.get('examenes_realizados'))
+
+    requiere_recibo_caja = _documento_requiere_recibo_caja(documento, medio_pago)
+    if requiere_recibo_caja:
+        fecha_recibo = fecha_recibo or fecha_pago
+        if not paciente_documento:
+            raise ValueError('Debes registrar el documento de identificación del paciente para el recibo de caja')
+        if not paciente_nombre:
+            raise ValueError('Debes registrar el nombre del paciente para el recibo de caja')
+        if not fecha_atencion:
+            raise ValueError('Debes registrar la fecha de atención para el recibo de caja')
+        if not examenes_realizados:
+            raise ValueError('Debes registrar los exámenes realizados para el recibo de caja')
+    else:
+        fecha_recibo = None
+        paciente_documento = None
+        paciente_nombre = None
+        fecha_atencion = None
+        examenes_realizados = None
+
+    total_otros_pagos = Decimal('0')
+    for pago_existente in documento.pagos.all():
+        if pago and pago_existente.id == pago.id:
+            continue
+        total_otros_pagos += Decimal(str(pago_existente.valor_pago or 0))
+
+    valor_documento = Decimal(str(documento.valor_documento or 0))
+    if total_otros_pagos + valor_pago > valor_documento:
+        raise ValueError('El pago no puede superar el saldo disponible del documento')
+
+    return {
+        'documento_id': documento.id,
+        'cliente_id': documento.cliente_id,
+        'vendedor_id': documento.vendedor_id,
+        'fecha_pago': fecha_pago,
+        'valor_pago': valor_pago,
+        'tipo_pago': tipo_pago,
+        'medio_pago': medio_pago,
+        'canal_transferencia': canal_transferencia,
+        'fecha_recibo': fecha_recibo,
+        'paciente_documento': paciente_documento,
+        'paciente_nombre': paciente_nombre,
+        'fecha_atencion': fecha_atencion,
+        'examenes_realizados': examenes_realizados,
+        'observaciones': _normalize_optional_text(data.get('observaciones')),
+    }
+
+
+def _tarifa_cliente_aplica_en_fecha(tarifa, fecha_referencia):
+    if tarifa is None or tarifa.activo is not True:
+        return False
+
+    fecha_base = (fecha_referencia or datetime.utcnow()).date()
+    if tarifa.vigencia_desde and tarifa.vigencia_desde.date() > fecha_base:
+        return False
+    if tarifa.vigencia_hasta and tarifa.vigencia_hasta.date() < fecha_base:
+        return False
+    return True
+
+
+def _resolver_valor_cliente_item(item, tarifa, fecha_referencia):
+    if tarifa and _tarifa_cliente_aplica_en_fecha(tarifa, fecha_referencia):
+        return Decimal(str(tarifa.tarifa_negociada or 0)), True
+    return Decimal(str(item.tarifa_base or 0)), False
+
+
+def _build_cliente_convenio_items(cliente, fecha_referencia=None):
+    items_catalogo = ComercialCatalogoItem.query.filter_by(activo=True).order_by(
+        ComercialCatalogoItem.tipo_item.asc(),
+        ComercialCatalogoItem.nombre.asc(),
+    ).all()
+    tarifas_cliente = ClienteComercialTarifa.query.filter_by(
+        cliente_id=cliente.id,
+        activo=True,
+    ).all()
+    tarifas_por_item = {
+        tarifa.catalogo_item_id: tarifa
+        for tarifa in tarifas_cliente
+        if tarifa.item_catalogo is not None and tarifa.item_catalogo.activo is True
+    }
+
+    items_por_clave = {}
+    items_examen = []
+    items_servicio = []
+    for item in items_catalogo:
+        if item.tipo_item == 'EXAMEN' and item.clasificacion_completa is not True:
+            continue
+
+        keys = {
+            _normalize_text_for_matching(item.nombre),
+            _normalize_text_for_matching(item.codigo),
+        }
+        for key in keys:
+            if key:
+                items_por_clave[key] = item
+
+        if item.tipo_item == 'EXAMEN':
+            items_examen.append(item)
+        elif item.tipo_item in {'PAQUETE', 'SERVICIO'}:
+            items_servicio.append(item)
+
+    permitidos_ids = set(tarifas_por_item.keys())
+    for token in _split_convenio_tokens(cliente.examenes_convenidos):
+        item = items_por_clave.get(_normalize_text_for_matching(token))
+        if item and item.tipo_item == 'EXAMEN':
+            permitidos_ids.add(item.id)
+
+    for token in _split_convenio_tokens(cliente.servicios_convenidos):
+        item = items_por_clave.get(_normalize_text_for_matching(token))
+        if item and item.tipo_item in {'PAQUETE', 'SERVICIO'}:
+            permitidos_ids.add(item.id)
+
+    convenio_items = []
+    for item in items_catalogo:
+        if item.id not in permitidos_ids:
+            continue
+        tarifa = tarifas_por_item.get(item.id)
+        valor_unitario, tiene_tarifa_vigente = _resolver_valor_cliente_item(item, tarifa, fecha_referencia)
+        convenio_items.append({
+            'id': item.id,
+            'tipo_item': item.tipo_item,
+            'tipo_examen': item.tipo_examen,
+            'subtipo_laboratorio': item.subtipo_laboratorio,
+            'clasificacion_resumen': _format_clasificacion_catalogo(item),
+            'nombre': item.nombre,
+            'codigo': item.codigo,
+            'valor_unitario': float(valor_unitario),
+            'tarifa_base': float(item.tarifa_base or 0),
+            'tiene_tarifa_negociada': tarifa is not None,
+            'tarifa_vigente': tiene_tarifa_vigente,
+            'componentes': [
+                detalle.examen.nombre
+                for detalle in (item.paquete_componentes or [])
+                if detalle.examen is not None and detalle.examen.nombre
+            ] if item.tipo_item == 'PAQUETE' else [],
+        })
+
+    convenio_items.sort(key=lambda item: ((item['tipo_item'] or ''), (item['nombre'] or '').lower()))
+    return convenio_items
+
+
+def _build_cliente_convenio_items_index(cliente, fecha_referencia=None):
+    return {
+        item['id']: item
+        for item in _build_cliente_convenio_items(cliente, fecha_referencia)
+    }
+
+
+def _parse_atencion_detalles(raw_value):
+    if raw_value in (None, '', []):
+        return []
+
+    parsed = raw_value
+    if isinstance(raw_value, str):
+        try:
+            parsed = json.loads(raw_value)
+        except json.JSONDecodeError:
+            raise ValueError('El detalle de la atencion debe enviarse como una lista valida')
+
+    if not isinstance(parsed, (list, tuple)):
+        raise ValueError('El detalle de la atencion debe enviarse como una lista')
+
+    return list(parsed)
+
+
+def _resolver_estado_cobro_atencion(valor_total, saldo_pendiente):
+    total = Decimal(str(valor_total or 0))
+    saldo = Decimal(str(saldo_pendiente or 0))
+    if saldo <= 0:
+        return 'PAGADO'
+    if saldo < total:
+        return 'PARCIAL'
+    return 'PENDIENTE'
+
+
+def _generar_numero_atencion(atencion):
+    fecha_base = atencion.fecha_atencion or datetime.utcnow()
+    return f'AT-{fecha_base.strftime("%Y%m%d")}-{int(atencion.id):06d}'
+
+
+def _build_atencion_payload(data, cliente):
+    fecha_atencion = _parse_date_field(data, 'fecha_atencion')
+    if not fecha_atencion:
+        raise ValueError('La fecha de atencion es obligatoria')
+
+    detalles_payload = _parse_atencion_detalles(data.get('detalles'))
+    if not detalles_payload:
+        raise ValueError('Debes seleccionar al menos un examen o paquete convenido')
+
+    items_convenio = _build_cliente_convenio_items_index(cliente, fecha_atencion)
+    detalles = []
+    total = Decimal('0')
+    pacientes_unicos = []
+    pacientes_seen = set()
+
+    for detalle in detalles_payload:
+        raw_item_id = detalle
+        paciente_documento = None
+        paciente_nombre = None
+        if isinstance(detalle, dict):
+            raw_item_id = detalle.get('catalogo_item_id') or detalle.get('id')
+            paciente_documento = _normalize_optional_text(detalle.get('paciente_documento'))
+            paciente_nombre = _normalize_optional_text(detalle.get('paciente_nombre'))
+
+        try:
+            item_id = int(raw_item_id)
+        except (TypeError, ValueError):
+            raise ValueError('Cada detalle de la atencion debe incluir un item comercial valido')
+
+        if not paciente_documento:
+            raise ValueError('Cada detalle debe registrar el documento del paciente')
+        if not paciente_nombre:
+            raise ValueError('Cada detalle debe registrar el nombre del paciente')
+
+        item = items_convenio.get(item_id)
+        if item is None:
+            raise ValueError('Solo puedes registrar examenes o paquetes convenidos para este cliente')
+
+        valor_item = Decimal(str(item['valor_unitario'] or 0))
+        if valor_item < Decimal('0'):
+            raise ValueError('El valor del item convenido no es valido')
+
+        detalles.append({
+            'paciente_documento': paciente_documento,
+            'paciente_nombre': paciente_nombre,
+            'catalogo_item_id': item_id,
+            'tipo_item': item['tipo_item'],
+            'nombre_item': item['nombre'],
+            'valor_item': valor_item,
+        })
+        total += valor_item
+        paciente_key = (paciente_documento, paciente_nombre)
+        if paciente_key not in pacientes_seen:
+            pacientes_unicos.append({
+                'documento': paciente_documento,
+                'nombre': paciente_nombre,
+            })
+            pacientes_seen.add(paciente_key)
+
+    if not detalles:
+        raise ValueError('Debes seleccionar al menos un examen o paquete convenido')
+    if total <= Decimal('0'):
+        raise ValueError('La atencion debe tener un valor mayor que cero')
+
+    paciente_principal = pacientes_unicos[0]
+    if len(pacientes_unicos) == 1:
+        paciente_documento_resumen = paciente_principal['documento']
+        paciente_nombre_resumen = paciente_principal['nombre']
+    else:
+        paciente_documento_resumen = 'VARIOS'
+        paciente_nombre_resumen = f'{len(pacientes_unicos)} pacientes'
+
+    return {
+        'cliente_id': cliente.id,
+        'vendedor_id': cliente.vendedor_id,
+        'fecha_atencion': fecha_atencion,
+        'paciente_documento': paciente_documento_resumen,
+        'paciente_nombre': paciente_nombre_resumen,
+        'valor_total': total,
+        'saldo_pendiente': total,
+        'estado_cobro': _resolver_estado_cobro_atencion(total, total),
+        'observaciones': _normalize_optional_text(data.get('observaciones')),
+        'detalles': detalles,
+    }
+
+
+def _serialize_atencion_detalle(detalle):
+    return {
+        'id': detalle.id,
+        'paciente_documento': detalle.paciente_documento,
+        'paciente_nombre': detalle.paciente_nombre,
+        'catalogo_item_id': detalle.catalogo_item_id,
+        'tipo_item': detalle.tipo_item,
+        'nombre_item': detalle.nombre_item,
+        'valor_item': float(detalle.valor_item or 0),
+    }
+
+
+def _serialize_atencion(atencion):
+    detalles = sorted(
+        atencion.detalles or [],
+        key=lambda detalle: (
+            (detalle.paciente_nombre or '').lower(),
+            (detalle.nombre_item or '').lower(),
+            detalle.id or 0,
+        ),
+    )
+    pacientes = []
+    pacientes_seen = set()
+    for detalle in detalles:
+        paciente_key = (detalle.paciente_documento or '', detalle.paciente_nombre or '')
+        if paciente_key in pacientes_seen:
+            continue
+        pacientes.append({
+            'documento': detalle.paciente_documento,
+            'nombre': detalle.paciente_nombre,
+        })
+        pacientes_seen.add(paciente_key)
+
+    pacientes_resumen = ', '.join(
+        paciente['nombre'] for paciente in pacientes if paciente.get('nombre')
+    ) or atencion.paciente_nombre
+
+    return {
+        'id': atencion.id,
+        'nro_atencion': atencion.nro_atencion,
+        'cliente_id': atencion.cliente_id,
+        'cliente_nombre': atencion.cliente.razon_social if atencion.cliente else None,
+        'vendedor_id': atencion.vendedor_id,
+        'vendedor_nombre': atencion.vendedor.nombre if atencion.vendedor else None,
+        'fecha_atencion': atencion.fecha_atencion.strftime('%Y-%m-%d') if atencion.fecha_atencion else None,
+        'paciente_documento': atencion.paciente_documento,
+        'paciente_nombre': atencion.paciente_nombre,
+        'cantidad_pacientes': len(pacientes),
+        'pacientes_resumen': pacientes_resumen,
+        'pacientes': pacientes,
+        'valor_total': float(atencion.valor_total or 0),
+        'saldo_pendiente': float(atencion.saldo_pendiente or 0),
+        'estado_cobro': atencion.estado_cobro,
+        'observaciones': atencion.observaciones,
+        'documento_id': atencion.documento_cobro.id if atencion.documento_cobro else None,
+        'documento_tipo': atencion.documento_cobro.tipo_documento if atencion.documento_cobro else None,
+        'documento_numero': atencion.documento_cobro.numero_documento if atencion.documento_cobro else None,
+        'detalle_resumen': ', '.join(
+            f'{detalle.paciente_nombre}: {detalle.nombre_item}'
+            for detalle in detalles
+            if detalle.nombre_item
+        ),
+        'detalle_items_resumen': ', '.join(detalle.nombre_item for detalle in detalles if detalle.nombre_item),
+        'detalles': [_serialize_atencion_detalle(detalle) for detalle in detalles],
+        'created_at': atencion.created_at.strftime('%Y-%m-%d %H:%M:%S') if atencion.created_at else None,
+        'updated_at': atencion.updated_at.strftime('%Y-%m-%d %H:%M:%S') if atencion.updated_at else None,
+    }
+
+
+def _sincronizar_atencion_desde_documento(documento):
+    if documento is None or documento.atencion is None:
+        return
+
+    atencion = documento.atencion
+    atencion.valor_total = documento.valor_documento
+    atencion.saldo_pendiente = documento.saldo_actual
+    atencion.estado_cobro = _resolver_estado_cobro_atencion(documento.valor_documento, documento.saldo_actual)
 
 
 def _serialize_vendedor(vendedor):
@@ -321,6 +870,8 @@ def _serialize_catalogo_item(item):
                 'nombre': detalle.examen.nombre if detalle.examen else None,
                 'codigo': detalle.examen.codigo if detalle.examen else None,
                 'tipo_examen': detalle.examen.tipo_examen if detalle.examen else None,
+                'subtipo_laboratorio': detalle.examen.subtipo_laboratorio if detalle.examen else None,
+                'clasificacion_resumen': _format_clasificacion_catalogo(detalle.examen) if detalle.examen else None,
                 'cantidad': detalle.cantidad,
             }
             for detalle in (item.paquete_componentes or [])
@@ -333,6 +884,9 @@ def _serialize_catalogo_item(item):
         'id': item.id,
         'tipo_item': item.tipo_item,
         'tipo_examen': item.tipo_examen,
+        'subtipo_laboratorio': item.subtipo_laboratorio,
+        'clasificacion_completa': item.clasificacion_completa,
+        'clasificacion_resumen': _format_clasificacion_catalogo(item),
         'nombre': item.nombre,
         'codigo': item.codigo,
         'descripcion': item.descripcion,
@@ -358,6 +912,9 @@ def _serialize_tarifa_cliente(tarifa):
         'item_nombre': tarifa.item_catalogo.nombre if tarifa.item_catalogo else None,
         'tipo_item': tarifa.item_catalogo.tipo_item if tarifa.item_catalogo else None,
         'tipo_examen': tarifa.item_catalogo.tipo_examen if tarifa.item_catalogo else None,
+        'subtipo_laboratorio': tarifa.item_catalogo.subtipo_laboratorio if tarifa.item_catalogo else None,
+        'clasificacion_completa': tarifa.item_catalogo.clasificacion_completa if tarifa.item_catalogo else None,
+        'clasificacion_resumen': _format_clasificacion_catalogo(tarifa.item_catalogo) if tarifa.item_catalogo else None,
         'tarifa_base': float(tarifa.item_catalogo.tarifa_base or 0) if tarifa.item_catalogo else 0,
         'tarifa_negociada': float(tarifa.tarifa_negociada or 0),
         'vigencia_desde': tarifa.vigencia_desde.strftime('%Y-%m-%d') if tarifa.vigencia_desde else None,
@@ -381,14 +938,84 @@ def _guardar_componentes_paquete(item, componentes_ids):
 
 def _resumen_facturacion(cliente):
     if not cliente.requiere_factura:
-        return 'Cliente en efectivo. Si solicita facturación, aplica desde la fecha de solicitud.'
+        return 'Cliente en efectivo. Si luego requiere factura, la primera factura se registrará desde el módulo de facturación.'
 
     partes = ['Factura requerida']
     if cliente.fechas_facturacion:
         partes.append(f'Fechas: {cliente.fechas_facturacion}')
     if cliente.fecha_solicitud_factura:
-        partes.append(f'Solicitud: {cliente.fecha_solicitud_factura.strftime("%Y-%m-%d")}')
+        partes.append(f'Primera factura: {cliente.fecha_solicitud_factura.strftime("%Y-%m-%d")}')
     return ' | '.join(partes)
+
+
+def _resolver_estado_seguimiento_documento(documento):
+    estado_actual = str(documento.estado_documento or 'PENDIENTE').upper()
+    if estado_actual == 'ANULADO':
+        return 'ANULADO'
+
+    saldo_actual = Decimal(str(documento.saldo_actual or 0))
+    valor_documento = Decimal(str(documento.valor_documento or 0))
+
+    if saldo_actual <= 0:
+        return 'PAGADO'
+    if saldo_actual < valor_documento:
+        return 'PARCIAL'
+    if documento.genera_cartera and documento.fecha_vencimiento and documento.fecha_vencimiento.date() < datetime.utcnow().date():
+        return 'VENCIDO'
+    return 'PENDIENTE'
+
+
+def _serialize_seguimiento_documento(documento):
+    return {
+        'id': documento.id,
+        'cliente_id': documento.cliente_id,
+        'atencion_id': documento.atencion_id,
+        'es_atencion': documento.atencion_id is not None,
+        'cliente_nombre': documento.cliente.razon_social if documento.cliente else None,
+        'vendedor_id': documento.vendedor_id,
+        'vendedor_nombre': documento.vendedor.nombre if documento.vendedor else None,
+        'tipo_documento': documento.tipo_documento,
+        'numero_documento': documento.numero_documento,
+        'fecha_documento': documento.fecha_documento.strftime('%Y-%m-%d') if documento.fecha_documento else None,
+        'fecha_vencimiento': documento.fecha_vencimiento.strftime('%Y-%m-%d') if documento.fecha_vencimiento else None,
+        'valor_documento': float(documento.valor_documento or 0),
+        'saldo_actual': float(documento.saldo_actual or 0),
+        'genera_cartera': documento.genera_cartera,
+        'estado_documento': _resolver_estado_seguimiento_documento(documento),
+        'observaciones': documento.observaciones,
+        'created_at': documento.created_at.strftime('%Y-%m-%d %H:%M:%S') if documento.created_at else None,
+        'updated_at': documento.updated_at.strftime('%Y-%m-%d %H:%M:%S') if documento.updated_at else None,
+    }
+
+
+def _serialize_seguimiento_pago(pago):
+    return {
+        'id': pago.id,
+        'documento_id': pago.documento_id,
+        'cliente_id': pago.cliente_id,
+        'cliente_nombre': pago.cliente.razon_social if pago.cliente else None,
+        'vendedor_id': pago.vendedor_id,
+        'vendedor_nombre': pago.vendedor.nombre if pago.vendedor else None,
+        'documento_numero': pago.documento.numero_documento if pago.documento else None,
+        'documento_tipo': pago.documento.tipo_documento if pago.documento else None,
+        'fecha_pago': pago.fecha_pago.strftime('%Y-%m-%d') if pago.fecha_pago else None,
+        'fecha_recibo': pago.fecha_recibo.strftime('%Y-%m-%d') if pago.fecha_recibo else None,
+        'valor_pago': float(pago.valor_pago or 0),
+        'tipo_pago': pago.tipo_pago,
+        'medio_pago': pago.medio_pago,
+        'canal_transferencia': pago.canal_transferencia,
+        'numero_recibo_caja': pago.numero_recibo_caja,
+        'paciente_documento': pago.paciente_documento,
+        'paciente_nombre': pago.paciente_nombre,
+        'fecha_atencion': pago.fecha_atencion.strftime('%Y-%m-%d') if pago.fecha_atencion else None,
+        'examenes_realizados': pago.examenes_realizados,
+        'requiere_recibo_caja': _documento_requiere_recibo_caja(pago.documento, pago.medio_pago),
+        'observaciones': pago.observaciones,
+        'comprobante_nombre': pago.nombre_comprobante,
+        'comprobante_url': f'/api/comercial/seguimiento-pagos/{pago.id}/comprobante' if pago.ruta_comprobante else None,
+        'created_at': pago.created_at.strftime('%Y-%m-%d %H:%M:%S') if pago.created_at else None,
+        'updated_at': pago.updated_at.strftime('%Y-%m-%d %H:%M:%S') if pago.updated_at else None,
+    }
 
 
 def _serialize_cliente(cliente):
@@ -421,6 +1048,7 @@ def _serialize_cliente(cliente):
         'contacto_facturacion': cliente.contacto_facturacion,
         'celular_facturacion': cliente.celular_facturacion,
         'email_facturacion': cliente.email_facturacion,
+        'puntos_atencion_recepcion': cliente.puntos_atencion_recepcion,
         'condicion_comercial': cliente.condicion_comercial,
         'requiere_factura': cliente.requiere_factura,
         'fechas_facturacion': cliente.fechas_facturacion,
@@ -469,6 +1097,91 @@ def _guardar_adjuntos(cliente, archivos, tipo_documento):
             tamano_bytes=os.path.getsize(ruta_absoluta),
         )
         db.session.add(adjunto)
+
+
+def _guardar_comprobante_pago(pago, archivo):
+    if not archivo or not archivo.filename:
+        return
+
+    upload_root = current_app.config['UPLOAD_FOLDER']
+    pago_dir = os.path.join(upload_root, 'comercial', 'clientes', str(pago.cliente_id), 'seguimiento_pagos')
+    os.makedirs(pago_dir, exist_ok=True)
+
+    nombre_original = secure_filename(archivo.filename)
+    if not nombre_original:
+        return
+
+    nombre_guardado = f'{uuid.uuid4().hex}_{nombre_original}'
+    ruta_absoluta = os.path.join(pago_dir, nombre_guardado)
+    archivo.save(ruta_absoluta)
+
+    _eliminar_comprobante_pago(pago)
+
+    pago.nombre_comprobante = nombre_original
+    pago.ruta_comprobante = os.path.relpath(ruta_absoluta, upload_root)
+    pago.mime_type = archivo.mimetype
+    pago.tamano_bytes = os.path.getsize(ruta_absoluta)
+
+
+def _eliminar_comprobante_pago(pago):
+    if not pago.ruta_comprobante:
+        return
+
+    upload_root = os.path.abspath(current_app.config['UPLOAD_FOLDER'])
+    ruta = os.path.abspath(os.path.join(upload_root, pago.ruta_comprobante))
+    if ruta.startswith(upload_root) and os.path.exists(ruta):
+        try:
+            os.remove(ruta)
+        except OSError:
+            logger.warning('No se pudo eliminar el comprobante de pago %s', ruta)
+
+    pago.nombre_comprobante = None
+    pago.ruta_comprobante = None
+    pago.mime_type = None
+    pago.tamano_bytes = None
+
+
+def _get_pago_comprobante_path(pago):
+    if not pago.ruta_comprobante:
+        raise FileNotFoundError('Comprobante no encontrado')
+    upload_root = os.path.abspath(current_app.config['UPLOAD_FOLDER'])
+    ruta = os.path.abspath(os.path.join(upload_root, pago.ruta_comprobante))
+    if not ruta.startswith(upload_root):
+        raise FileNotFoundError('Ruta de comprobante inválida')
+    if not os.path.exists(ruta):
+        raise FileNotFoundError('Comprobante no encontrado')
+    return ruta
+
+
+def _documento_requiere_recibo_caja(documento, medio_pago):
+    if documento is None:
+        return False
+    cliente = documento.cliente
+    return (
+        medio_pago == 'EFECTIVO'
+        and cliente is not None
+        and cliente.requiere_factura is False
+    )
+
+
+def _generar_numero_recibo_caja(pago):
+    fecha_base = pago.fecha_recibo or pago.fecha_pago or datetime.utcnow()
+    return f'RC-{fecha_base.strftime("%Y%m%d")}-{int(pago.id):06d}'
+
+
+def _recalcular_documento_con_pagos(documento):
+    total_pagado = Decimal('0')
+    for pago in documento.pagos.all():
+        total_pagado += Decimal(str(pago.valor_pago or 0))
+
+    valor_documento = Decimal(str(documento.valor_documento or 0))
+    saldo = valor_documento - total_pagado
+    if saldo < Decimal('0'):
+        saldo = Decimal('0')
+
+    documento.saldo_actual = saldo
+    documento.estado_documento = _resolver_estado_seguimiento_documento(documento)
+    _sincronizar_atencion_desde_documento(documento)
 
 
 def _get_adjunto_path(adjunto):
@@ -700,6 +1413,20 @@ def actualizar_tarifa_comercial(tarifa_id):
         return jsonify({'error': 'Error al actualizar tarifa comercial'}), 500
 
 
+@comercial_bp.route('/tarifas/<int:tarifa_id>', methods=['DELETE'])
+@login_required
+def eliminar_tarifa_comercial(tarifa_id):
+    try:
+        tarifa = ClienteComercialTarifa.query.get_or_404(tarifa_id)
+        db.session.delete(tarifa)
+        db.session.commit()
+        return jsonify({'mensaje': 'Tarifa comercial eliminada'}), 200
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error eliminando tarifa comercial: %s", exc)
+        return jsonify({'error': 'Error al eliminar tarifa comercial'}), 500
+
+
 @comercial_bp.route('/clientes', methods=['GET'])
 @login_required
 def get_clientes():
@@ -724,6 +1451,8 @@ def crear_cliente():
         nit = payload['nit']
         if nit and ClienteComercial.query.filter_by(nit=nit).first():
             return jsonify({'error': 'Ya existe un cliente con ese NIT'}), 409
+
+        _validar_pagare_cliente(payload)
 
         cliente = ClienteComercial(**payload)
         db.session.add(cliente)
@@ -760,6 +1489,8 @@ def actualizar_cliente(cliente_id):
             if existente:
                 return jsonify({'error': 'Ya existe un cliente con ese NIT'}), 409
 
+        _validar_pagare_cliente(payload, cliente=cliente)
+
         for field, value in payload.items():
             setattr(cliente, field, value)
 
@@ -775,6 +1506,310 @@ def actualizar_cliente(cliente_id):
         db.session.rollback()
         logger.error("Error actualizando cliente comercial: %s", exc)
         return jsonify({'error': 'Error al actualizar cliente comercial'}), 500
+
+
+@comercial_bp.route('/clientes/<int:cliente_id>/convenio-items', methods=['GET'])
+@login_required
+def get_cliente_convenio_items(cliente_id):
+    try:
+        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        fecha_atencion = None
+        raw_fecha = request.args.get('fecha_atencion')
+        if raw_fecha:
+            try:
+                fecha_atencion = datetime.strptime(str(raw_fecha), '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'error': 'La fecha de atencion debe tener formato YYYY-MM-DD'}), 400
+
+        return jsonify(_build_cliente_convenio_items(cliente, fecha_atencion)), 200
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error obteniendo convenio del cliente %s: %s", cliente_id, exc)
+        return jsonify({'error': 'Error al obtener los items convenidos del cliente'}), 500
+
+
+@comercial_bp.route('/clientes/<int:cliente_id>/atenciones', methods=['GET'])
+@login_required
+def get_atenciones_cliente(cliente_id):
+    try:
+        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        atenciones = ClienteAtencion.query.filter_by(cliente_id=cliente.id).order_by(
+            ClienteAtencion.fecha_atencion.desc(),
+            ClienteAtencion.id.desc(),
+        ).all()
+        return jsonify([_serialize_atencion(atencion) for atencion in atenciones]), 200
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error obteniendo atenciones del cliente %s: %s", cliente_id, exc)
+        return jsonify({'error': 'Error al obtener las atenciones del cliente'}), 500
+
+
+@comercial_bp.route('/clientes/<int:cliente_id>/atenciones', methods=['POST'])
+@login_required
+def crear_atencion_cliente(cliente_id):
+    data = _get_payload()
+
+    try:
+        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        payload = _build_atencion_payload(data, cliente)
+        detalles_payload = payload.pop('detalles')
+
+        atencion = ClienteAtencion(**payload)
+        db.session.add(atencion)
+        db.session.flush()
+
+        atencion.nro_atencion = _generar_numero_atencion(atencion)
+        for detalle_payload in detalles_payload:
+            db.session.add(ClienteAtencionDetalle(atencion_id=atencion.id, **detalle_payload))
+
+        genera_cartera = cliente.condicion_comercial in {'CREDITO', 'MIXTO'} or cliente.requiere_factura is True
+        documento = ClienteSeguimientoDocumento(
+            cliente_id=cliente.id,
+            vendedor_id=cliente.vendedor_id,
+            atencion_id=atencion.id,
+            tipo_documento='INGRESO_SIN_FACTURA',
+            numero_documento=atencion.nro_atencion,
+            fecha_documento=atencion.fecha_atencion,
+            fecha_vencimiento=atencion.fecha_atencion if genera_cartera else None,
+            valor_documento=atencion.valor_total,
+            saldo_actual=atencion.saldo_pendiente,
+            genera_cartera=genera_cartera,
+            estado_documento='PENDIENTE',
+            observaciones=atencion.observaciones,
+        )
+        db.session.add(documento)
+        db.session.flush()
+
+        _sincronizar_atencion_desde_documento(documento)
+        db.session.commit()
+        return jsonify({
+            'mensaje': 'Atencion registrada',
+            'id': atencion.id,
+            'nro_atencion': atencion.nro_atencion,
+            'documento_id': documento.id,
+        }), 201
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error creando atencion para cliente %s: %s", cliente_id, exc)
+        return jsonify({'error': 'Error al registrar la atencion'}), 500
+
+
+@comercial_bp.route('/clientes/<int:cliente_id>/seguimiento-documentos', methods=['GET'])
+@login_required
+def get_seguimiento_documentos_cliente(cliente_id):
+    try:
+        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        documentos = ClienteSeguimientoDocumento.query.filter_by(cliente_id=cliente.id).order_by(
+            ClienteSeguimientoDocumento.fecha_documento.desc(),
+            ClienteSeguimientoDocumento.id.desc()
+        ).all()
+        return jsonify([_serialize_seguimiento_documento(documento) for documento in documentos]), 200
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error obteniendo seguimiento comercial del cliente %s: %s", cliente_id, exc)
+        return jsonify({'error': 'Error al obtener el seguimiento comercial del cliente'}), 500
+
+
+@comercial_bp.route('/clientes/<int:cliente_id>/seguimiento-documentos', methods=['POST'])
+@login_required
+def crear_seguimiento_documento_cliente(cliente_id):
+    data = _get_payload()
+
+    try:
+        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        payload = _build_seguimiento_documento_payload(data, cliente)
+        documento = ClienteSeguimientoDocumento(**payload)
+        db.session.add(documento)
+        db.session.commit()
+        return jsonify({'mensaje': 'Documento comercial registrado', 'id': documento.id}), 201
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error creando documento de seguimiento para cliente %s: %s", cliente_id, exc)
+        return jsonify({'error': 'Error al crear el documento comercial'}), 500
+
+
+@comercial_bp.route('/seguimiento-documentos/<int:documento_id>', methods=['PUT'])
+@login_required
+def actualizar_seguimiento_documento(documento_id):
+    data = _get_payload()
+
+    try:
+        documento = ClienteSeguimientoDocumento.query.get_or_404(documento_id)
+        if documento.atencion_id:
+            return jsonify({'error': 'Este documento fue generado desde una atencion y no se edita manualmente'}), 400
+        payload = _build_seguimiento_documento_payload(data, documento.cliente, documento=documento)
+        for field, value in payload.items():
+            setattr(documento, field, value)
+
+        db.session.commit()
+        return jsonify({'mensaje': 'Documento comercial actualizado'}), 200
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error actualizando documento de seguimiento %s: %s", documento_id, exc)
+        return jsonify({'error': 'Error al actualizar el documento comercial'}), 500
+
+
+@comercial_bp.route('/seguimiento-documentos/<int:documento_id>', methods=['DELETE'])
+@login_required
+def eliminar_seguimiento_documento(documento_id):
+    try:
+        documento = ClienteSeguimientoDocumento.query.get_or_404(documento_id)
+        if documento.atencion_id:
+            return jsonify({'error': 'Este documento fue generado desde una atencion y no se elimina manualmente'}), 400
+        db.session.delete(documento)
+        db.session.commit()
+        return jsonify({'mensaje': 'Documento comercial eliminado'}), 200
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error eliminando documento de seguimiento %s: %s", documento_id, exc)
+        return jsonify({'error': 'Error al eliminar el documento comercial'}), 500
+
+
+@comercial_bp.route('/clientes/<int:cliente_id>/seguimiento-pagos', methods=['GET'])
+@login_required
+def get_seguimiento_pagos_cliente(cliente_id):
+    try:
+        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        pagos = ClienteSeguimientoPago.query.filter_by(cliente_id=cliente.id).order_by(
+            ClienteSeguimientoPago.fecha_pago.desc(),
+            ClienteSeguimientoPago.id.desc()
+        ).all()
+        return jsonify([_serialize_seguimiento_pago(pago) for pago in pagos]), 200
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error obteniendo pagos de seguimiento del cliente %s: %s", cliente_id, exc)
+        return jsonify({'error': 'Error al obtener los pagos del cliente'}), 500
+
+
+@comercial_bp.route('/seguimiento-documentos/<int:documento_id>/pagos', methods=['POST'])
+@login_required
+def crear_seguimiento_pago(documento_id):
+    data = _get_payload()
+
+    try:
+        documento = ClienteSeguimientoDocumento.query.get_or_404(documento_id)
+        payload = _build_seguimiento_pago_payload(data, documento)
+        pago = ClienteSeguimientoPago(**payload)
+        db.session.add(pago)
+        db.session.flush()
+
+        if _documento_requiere_recibo_caja(documento, pago.medio_pago):
+            pago.numero_recibo_caja = _generar_numero_recibo_caja(pago)
+
+        comprobante = request.files.get('comprobante_pago')
+        if payload['medio_pago'] == 'TRANSFERENCIA' and not comprobante:
+            raise ValueError('Debes cargar el comprobante cuando el pago se registra por transferencia')
+        if comprobante:
+            _guardar_comprobante_pago(pago, comprobante)
+
+        _recalcular_documento_con_pagos(documento)
+        db.session.commit()
+        return jsonify({'mensaje': 'Pago registrado', 'id': pago.id}), 201
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error creando pago de seguimiento para documento %s: %s", documento_id, exc)
+        return jsonify({'error': 'Error al registrar el pago'}), 500
+
+
+@comercial_bp.route('/seguimiento-pagos/<int:pago_id>', methods=['PUT'])
+@login_required
+def actualizar_seguimiento_pago(pago_id):
+    data = _get_payload()
+
+    try:
+        pago = ClienteSeguimientoPago.query.get_or_404(pago_id)
+        payload = _build_seguimiento_pago_payload(data, pago.documento, pago=pago)
+        for field, value in payload.items():
+            setattr(pago, field, value)
+
+        if _documento_requiere_recibo_caja(pago.documento, pago.medio_pago):
+            if not pago.numero_recibo_caja:
+                pago.numero_recibo_caja = _generar_numero_recibo_caja(pago)
+        else:
+            pago.numero_recibo_caja = None
+
+        comprobante = request.files.get('comprobante_pago')
+        if pago.medio_pago == 'TRANSFERENCIA' and not comprobante and not pago.ruta_comprobante:
+            raise ValueError('Debes cargar el comprobante cuando el pago se registra por transferencia')
+        if pago.medio_pago != 'TRANSFERENCIA':
+            _eliminar_comprobante_pago(pago)
+        elif comprobante:
+            _guardar_comprobante_pago(pago, comprobante)
+
+        _recalcular_documento_con_pagos(pago.documento)
+        db.session.commit()
+        return jsonify({'mensaje': 'Pago actualizado'}), 200
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error actualizando pago de seguimiento %s: %s", pago_id, exc)
+        return jsonify({'error': 'Error al actualizar el pago'}), 500
+
+
+@comercial_bp.route('/seguimiento-pagos/<int:pago_id>', methods=['DELETE'])
+@login_required
+def eliminar_seguimiento_pago(pago_id):
+    try:
+        pago = ClienteSeguimientoPago.query.get_or_404(pago_id)
+        documento = pago.documento
+        _eliminar_comprobante_pago(pago)
+        db.session.delete(pago)
+        db.session.flush()
+        _recalcular_documento_con_pagos(documento)
+        db.session.commit()
+        return jsonify({'mensaje': 'Pago eliminado'}), 200
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error eliminando pago de seguimiento %s: %s", pago_id, exc)
+        return jsonify({'error': 'Error al eliminar el pago'}), 500
+
+
+@comercial_bp.route('/seguimiento-pagos/<int:pago_id>/comprobante', methods=['GET'])
+@login_required
+def descargar_comprobante_pago(pago_id):
+    try:
+        pago = ClienteSeguimientoPago.query.get_or_404(pago_id)
+        ruta = _get_pago_comprobante_path(pago)
+        return send_file(ruta, as_attachment=True, download_name=pago.nombre_comprobante or 'comprobante_pago')
+    except FileNotFoundError as exc:
+        return jsonify({'error': str(exc)}), 404
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error descargando comprobante de pago %s: %s", pago_id, exc)
+        return jsonify({'error': 'Error al descargar el comprobante de pago'}), 500
 
 
 @comercial_bp.route('/clientes/<int:cliente_id>/adjuntos/<int:adjunto_id>', methods=['GET'])

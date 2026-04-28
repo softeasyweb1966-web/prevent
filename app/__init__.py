@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import click
 from flask_migrate import Migrate
@@ -167,6 +168,204 @@ def register_cli_commands(app):
         created = _seed_admin_user(app)
         click.echo("Usuario administrador creado." if created else "Usuario administrador ya existia.")
 
+    @app.cli.command("seed-comercial-demo")
+    def seed_comercial_demo_command():
+        """Crear datos demo del modulo comercial de forma idempotente."""
+        from app.models import (
+            ClienteComercial,
+            ClienteComercialTarifa,
+            ComercialCatalogoItem,
+            ComercialPaqueteDetalle,
+            Vendedor,
+            db,
+        )
+
+        def upsert_vendedor(documento, **fields):
+            vendedor = Vendedor.query.filter_by(documento=documento).first()
+            if vendedor is None:
+                vendedor = Vendedor(documento=documento)
+                db.session.add(vendedor)
+            for key, value in fields.items():
+                setattr(vendedor, key, value)
+            return vendedor
+
+        def upsert_item(codigo, **fields):
+            item = ComercialCatalogoItem.query.filter_by(codigo=codigo).first()
+            if item is None:
+                item = ComercialCatalogoItem(codigo=codigo)
+                db.session.add(item)
+            for key, value in fields.items():
+                setattr(item, key, value)
+            return item
+
+        def upsert_cliente(nit, **fields):
+            cliente = ClienteComercial.query.filter_by(nit=nit).first()
+            if cliente is None:
+                cliente = ClienteComercial(nit=nit)
+                db.session.add(cliente)
+            for key, value in fields.items():
+                setattr(cliente, key, value)
+            return cliente
+
+        try:
+            vendedor_1 = upsert_vendedor(
+                '9001001',
+                nombre='Laura Comercial',
+                telefono='3001112233',
+                email='laura.comercial@prevent.local',
+                porcentaje_comision_venta=Decimal('4.50'),
+                porcentaje_comision_recaudo=Decimal('1.50'),
+                monto_base_comision=Decimal('0'),
+                descripcion='Vendedora demo para pruebas del modulo comercial',
+                activo=True,
+            )
+            vendedor_2 = upsert_vendedor(
+                '9001002',
+                nombre='Carlos Convenios',
+                telefono='3001112244',
+                email='carlos.convenios@prevent.local',
+                porcentaje_comision_venta=Decimal('5.00'),
+                porcentaje_comision_recaudo=Decimal('2.00'),
+                monto_base_comision=Decimal('0'),
+                descripcion='Gerencia comercial demo',
+                activo=True,
+            )
+
+            item_consulta = upsert_item(
+                'CONS001',
+                tipo_item='EXAMEN',
+                tipo_examen='CONSULTA',
+                subtipo_laboratorio=None,
+                clasificacion_completa=True,
+                nombre='Consulta ocupacional de ingreso',
+                descripcion='Consulta medica ocupacional para ingreso',
+                tarifa_base=Decimal('45000'),
+                activo=True,
+            )
+            item_para = upsert_item(
+                'PARA001',
+                tipo_item='EXAMEN',
+                tipo_examen='PARACLINICO',
+                subtipo_laboratorio=None,
+                clasificacion_completa=True,
+                nombre='Audiometria ocupacional',
+                descripcion='Paraclinico demo para pruebas',
+                tarifa_base=Decimal('38000'),
+                activo=True,
+            )
+            item_lab_rem = upsert_item(
+                'LABR001',
+                tipo_item='EXAMEN',
+                tipo_examen='LABORATORIO',
+                subtipo_laboratorio='REMITIDO',
+                clasificacion_completa=True,
+                nombre='Perfil lipidico remitido',
+                descripcion='Examen de laboratorio remitido',
+                tarifa_base=Decimal('52000'),
+                activo=True,
+            )
+            item_lab_real = upsert_item(
+                'LABI001',
+                tipo_item='EXAMEN',
+                tipo_examen='LABORATORIO',
+                subtipo_laboratorio='REALIZADO',
+                clasificacion_completa=True,
+                nombre='Glicemia laboratorio interno',
+                descripcion='Examen realizado en laboratorio propio',
+                tarifa_base=Decimal('18000'),
+                activo=True,
+            )
+            item_pendiente = upsert_item(
+                'PEND001',
+                tipo_item='EXAMEN',
+                tipo_examen=None,
+                subtipo_laboratorio=None,
+                clasificacion_completa=False,
+                nombre='Examen pendiente de clasificar',
+                descripcion='Item demo para validar pendientes de clasificacion',
+                tarifa_base=Decimal('0'),
+                activo=True,
+            )
+            paquete = upsert_item(
+                'PKG001',
+                tipo_item='PAQUETE',
+                tipo_examen=None,
+                subtipo_laboratorio=None,
+                clasificacion_completa=True,
+                nombre='Paquete ingreso administrativo',
+                descripcion='Paquete demo con consulta, audiometria y laboratorio',
+                tarifa_base=Decimal('120000'),
+                activo=True,
+            )
+
+            db.session.flush()
+
+            paquete.paquete_componentes.clear()
+            for examen in [item_consulta, item_para, item_lab_real]:
+                paquete.paquete_componentes.append(
+                    ComercialPaqueteDetalle(examen_id=examen.id, cantidad=1)
+                )
+
+            cliente = upsert_cliente(
+                '901234567-8',
+                vendedor_id=vendedor_1.id,
+                razon_social='Empresa Demo Comercial SAS',
+                nombre_comercial='Demo Comercial',
+                ciudad='Bogota',
+                direccion='Calle 123 # 45-67',
+                telefono_empresa='6015550101',
+                email_empresa='compras@demo-comercial.local',
+                contacto_principal='Paula Compras',
+                celular_contacto_principal='3005550101',
+                email_contacto_principal='paula@demo-comercial.local',
+                contacto_facturacion='Andres Facturacion',
+                celular_facturacion='3005550102',
+                email_facturacion='facturacion@demo-comercial.local',
+                condicion_comercial='CREDITO',
+                requiere_factura=True,
+                fechas_facturacion='5 y 20 de cada mes',
+                examenes_convenidos='Consulta ocupacional, audiometria y glicemia',
+                servicios_convenidos='Ingreso, periodicos y retiro',
+                tarifas_convenidas='Tarifas negociadas segun volumen mensual',
+                documentos_legales_completos=True,
+                documentos_legales_detalle='RUT, camara de comercio y cedula del representante',
+                pagare_firmado=True,
+                pagare_detalle='Pagare firmado para credito a 30 dias',
+                observaciones='Cliente demo para validacion de CRUD comercial',
+                activo=True,
+            )
+
+            db.session.flush()
+
+            tarifas_demo = [
+                (cliente.id, item_consulta.id, Decimal('42000'), '2026-01-01', None, 'Tarifa preferencial de consulta'),
+                (cliente.id, item_lab_real.id, Decimal('15000'), '2026-01-01', None, 'Tarifa interna negociada'),
+                (cliente.id, paquete.id, Decimal('110000'), '2026-01-01', None, 'Paquete comercial demo'),
+            ]
+
+            for cliente_id, item_id, tarifa, desde, hasta, observacion in tarifas_demo:
+                registro = ClienteComercialTarifa.query.filter_by(
+                    cliente_id=cliente_id,
+                    catalogo_item_id=item_id,
+                ).first()
+                if registro is None:
+                    registro = ClienteComercialTarifa(
+                        cliente_id=cliente_id,
+                        catalogo_item_id=item_id,
+                    )
+                    db.session.add(registro)
+                registro.tarifa_negociada = tarifa
+                registro.vigencia_desde = datetime.strptime(desde, '%Y-%m-%d')
+                registro.vigencia_hasta = datetime.strptime(hasta, '%Y-%m-%d') if hasta else None
+                registro.observacion = observacion
+                registro.activo = True
+
+            db.session.commit()
+            click.echo('Datos demo del modulo comercial creados/actualizados correctamente.')
+        except Exception as exc:
+            db.session.rollback()
+            raise click.ClickException(f'No fue posible crear datos demo: {exc}')
+
 
 def register_template_helpers(app):
     """Helpers de plantillas para evitar cache agresivo de archivos estaticos."""
@@ -242,6 +441,14 @@ def create_app(config_name='development'):
         from app.models import Usuario
 
         return Usuario.query.get(int(user_id))
+
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        from flask import jsonify, redirect, request, url_for
+
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Sesion expirada o no autenticada'}), 401
+        return redirect(url_for('index'))
 
     setup_logging()
     app.logger.info(

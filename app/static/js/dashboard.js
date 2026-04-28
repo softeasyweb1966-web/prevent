@@ -11,6 +11,7 @@ window._nominaMatrixContext = window._nominaMatrixContext || null;
 window._bancosPeriodoActual = window._bancosPeriodoActual || null;
 window._comercialPeriodoActual = window._comercialPeriodoActual || null;
 window._comisionesPeriodoActual = window._comisionesPeriodoActual || null;
+window._comercialSeccionActual = window._comercialSeccionActual || 'inicio';
 window._impuestosPeriodoActual = window._impuestosPeriodoActual || null;
 window._comprasPeriodoActual = window._comprasPeriodoActual || null;
 window._ventasPeriodoActual = window._ventasPeriodoActual || null;
@@ -384,22 +385,12 @@ function toggleBancosMesPanel() {
 }
 
 function toggleComercialMesPanel() {
-    const panel = document.getElementById('comercialMesPanel');
-    if (!panel) return;
-
-    const homeHeader = document.getElementById('comercialHomeHeader');
-    const isVisible = panel.style.display === 'block';
-    if (!isVisible && !window._comercialPeriodoActual) {
-        if (typeof openComercialPeriodoSeleccion === 'function') {
-            openComercialPeriodoSeleccion();
-            return;
-        }
+    if (window._comercialSeccionActual === 'mes') {
+        switchComercialSection('inicio', { reload: false, focus: false });
+        return;
     }
 
-    panel.style.display = isVisible ? 'none' : 'block';
-    if (homeHeader) {
-        homeHeader.style.display = isVisible ? '' : 'none';
-    }
+    switchComercialSection('mes');
 }
 
 function toggleComisionesMesPanel() {
@@ -598,9 +589,11 @@ function setupModulosPeriodoActual() {
             loadComercialDashboard();
 
             const panel = document.getElementById('comercialMesPanel');
-            const homeHeader = document.getElementById('comercialHomeHeader');
+            const mesActualPanel = document.getElementById('comercialMesActualPanel');
+            window._comercialSeccionActual = 'mes';
+            actualizarNavegacionComercial('mes');
             if (panel) panel.style.display = 'block';
-            if (homeHeader) homeHeader.style.display = 'none';
+            if (mesActualPanel) mesActualPanel.style.display = '';
         });
         formComercial.dataset.bound = 'true';
         actualizarEtiquetaComercialPeriodo();
@@ -1633,12 +1626,7 @@ function switchModule(moduleName) {
                 const homeHeader = document.getElementById('comercialHomeHeader');
                 if (panelMes) panelMes.style.display = 'none';
                 if (homeHeader) homeHeader.style.display = '';
-                actualizarEtiquetaComercialPeriodo();
-                loadComercialDashboard();
-                cargarCatalogoComercialConfig();
-                cargarClientesComercialesConfig();
-                cargarTarifasComercialesConfig();
-                cargarVendedoresConfig();
+                inicializarModuloComercial(window._comercialSeccionActual || 'inicio');
             } catch (e) {
                 console.error('Error inicializando modulo Comercial', e);
             }
@@ -2376,12 +2364,7 @@ function openModuleFull(moduleName) {
             const homeHeader = document.getElementById('comercialHomeHeader');
             if (panelMes) panelMes.style.display = 'none';
             if (homeHeader) homeHeader.style.display = '';
-            actualizarEtiquetaComercialPeriodo();
-            loadComercialDashboard();
-            cargarCatalogoComercialConfig();
-            cargarClientesComercialesConfig();
-            cargarTarifasComercialesConfig();
-            cargarVendedoresConfig();
+            inicializarModuloComercial(window._comercialSeccionActual || 'inicio');
         }
         else if (moduleName === 'bancos' && typeof loadPrestamosResumen === 'function') loadPrestamosResumen();
     } else {
@@ -2466,17 +2449,118 @@ async function loadComercialDashboard() {
     }
 }
 
-function consultarComercial() {
+function getComercialSectionConfig(sectionName = window._comercialSeccionActual || 'vendedores') {
+    return COMERCIAL_SECTION_CONFIG[sectionName] || COMERCIAL_SECTION_CONFIG.inicio;
+}
+
+function actualizarNavegacionComercial(sectionName) {
+    document.querySelectorAll('[data-comercial-section]').forEach(button => {
+        const isActive = button.dataset.comercialSection === sectionName;
+        button.classList.toggle('active', isActive);
+        button.classList.toggle('btn-primary', isActive);
+        button.classList.toggle('btn-secondary', !isActive);
+    });
+}
+
+function resetComercialWorkspace() {
+    const mesActualPanel = document.getElementById('comercialMesActualPanel');
+    const panelMes = document.getElementById('comercialMesPanel');
+
+    if (mesActualPanel) mesActualPanel.style.display = 'none';
+    if (panelMes) panelMes.style.display = 'none';
+
+    Object.values(COMERCIAL_SECTION_CONFIG).forEach(section => {
+        (section.panels || []).forEach(panelId => {
+            const panel = document.getElementById(panelId);
+            if (panel) {
+                panel.classList.remove('active');
+            }
+        });
+    });
+}
+
+function mostrarPanelesComercial(sectionName) {
+    const config = getComercialSectionConfig(sectionName);
+    const activePanels = new Set(config.panels || []);
+
+    resetComercialWorkspace();
+
+    activePanels.forEach(panelId => {
+        const panel = document.getElementById(panelId);
+        if (panel) {
+            panel.classList.add('active');
+        }
+    });
+}
+
+async function switchComercialSection(sectionName = 'inicio', options = {}) {
+    const normalizedSection = COMERCIAL_SECTION_CONFIG[sectionName] ? sectionName : 'inicio';
+    const { reload = false, focus = true } = options;
     const panelMes = document.getElementById('comercialMesPanel');
     const homeHeader = document.getElementById('comercialHomeHeader');
-    if (panelMes) panelMes.style.display = 'none';
+    const mesActualPanel = document.getElementById('comercialMesActualPanel');
+    const config = getComercialSectionConfig(normalizedSection);
+
+    window._comercialSeccionActual = normalizedSection;
     if (homeHeader) homeHeader.style.display = '';
-    loadComercialDashboard();
-    cargarCatalogoComercialConfig();
-    cargarClientesComercialesConfig();
-    cargarTarifasComercialesConfig();
-    cargarVendedoresConfig();
-    window.setTimeout(() => focusModuleSection('comercialClientesPanel'), 120);
+    actualizarNavegacionComercial(normalizedSection);
+    mostrarPanelesComercial(normalizedSection);
+    ['vendedores', 'examenes', 'clientes'].forEach(section => {
+        if (section !== normalizedSection) {
+            resetConsultaComercial(section);
+        }
+    });
+
+    if (normalizedSection === 'inicio') {
+        return;
+    }
+
+    if (normalizedSection === 'mes') {
+        if (mesActualPanel) mesActualPanel.style.display = '';
+        if (reload) {
+            await config.load();
+        }
+        if (!window._comercialPeriodoActual) {
+            if (typeof openComercialPeriodoSeleccion === 'function') {
+                openComercialPeriodoSeleccion();
+            }
+        } else if (panelMes) {
+            panelMes.style.display = 'block';
+        }
+        if (focus && config.focusId) {
+            window.setTimeout(() => focusModuleSection(config.focusId), 120);
+        }
+        return;
+    }
+
+    if (reload) {
+        try {
+            await config.load();
+        } catch (error) {
+            console.error(`Error cargando seccion comercial ${normalizedSection}:`, error);
+        }
+    }
+
+    if (focus) {
+        window.setTimeout(() => focusModuleSection(config.focusId), 120);
+    }
+}
+
+async function inicializarModuloComercial(sectionName = window._comercialSeccionActual || 'inicio', options = {}) {
+    const { focus = false } = options;
+    actualizarEtiquetaComercialPeriodo();
+    await switchComercialSection(sectionName, { reload: sectionName === 'mes', focus });
+}
+
+function abrirNuevoComercialActual() {
+    const config = getComercialSectionConfig(window._comercialSeccionActual || 'inicio');
+    if (typeof config.openNew === 'function') {
+        config.openNew();
+    }
+}
+
+async function consultarComercial(sectionName = window._comercialSeccionActual || 'inicio') {
+    await abrirConsultaComercial(sectionName);
 }
 
 async function loadEmpleados() {
@@ -2543,6 +2627,173 @@ let vendedoresConfigData = [];
 let clientesComercialesData = [];
 let catalogoComercialData = [];
 let tarifasComercialesData = [];
+let clienteComercialTarifaContext = null;
+let catalogoComercialComponentesSeleccionados = [];
+let catalogoComercialExamenesDisponibles = [];
+const COMERCIAL_SECTION_CONFIG = {
+    inicio: {
+        panels: [],
+        focusId: null,
+        load: async () => {}
+    },
+    vendedores: {
+        panels: ['comercialVendedoresSection'],
+        focusId: 'comercialVendedoresPanel',
+        load: () => cargarVendedoresConfig(),
+        openNew: () => mostrarAgregarVendedor(),
+        consultaPanelId: 'comercialVendedoresPanel',
+        inputId: 'comercialVendedoresSearch',
+        resultsId: 'comercialVendedoresResults',
+        summaryId: 'comercialVendedoresResumen',
+        prompt: 'Escribe para buscar un vendedor.',
+        getItems: () => vendedoresConfigData,
+        matchFields: item => [item.nombre, item.documento, item.email, item.telefono],
+        renderResult: item => ({
+            title: item.nombre || 'Vendedor sin nombre',
+            subtitle: [item.documento || 'Sin documento', item.email || '', item.telefono || ''].filter(Boolean).join(' · '),
+            meta: `Comisión venta ${Number(item.porcentaje_comision_venta || 0).toFixed(2)}% · Comisión recaudo ${Number(item.porcentaje_comision_recaudo || 0).toFixed(2)}%`,
+            estado: item.activo ? 'Activo' : 'Inactivo'
+        }),
+        edit: id => editarVendedorConfig(id)
+    },
+    examenes: {
+        panels: ['comercialCatalogoSection'],
+        focusId: 'comercialCatalogoPanel',
+        load: () => cargarCatalogoComercialConfig(),
+        openNew: () => mostrarAgregarItemCatalogoComercial(),
+        consultaPanelId: 'comercialCatalogoPanel',
+        inputId: 'comercialCatalogoSearch',
+        resultsId: 'comercialCatalogoResults',
+        summaryId: 'comercialCatalogoResumen',
+        prompt: 'Escribe para buscar un examen o paquete.',
+        getItems: () => catalogoComercialData,
+        matchFields: item => [item.nombre, item.codigo, item.tipo_item, item.clasificacion_resumen, item.descripcion, item.resumen_componentes],
+        renderResult: item => ({
+            title: item.nombre || 'Item sin nombre',
+            subtitle: [item.codigo || 'Sin código', item.tipo_item === 'EXAMEN' ? obtenerResumenClasificacionCatalogo(item) : (item.tipo_item || '')].filter(Boolean).join(' · '),
+            meta: `${item.tipo_item || 'ITEM'} · ${formatCurrency(item.tarifa_base || 0)} · ${item.activo ? 'Activo' : 'Inactivo'}`,
+            estado: item.tipo_item === 'EXAMEN' && item.clasificacion_completa !== true ? 'Pendiente de clasificar' : '',
+            detail: item.tipo_item === 'PAQUETE'
+                ? `Incluye ${item.cantidad_componentes || 0} examen(es): ${item.resumen_componentes || 'Sin exámenes definidos'}`
+                : ''
+        }),
+        edit: id => editarItemCatalogoComercial(id)
+    },
+    clientes: {
+        panels: ['comercialClientesSection'],
+        focusId: 'comercialClientesPanel',
+        load: () => Promise.all([cargarClientesComercialesConfig(), cargarTarifasComercialesConfig()]),
+        openNew: () => mostrarAgregarClienteComercial(),
+        consultaPanelId: 'comercialClientesPanel',
+        inputId: 'comercialClientesSearch',
+        resultsId: 'comercialClientesResults',
+        summaryId: 'comercialClientesResumen',
+        prompt: 'Escribe para buscar un cliente.',
+        getItems: () => clientesComercialesData,
+        matchFields: item => [item.razon_social, item.nombre_comercial, item.nit, item.vendedor_nombre, item.contacto_principal, item.contacto_facturacion, item.email_empresa],
+        renderResult: item => ({
+            title: item.razon_social || item.nombre_comercial || 'Cliente sin nombre',
+            subtitle: [item.nit || 'Sin NIT', item.vendedor_nombre || 'Sin vendedor'].filter(Boolean).join(' · '),
+            meta: [item.contacto_facturacion || item.contacto_principal || 'Sin contacto', item.email_facturacion || item.email_contacto_principal || item.email_empresa || '', item.condicion_comercial || ''].filter(Boolean).join(' · '),
+            estado: item.activo ? 'Activo' : 'Inactivo'
+        }),
+        edit: id => editarClienteComercial(id)
+    },
+    mes: {
+        panels: [],
+        focusId: 'comercialMesPanel',
+        load: async () => {
+            await loadComercialDashboard();
+        }
+    }
+};
+
+function resetConsultaComercial(sectionName) {
+    const config = getComercialSectionConfig(sectionName);
+    if (!config?.consultaPanelId) return;
+
+    const panel = document.getElementById(config.consultaPanelId);
+    const input = document.getElementById(config.inputId);
+    const results = document.getElementById(config.resultsId);
+    const summary = document.getElementById(config.summaryId);
+
+    if (panel) panel.style.display = 'none';
+    if (input) input.value = '';
+    if (summary) summary.textContent = config.prompt;
+    if (results) results.innerHTML = `<div class="loading">${escapeHtml(config.prompt)}</div>`;
+}
+
+function renderConsultaComercialResults(sectionName, query = '') {
+    const config = getComercialSectionConfig(sectionName);
+    const results = document.getElementById(config.resultsId);
+    const summary = document.getElementById(config.summaryId);
+    if (!results || !summary) return;
+
+    const normalizedQuery = String(query || '').trim().toLowerCase();
+    if (!normalizedQuery) {
+        summary.textContent = config.prompt;
+        results.innerHTML = `<div class="loading">${escapeHtml(config.prompt)}</div>`;
+        return;
+    }
+
+    const items = Array.isArray(config.getItems?.()) ? config.getItems() : [];
+    const filtered = items.filter(item => config.matchFields(item).some(value => String(value || '').toLowerCase().includes(normalizedQuery)));
+
+    if (filtered.length === 0) {
+        summary.textContent = 'No encontramos resultados con esa búsqueda.';
+        results.innerHTML = '<div class="comercial-search-empty">No hay coincidencias. Prueba con otro nombre, código, documento o contacto.</div>';
+        return;
+    }
+
+    summary.textContent = `${filtered.length} resultado(s). Selecciona uno para abrir su ficha.`;
+    results.innerHTML = filtered.slice(0, 30).map(item => {
+        const view = config.renderResult(item);
+        const parts = [
+            `<strong>${escapeHtml(view.title || 'Registro')}</strong>`,
+            view.subtitle ? `<div class="comercial-search-subtitle">${escapeHtml(view.subtitle)}</div>` : '',
+            view.meta ? `<div class="comercial-search-meta">${escapeHtml(view.meta)}</div>` : '',
+            view.estado ? `<div class="comercial-search-meta">${escapeHtml(view.estado)}</div>` : '',
+            view.detail ? `<div class="comercial-search-detail">${escapeHtml(view.detail)}</div>` : ''
+        ].join('');
+
+        return `
+            <button type="button" class="comercial-search-item" onclick="abrirResultadoConsultaComercial('${sectionName}', ${Number(item.id)})">
+                ${parts}
+            </button>
+        `;
+    }).join('');
+}
+
+async function abrirConsultaComercial(sectionName) {
+    const config = getComercialSectionConfig(sectionName);
+    if (!config?.consultaPanelId) return;
+
+    try {
+        await config.load();
+    } catch (error) {
+        console.error(`Error cargando consulta comercial ${sectionName}:`, error);
+    }
+
+    const panel = document.getElementById(config.consultaPanelId);
+    const input = document.getElementById(config.inputId);
+    if (panel) panel.style.display = 'block';
+    renderConsultaComercialResults(sectionName, '');
+    if (input) input.focus();
+    window.setTimeout(() => focusModuleSection(config.consultaPanelId), 120);
+}
+
+function filtrarConsultaComercial(sectionName) {
+    const config = getComercialSectionConfig(sectionName);
+    const query = document.getElementById(config.inputId)?.value || '';
+    renderConsultaComercialResults(sectionName, query);
+}
+
+function abrirResultadoConsultaComercial(sectionName, id) {
+    const config = getComercialSectionConfig(sectionName);
+    if (typeof config.edit === 'function') {
+        config.edit(Number(id));
+    }
+}
 
 function setupConsultaEmpleados() {
     const searchInput = document.getElementById('consultaEmpleadoSearch');
@@ -2925,6 +3176,14 @@ function setupEstructuraLaboralForms() {
         catalogoComercialTipo.dataset.bound = 'true';
     }
 
+    const catalogoComercialTipoExamen = document.getElementById('catalogoComercialTipoExamen');
+    if (catalogoComercialTipoExamen && !catalogoComercialTipoExamen.dataset.bound) {
+        catalogoComercialTipoExamen.addEventListener('change', () => {
+            actualizarVisibilidadComponentesCatalogo();
+        });
+        catalogoComercialTipoExamen.dataset.bound = 'true';
+    }
+
     const tarifaClienteForm = document.getElementById('tarifaClienteForm');
     if (tarifaClienteForm && !tarifaClienteForm.dataset.bound) {
         tarifaClienteForm.addEventListener('submit', guardarTarifaClienteConfig);
@@ -3154,7 +3413,7 @@ async function cargarVendedoresConfig() {
     }
 }
 
-async function cargarCatalogoComercialConfig() {
+async function cargarCatalogoComercialConfigLegacy() {
     const tbody = document.getElementById('comercialCatalogoTable');
     if (!tbody) return;
 
@@ -3220,7 +3479,7 @@ async function cargarTarifasComercialesConfig() {
                 <td>${escapeHtml(tarifa.cliente_nombre || 'N/A')}</td>
                 <td>
                     <strong>${escapeHtml(tarifa.item_nombre || 'N/A')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(tarifa.tipo_item === 'EXAMEN' ? `${tarifa.tipo_item} / ${tarifa.tipo_examen || 'SIN CLASIFICAR'}` : (tarifa.tipo_item || ''))}</div>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(tarifa.tipo_item === 'EXAMEN' ? obtenerResumenClasificacionCatalogo(tarifa) : (tarifa.tipo_item || ''))}</div>
                 </td>
                 <td>${formatCurrency(tarifa.tarifa_base || 0)}</td>
                 <td>${formatCurrency(tarifa.tarifa_negociada || 0)}</td>
@@ -3265,6 +3524,63 @@ function renderClienteComercialAdjuntos(containerId, adjuntos) {
             <a href="${adjunto.download_url}" target="_blank" rel="noopener noreferrer">${escapeHtml(adjunto.nombre_original || 'Adjunto')}</a>
         </div>
     `).join('');
+}
+
+async function renderTarifasClienteComercial(clienteId = '') {
+    const button = document.getElementById('clienteComercialAsignarTarifaBtn');
+    const hint = document.getElementById('clienteComercialTarifaHint');
+    const container = document.getElementById('clienteComercialTarifasResumen');
+    if (!button || !hint || !container) return;
+
+    if (!clienteId) {
+        button.disabled = true;
+        hint.textContent = 'Guarda primero el cliente para poder asignarle tarifas negociadas por examen o paquete.';
+        container.innerHTML = 'Sin tarifas configuradas.';
+        return;
+    }
+
+    button.disabled = false;
+    hint.textContent = 'Asigna aqui las tarifas negociadas del cliente. Puedes crear varias y luego seguir editando su ficha.';
+
+    try {
+        const tarifas = await asegurarTarifasComerciales();
+        const tarifasCliente = tarifas
+            .filter(tarifa => String(tarifa.cliente_id) === String(clienteId))
+            .sort((a, b) => (a.item_nombre || '').localeCompare(b.item_nombre || ''));
+
+        if (tarifasCliente.length === 0) {
+            container.innerHTML = 'Este cliente aun no tiene tarifas negociadas.';
+            return;
+        }
+
+        container.innerHTML = tarifasCliente.map(tarifa => `
+            <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start; padding:8px 0; border-bottom:1px solid #e5e7eb;">
+                <div>
+                    <strong>${escapeHtml(tarifa.item_nombre || 'Item')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(obtenerResumenClasificacionCatalogo(tarifa))}</div>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(tarifa.vigencia_desde || 'Vigencia abierta')}${tarifa.vigencia_hasta ? ` a ${escapeHtml(tarifa.vigencia_hasta)}` : ''}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-weight:700;">${formatCurrency(tarifa.tarifa_negociada || 0)}</div>
+                    <button type="button" class="action-btn action-btn-edit" style="margin-right:0; margin-top:6px;" onclick="editarTarifaCliente(${tarifa.id})">Editar</button>
+                </div>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando tarifas del cliente:', error);
+        container.innerHTML = 'No fue posible cargar las tarifas negociadas del cliente.';
+    }
+}
+
+async function abrirTarifaDesdeCliente() {
+    const clienteId = document.getElementById('clienteComercialId')?.value;
+    if (!clienteId) {
+        return showError('Guarda primero el cliente antes de asignarle tarifas.');
+    }
+
+    clienteComercialTarifaContext = String(clienteId);
+    closeClienteComercialModal(true);
+    await mostrarAgregarTarifaCliente(clienteId);
 }
 
 function actualizarEstadoFacturaClienteComercial() {
@@ -3347,6 +3663,22 @@ async function asegurarCatalogoComercial() {
     return catalogoComercialData;
 }
 
+async function asegurarTarifasComerciales() {
+    if (Array.isArray(tarifasComercialesData) && tarifasComercialesData.length > 0) {
+        return tarifasComercialesData;
+    }
+
+    const response = await fetch('/api/comercial/tarifas', { credentials: 'include' });
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'No se pudo cargar la lista de tarifas comerciales');
+    }
+
+    const tarifas = await response.json();
+    tarifasComercialesData = Array.isArray(tarifas) ? tarifas : [];
+    return tarifasComercialesData;
+}
+
 async function llenarSelectClientesComerciales(selectedId = '') {
     const select = document.getElementById('tarifaClienteClienteId');
     if (!select) return;
@@ -3376,14 +3708,17 @@ async function llenarSelectCatalogoComercial(selectedId = '') {
     try {
         const items = await asegurarCatalogoComercial();
         select.innerHTML = '<option value="">Seleccione un examen o paquete...</option>';
-        items.filter(item => item.activo !== false).forEach(item => {
-            const option = document.createElement('option');
-            option.value = item.id;
-            option.textContent = item.tipo_item === 'EXAMEN'
-                ? `${item.tipo_item} / ${item.tipo_examen || 'SIN CLASIFICAR'} - ${item.nombre}`
-                : `${item.tipo_item} - ${item.nombre}`;
-            select.appendChild(option);
-        });
+        items
+            .filter(item => item.activo !== false)
+            .filter(item => item.tipo_item !== 'EXAMEN' || item.clasificacion_completa === true)
+            .forEach(item => {
+                const option = document.createElement('option');
+                option.value = item.id;
+                option.textContent = item.tipo_item === 'EXAMEN'
+                    ? `${item.clasificacion_resumen || 'PENDIENTE DE CLASIFICAR'} - ${item.nombre}`
+                    : `${item.tipo_item} - ${item.nombre}`;
+                select.appendChild(option);
+            });
         if (selectedId) {
             select.value = String(selectedId);
         }
@@ -3393,19 +3728,54 @@ async function llenarSelectCatalogoComercial(selectedId = '') {
     }
 }
 
-async function renderCatalogoComercialComponentes(selectedIds = []) {
+function obtenerResumenClasificacionCatalogo(item) {
+    if (!item) return 'SIN CLASIFICAR';
+    if (item.clasificacion_resumen) return item.clasificacion_resumen;
+    if (item.tipo_item !== 'EXAMEN') return item.tipo_item || 'ITEM';
+    if (!item.tipo_examen) return 'PENDIENTE DE CLASIFICAR';
+    if (item.tipo_examen !== 'LABORATORIO') return item.tipo_examen;
+    if (item.subtipo_laboratorio === 'REMITIDO') return 'LABORATORIO / REMITIDO';
+    if (item.subtipo_laboratorio === 'REALIZADO') return 'LABORATORIO / REALIZADO EN LABORATORIO';
+    return 'LABORATORIO / SUBTIPO PENDIENTE';
+}
+
+function obtenerGruposCatalogoParaPaquete(items) {
+    const grupos = [
+        { title: 'Consultas', items: [] },
+        { title: 'Paraclinicos', items: [] },
+        { title: 'Laboratorio remitidos', items: [] },
+        { title: 'Laboratorio realizados en laboratorio', items: [] }
+    ];
+
+    (items || []).forEach(item => {
+        if (item.tipo_examen === 'CONSULTA') {
+            grupos[0].items.push(item);
+        } else if (item.tipo_examen === 'PARACLINICO') {
+            grupos[1].items.push(item);
+        } else if (item.tipo_examen === 'LABORATORIO' && item.subtipo_laboratorio === 'REMITIDO') {
+            grupos[2].items.push(item);
+        } else if (item.tipo_examen === 'LABORATORIO' && item.subtipo_laboratorio === 'REALIZADO') {
+            grupos[3].items.push(item);
+        }
+    });
+
+    return grupos.filter(grupo => grupo.items.length > 0);
+}
+
+async function renderCatalogoComercialComponentesLegacy(selectedIds = []) {
     const container = document.getElementById('catalogoComercialComponentesList');
     if (!container) return;
 
     try {
         const items = await asegurarCatalogoComercial();
         const examenes = items
-            .filter(item => item.tipo_item === 'EXAMEN' && item.tipo_examen)
+            .filter(item => item.tipo_item === 'EXAMEN' && item.clasificacion_completa === true)
             .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
         const selectedSet = new Set((selectedIds || []).map(id => String(id)));
+        const pendientes = items.filter(item => item.tipo_item === 'EXAMEN' && item.clasificacion_completa !== true);
 
         if (examenes.length === 0) {
-            container.innerHTML = '<div class="catalogo-componentes-empty">Primero crea los examenes del catalogo para poder armar paquetes.</div>';
+            container.innerHTML = '<div class="catalogo-componentes-empty">Todavia no hay examenes completamente clasificados para armar paquetes.</div>';
             return;
         }
 
@@ -3429,7 +3799,7 @@ async function renderCatalogoComercialComponentes(selectedIds = []) {
     }
 }
 
-function actualizarVisibilidadComponentesCatalogo() {
+function actualizarVisibilidadComponentesCatalogoLegacy() {
     const tipoSelect = document.getElementById('catalogoComercialTipo');
     const tipoExamenRow = document.getElementById('catalogoComercialTipoExamenRow');
     const row = document.getElementById('catalogoComercialComponentesRow');
@@ -3454,9 +3824,7 @@ function actualizarVisibilidadComponentesCatalogo() {
 }
 
 function obtenerComponentesSeleccionadosCatalogo() {
-    return Array.from(
-        document.querySelectorAll('#catalogoComercialComponentesList .catalogo-componente-checkbox:checked')
-    ).map(input => Number(input.value));
+    return [...catalogoComercialComponentesSeleccionados];
 }
 
 async function cargarClientesComercialesConfig() {
@@ -3510,6 +3878,7 @@ async function mostrarAgregarClienteComercial() {
     if (!form) return;
 
     form.reset();
+    clienteComercialTarifaContext = null;
     document.getElementById('clienteComercialId').value = '';
     document.getElementById('clienteComercialModalTitle').textContent = 'Nuevo Cliente Comercial';
     document.getElementById('clienteComercialActivo').checked = true;
@@ -3518,12 +3887,16 @@ async function mostrarAgregarClienteComercial() {
     document.getElementById('clienteComercialPagareFirmado').checked = false;
     renderClienteComercialAdjuntos('clienteComercialDocumentosExistentes', []);
     renderClienteComercialAdjuntos('clienteComercialPagareExistentes', []);
+    await renderTarifasClienteComercial('');
     await llenarSelectVendedorComercial();
     actualizarEstadoFacturaClienteComercial();
     document.getElementById('clienteComercialModal').classList.add('active');
 }
 
-function closeClienteComercialModal() {
+function closeClienteComercialModal(preserveTarifaContext = false) {
+    if (!preserveTarifaContext) {
+        clienteComercialTarifaContext = null;
+    }
     document.getElementById('clienteComercialModal').classList.remove('active');
 }
 
@@ -3531,6 +3904,7 @@ async function editarClienteComercial(id) {
     const cliente = clientesComercialesData.find(item => item.id === id);
     if (!cliente) return;
 
+    clienteComercialTarifaContext = String(id);
     document.getElementById('clienteComercialId').value = cliente.id;
     document.getElementById('clienteComercialModalTitle').textContent = 'Editar Cliente Comercial';
     await llenarSelectVendedorComercial(cliente.vendedor_id || '');
@@ -3562,18 +3936,19 @@ async function editarClienteComercial(id) {
     document.getElementById('clienteComercialObservaciones').value = cliente.observaciones || '';
     renderClienteComercialAdjuntos('clienteComercialDocumentosExistentes', cliente.documentos_legales_adjuntos || []);
     renderClienteComercialAdjuntos('clienteComercialPagareExistentes', cliente.pagare_adjuntos || []);
+    await renderTarifasClienteComercial(cliente.id);
     actualizarEstadoFacturaClienteComercial();
     document.getElementById('clienteComercialModal').classList.add('active');
 }
 
-function mostrarAgregarItemCatalogoComercial() {
+function mostrarAgregarItemCatalogoComercialLegacy() {
     const form = document.getElementById('catalogoComercialForm');
     if (!form) return;
 
     form.reset();
     renderCatalogoComercialComponentes();
     document.getElementById('catalogoComercialId').value = '';
-    document.getElementById('catalogoComercialModalTitle').textContent = 'Nuevo Item Comercial';
+    document.getElementById('catalogoComercialModalTitle').textContent = 'Nuevo Examen o Paquete';
     document.getElementById('catalogoComercialTipo').value = 'EXAMEN';
     document.getElementById('catalogoComercialTipoExamen').value = '';
     document.getElementById('catalogoComercialTarifaBase').value = '0';
@@ -3586,13 +3961,15 @@ function closeCatalogoComercialModal() {
     document.getElementById('catalogoComercialModal').classList.remove('active');
 }
 
-async function editarItemCatalogoComercial(id) {
+async function editarItemCatalogoComercialLegacy(id) {
     const item = catalogoComercialData.find(entry => entry.id === id);
     if (!item) return;
 
     await renderCatalogoComercialComponentes(item.componentes_ids || []);
     document.getElementById('catalogoComercialId').value = item.id;
-    document.getElementById('catalogoComercialModalTitle').textContent = 'Editar Item Comercial';
+    document.getElementById('catalogoComercialModalTitle').textContent = item.tipo_item === 'PAQUETE'
+        ? 'Editar Paquete'
+        : (item.tipo_item === 'SERVICIO' ? 'Editar Registro Legado' : 'Editar Examen');
     document.getElementById('catalogoComercialTipo').value = item.tipo_item || 'EXAMEN';
     document.getElementById('catalogoComercialTipoExamen').value = item.tipo_examen || '';
     document.getElementById('catalogoComercialCodigo').value = item.codigo || '';
@@ -3604,7 +3981,7 @@ async function editarItemCatalogoComercial(id) {
     document.getElementById('catalogoComercialModal').classList.add('active');
 }
 
-async function mostrarAgregarTarifaCliente() {
+async function mostrarAgregarTarifaCliente(preselectedClienteId = '') {
     const form = document.getElementById('tarifaClienteForm');
     if (!form) return;
 
@@ -3613,18 +3990,29 @@ async function mostrarAgregarTarifaCliente() {
     document.getElementById('tarifaClienteModalTitle').textContent = 'Nueva Tarifa por Cliente';
     document.getElementById('tarifaClienteTarifaNegociada').value = '0';
     document.getElementById('tarifaClienteActivo').checked = true;
-    await llenarSelectClientesComerciales();
+    await llenarSelectClientesComerciales(preselectedClienteId || '');
     await llenarSelectCatalogoComercial();
     document.getElementById('tarifaClienteModal').classList.add('active');
 }
 
 function closeTarifaClienteModal() {
     document.getElementById('tarifaClienteModal').classList.remove('active');
+    if (clienteComercialTarifaContext) {
+        const retornoId = clienteComercialTarifaContext;
+        clienteComercialTarifaContext = null;
+        editarClienteComercial(Number(retornoId));
+    }
 }
 
 async function editarTarifaCliente(id) {
     const tarifa = tarifasComercialesData.find(entry => entry.id === id);
     if (!tarifa) return;
+
+    const clienteModal = document.getElementById('clienteComercialModal');
+    if (clienteModal?.classList.contains('active')) {
+        clienteComercialTarifaContext = String(tarifa.cliente_id || '');
+        closeClienteComercialModal(true);
+    }
 
     document.getElementById('tarifaClienteId').value = tarifa.id;
     document.getElementById('tarifaClienteModalTitle').textContent = 'Editar Tarifa por Cliente';
@@ -3934,19 +4322,25 @@ async function guardarClienteComercialConfig(event) {
         });
         const data = await response.json();
         if (!response.ok) return showError(data.error || 'Error al guardar cliente comercial');
-        showSuccess(id ? 'Cliente comercial actualizado' : 'Cliente comercial creado');
-        closeClienteComercialModal();
         await Promise.all([
             cargarClientesComercialesConfig(),
+            cargarTarifasComercialesConfig(),
             loadComercialDashboard()
         ]);
+        if (!id && data.id) {
+            showSuccess('Cliente comercial creado. Ya puedes asignar tarifas.');
+            await editarClienteComercial(data.id);
+            return;
+        }
+        showSuccess('Cliente comercial actualizado');
+        closeClienteComercialModal();
     } catch (error) {
         console.error('Error guardando cliente comercial:', error);
         showError('Error de conexión al guardar cliente comercial');
     }
 }
 
-async function guardarCatalogoComercialConfig(event) {
+async function guardarCatalogoComercialConfigLegacy(event) {
     event.preventDefault();
     const id = document.getElementById('catalogoComercialId').value;
     const tipoItem = document.getElementById('catalogoComercialTipo').value;
@@ -3996,6 +4390,312 @@ async function guardarCatalogoComercialConfig(event) {
     }
 }
 
+async function cargarCatalogoComercialConfig() {
+    const tbody = document.getElementById('comercialCatalogoTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/catalogo', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar el catalogo comercial');
+        }
+
+        const items = await response.json();
+        catalogoComercialData = Array.isArray(items) ? items : [];
+
+        if (catalogoComercialData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay examenes o paquetes configurados</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = catalogoComercialData.map(item => `
+            <tr>
+                <td>
+                    <strong>${escapeHtml(item.tipo_item || 'N/A')}</strong>
+                    ${item.tipo_item === 'EXAMEN' ? `<div style="color:#666; font-size:0.82rem;">${item.clasificacion_completa ? 'Listo para usar' : 'Pendiente de clasificar'}</div>` : ''}
+                </td>
+                <td>
+                    ${item.tipo_item === 'EXAMEN'
+                        ? `<span class="badge ${item.clasificacion_completa ? 'badge-info' : 'badge-warning-soft'}">${escapeHtml(obtenerResumenClasificacionCatalogo(item))}</span>`
+                        : '<span class="badge badge-secondary">No aplica</span>'}
+                </td>
+                <td>${escapeHtml(item.codigo || 'N/A')}</td>
+                <td>
+                    <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.descripcion || '')}</div>
+                    ${item.tipo_item === 'PAQUETE' ? `<div style="color:#0b5ed7; font-size:0.82rem; margin-top:4px;">Incluye ${item.cantidad_componentes || 0} examen(es): ${escapeHtml(item.resumen_componentes || 'Sin examenes definidos')}</div>` : ''}
+                </td>
+                <td>${formatCurrency(item.tarifa_base || 0)}</td>
+                <td>${item.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
+                <td><button class="action-btn action-btn-edit" onclick="editarItemCatalogoComercial(${item.id})">Editar</button></td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando catalogo comercial:', error);
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar catalogo comercial</td></tr>';
+    }
+}
+
+async function renderCatalogoComercialComponentes(selectedIds = []) {
+    const currentContainer = document.getElementById('catalogoComercialComponentesActuales');
+    const availableContainer = document.getElementById('catalogoComercialComponentesList');
+    const searchInput = document.getElementById('catalogoComercialComponentesSearch');
+    if (!currentContainer || !availableContainer) return;
+
+    try {
+        const items = await asegurarCatalogoComercial();
+        const examenes = items
+            .filter(item => item.tipo_item === 'EXAMEN' && item.clasificacion_completa === true)
+            .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+        const selectedOrder = (selectedIds || []).map(id => Number(id)).filter(id => !Number.isNaN(id));
+        const examenesById = new Map(examenes.map(item => [Number(item.id), item]));
+        const pendientes = items.filter(item => item.tipo_item === 'EXAMEN' && item.clasificacion_completa !== true);
+
+        catalogoComercialExamenesDisponibles = examenes;
+        catalogoComercialComponentesSeleccionados = selectedOrder.filter(id => examenesById.has(id));
+
+        if (searchInput) {
+            searchInput.value = '';
+        }
+
+        if (examenes.length === 0) {
+            currentContainer.innerHTML = '<div class="catalogo-componentes-empty">Todavía no hay exámenes completamente clasificados para armar paquetes.</div>';
+            availableContainer.innerHTML = '<div class="catalogo-componentes-empty">Todavía no hay exámenes disponibles para agregar.</div>';
+            return;
+        }
+
+        renderCatalogoComercialComponentesDisponibles('');
+
+        if (pendientes.length > 0) {
+            const resumen = document.getElementById('catalogoComercialComponentesResumen');
+            if (resumen && !catalogoComercialComponentesSeleccionados.length) {
+                resumen.textContent = `Hay ${pendientes.length} examen(es) pendientes de clasificar. Esos aún no aparecen para paquetes.`;
+            }
+        }
+    } catch (error) {
+        console.error('Error cargando componentes del paquete:', error);
+        currentContainer.innerHTML = '<div class="catalogo-componentes-empty">No fue posible cargar la composición actual del paquete.</div>';
+        availableContainer.innerHTML = '<div class="catalogo-componentes-empty">No fue posible cargar los exámenes del catálogo.</div>';
+    }
+}
+
+function renderCatalogoComercialComponentesActuales() {
+    const container = document.getElementById('catalogoComercialComponentesActuales');
+    const resumen = document.getElementById('catalogoComercialComponentesResumen');
+    if (!container || !resumen) return;
+
+    const examenesById = new Map(catalogoComercialExamenesDisponibles.map(item => [Number(item.id), item]));
+    const seleccionados = catalogoComercialComponentesSeleccionados
+        .map(id => examenesById.get(Number(id)))
+        .filter(Boolean);
+
+    if (seleccionados.length === 0) {
+        container.innerHTML = '<div class="catalogo-componentes-empty">Todavía no has agregado exámenes al paquete.</div>';
+        resumen.textContent = 'Sin exámenes seleccionados.';
+        return;
+    }
+
+
+    container.innerHTML = seleccionados.map(item => `
+        <div class="catalogo-componentes-current">
+            <div>
+                <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
+            </div>
+            <button type="button" class="catalogo-componentes-action" onclick="quitarComponenteCatalogo(${Number(item.id)})">Quitar</button>
+        </div>
+    `).join('');
+
+    resumen.textContent = `Este paquete tiene ${seleccionados.length} examen(es): ${seleccionados.map(item => item.nombre || 'N/A').join(', ')}.`;
+}
+
+function renderCatalogoComercialComponentesDisponibles(query = '') {
+    const container = document.getElementById('catalogoComercialComponentesList');
+    if (!container) return;
+
+    const normalizedQuery = String(query || '').trim().toLowerCase();
+    const selectedSet = new Set(catalogoComercialComponentesSeleccionados.map(id => Number(id)));
+    const disponibles = catalogoComercialExamenesDisponibles.filter(item => !selectedSet.has(Number(item.id)));
+    const filtrados = !normalizedQuery
+        ? disponibles
+        : disponibles.filter(item => [
+            item.nombre,
+            item.codigo,
+            item.clasificacion_resumen,
+            item.tipo_examen,
+            item.subtipo_laboratorio
+        ].some(value => String(value || '').toLowerCase().includes(normalizedQuery)));
+
+    if (filtrados.length === 0) {
+        container.innerHTML = normalizedQuery
+            ? '<div class="catalogo-componentes-empty">No encontramos exámenes con esa búsqueda.</div>'
+            : '<div class="catalogo-componentes-empty">Todos los exámenes disponibles ya están dentro del paquete.</div>';
+        renderCatalogoComercialComponentesActuales();
+        return;
+    }
+
+    const grupos = obtenerGruposCatalogoParaPaquete(filtrados);
+    container.innerHTML = grupos.map(grupo => `
+        <div style="margin-bottom:14px;">
+            <div style="font-weight:700; color:#0f172a; margin-bottom:8px;">${escapeHtml(grupo.title)}</div>
+            ${grupo.items.map(item => `
+                <div class="catalogo-componentes-item">
+                    <span>
+                        <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
+                        <small>${escapeHtml(obtenerResumenClasificacionCatalogo(item))}</small>
+                        <small>${escapeHtml(item.codigo || 'Sin código')}</small>
+                    </span>
+                    <button type="button" class="catalogo-componentes-add" onclick="agregarComponenteCatalogo(${Number(item.id)})">Agregar</button>
+                </div>
+            `).join('')}
+        </div>
+    `).join('');
+
+    renderCatalogoComercialComponentesActuales();
+}
+
+function filtrarCatalogoComponentesDisponibles() {
+    const query = document.getElementById('catalogoComercialComponentesSearch')?.value || '';
+    renderCatalogoComercialComponentesDisponibles(query);
+}
+
+function agregarComponenteCatalogo(id) {
+    const normalizedId = Number(id);
+    if (!catalogoComercialComponentesSeleccionados.includes(normalizedId)) {
+        catalogoComercialComponentesSeleccionados.push(normalizedId);
+    }
+    filtrarCatalogoComponentesDisponibles();
+}
+
+function quitarComponenteCatalogo(id) {
+    const normalizedId = Number(id);
+    catalogoComercialComponentesSeleccionados = catalogoComercialComponentesSeleccionados.filter(itemId => Number(itemId) !== normalizedId);
+    filtrarCatalogoComponentesDisponibles();
+}
+
+function actualizarVisibilidadComponentesCatalogo() {
+    const tipoSelect = document.getElementById('catalogoComercialTipo');
+    const tipoExamenRow = document.getElementById('catalogoComercialTipoExamenRow');
+    const subtipoRow = document.getElementById('catalogoComercialSubtipoLaboratorioRow');
+    const row = document.getElementById('catalogoComercialComponentesRow');
+    const tipoExamenSelect = document.getElementById('catalogoComercialTipoExamen');
+    const subtipoSelect = document.getElementById('catalogoComercialSubtipoLaboratorio');
+    const searchInput = document.getElementById('catalogoComercialComponentesSearch');
+    if (!tipoSelect || !row || !tipoExamenRow || !tipoExamenSelect || !subtipoRow || !subtipoSelect) return;
+
+    const esExamen = tipoSelect.value === 'EXAMEN';
+    const esPaquete = tipoSelect.value === 'PAQUETE';
+    const esLaboratorio = esExamen && tipoExamenSelect.value === 'LABORATORIO';
+
+    tipoExamenRow.style.display = esExamen ? 'grid' : 'none';
+    subtipoRow.style.display = esLaboratorio ? 'grid' : 'none';
+    row.style.display = esPaquete ? 'block' : 'none';
+
+    if (!esExamen) {
+        tipoExamenSelect.value = '';
+        subtipoSelect.value = '';
+    }
+
+    if (!esLaboratorio) {
+        subtipoSelect.value = '';
+    }
+
+    if (!esPaquete) {
+        catalogoComercialComponentesSeleccionados = [];
+        if (searchInput) {
+            searchInput.value = '';
+        }
+        renderCatalogoComercialComponentesActuales();
+        renderCatalogoComercialComponentesDisponibles('');
+    }
+}
+
+function mostrarAgregarItemCatalogoComercial() {
+    const form = document.getElementById('catalogoComercialForm');
+    if (!form) return;
+
+    form.reset();
+    renderCatalogoComercialComponentes();
+    document.getElementById('catalogoComercialId').value = '';
+    document.getElementById('catalogoComercialModalTitle').textContent = 'Nuevo Examen o Paquete';
+    document.getElementById('catalogoComercialTipo').value = 'EXAMEN';
+    document.getElementById('catalogoComercialTipoExamen').value = '';
+    document.getElementById('catalogoComercialSubtipoLaboratorio').value = '';
+    document.getElementById('catalogoComercialTarifaBase').value = '0';
+    document.getElementById('catalogoComercialActivo').checked = true;
+    actualizarVisibilidadComponentesCatalogo();
+    document.getElementById('catalogoComercialModal').classList.add('active');
+}
+
+async function editarItemCatalogoComercial(id) {
+    const item = catalogoComercialData.find(entry => entry.id === id);
+    if (!item) return;
+
+    await renderCatalogoComercialComponentes(item.componentes_ids || []);
+    document.getElementById('catalogoComercialId').value = item.id;
+    document.getElementById('catalogoComercialModalTitle').textContent = item.tipo_item === 'PAQUETE'
+        ? 'Editar Paquete'
+        : (item.tipo_item === 'SERVICIO' ? 'Editar Registro Legado' : 'Editar Examen');
+    document.getElementById('catalogoComercialTipo').value = item.tipo_item || 'EXAMEN';
+    document.getElementById('catalogoComercialTipoExamen').value = item.tipo_examen || '';
+    document.getElementById('catalogoComercialSubtipoLaboratorio').value = item.subtipo_laboratorio || '';
+    document.getElementById('catalogoComercialCodigo').value = item.codigo || '';
+    document.getElementById('catalogoComercialNombre').value = item.nombre || '';
+    document.getElementById('catalogoComercialTarifaBase').value = item.tarifa_base || 0;
+    document.getElementById('catalogoComercialDescripcion').value = item.descripcion || '';
+    document.getElementById('catalogoComercialActivo').checked = item.activo !== false;
+    actualizarVisibilidadComponentesCatalogo();
+    document.getElementById('catalogoComercialModal').classList.add('active');
+}
+
+async function guardarCatalogoComercialConfig(event) {
+    event.preventDefault();
+    const id = document.getElementById('catalogoComercialId').value;
+    const tipoItem = document.getElementById('catalogoComercialTipo').value;
+    const tipoExamen = document.getElementById('catalogoComercialTipoExamen').value;
+    const subtipoLaboratorio = document.getElementById('catalogoComercialSubtipoLaboratorio').value;
+    const tarifaBase = parseFloat(document.getElementById('catalogoComercialTarifaBase').value || '0');
+    const componentesIds = obtenerComponentesSeleccionadosCatalogo();
+
+    if (Number.isNaN(tarifaBase) || tarifaBase < 0) {
+        return showError('La tarifa base no puede ser negativa.');
+    }
+
+    if (tipoItem === 'PAQUETE' && componentesIds.length === 0) {
+        return showError('Selecciona al menos un examen para armar el paquete.');
+    }
+
+    try {
+        const response = await fetch(id ? `/api/comercial/catalogo/${id}` : '/api/comercial/catalogo', {
+            method: id ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                tipo_item: tipoItem,
+                tipo_examen: tipoItem === 'EXAMEN' ? (tipoExamen || null) : null,
+                subtipo_laboratorio: tipoItem === 'EXAMEN' ? (subtipoLaboratorio || null) : null,
+                codigo: document.getElementById('catalogoComercialCodigo').value.trim() || null,
+                nombre: document.getElementById('catalogoComercialNombre').value.trim(),
+                tarifa_base: tarifaBase,
+                descripcion: document.getElementById('catalogoComercialDescripcion').value.trim() || null,
+                activo: document.getElementById('catalogoComercialActivo').checked,
+                componentes_ids: tipoItem === 'PAQUETE' ? componentesIds : []
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) return showError(data.error || 'Error al guardar item comercial');
+        showSuccess(id ? 'Item comercial actualizado' : 'Item comercial creado');
+        closeCatalogoComercialModal();
+        await Promise.all([
+            cargarCatalogoComercialConfig(),
+            cargarTarifasComercialesConfig()
+        ]);
+    } catch (error) {
+        console.error('Error guardando item comercial:', error);
+        showError('Error de conexion al guardar item comercial');
+    }
+}
+
 async function guardarTarifaClienteConfig(event) {
     event.preventDefault();
     const id = document.getElementById('tarifaClienteId').value;
@@ -4023,8 +4723,11 @@ async function guardarTarifaClienteConfig(event) {
         const data = await response.json();
         if (!response.ok) return showError(data.error || 'Error al guardar tarifa comercial');
         showSuccess(id ? 'Tarifa comercial actualizada' : 'Tarifa comercial creada');
+        await Promise.all([
+            cargarTarifasComercialesConfig(),
+            cargarClientesComercialesConfig()
+        ]);
         closeTarifaClienteModal();
-        await cargarTarifasComercialesConfig();
     } catch (error) {
         console.error('Error guardando tarifa comercial:', error);
         showError('Error de conexión al guardar tarifa comercial');
@@ -6002,12 +6705,6 @@ switchModule = function(moduleName) {
         cargarAreasConfig();
         cargarCargosConfig();
         cargarAsignacionesLaboralesConfig();
-    } else if (moduleName === 'comercial') {
-        loadComercialDashboard();
-        cargarCatalogoComercialConfig();
-        cargarClientesComercialesConfig();
-        cargarTarifasComercialesConfig();
-        cargarVendedoresConfig();
     }
 };
 

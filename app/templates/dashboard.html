@@ -24,6 +24,9 @@
             <li><a href="#" class="menu-item" data-module="comercial">
                 <span class="icon">CM</span> Comercial
             </a></li>
+            <li><a href="#" class="menu-item" data-module="recepcion">
+                <span class="icon">RP</span> Consulta Clientes
+            </a></li>
             <li><a href="#" class="menu-item" data-module="impuestos">
                 <span class="icon">📋</span> Impuestos
             </a></li>
@@ -53,9 +56,6 @@
         <header class="top-bar">
             <div>
             <h1 id="moduleTitle">Gestión de Servicios</h1>
-            <div style="font-size:0.72rem; color:#6b7280; margin-top:4px;">
-                Build {{ build_info.commit }} | UI {{ build_info.ui_dashboard_js }} | API {{ build_info.api_dashboard_py }}
-            </div>
             </div>
             <div class="user-menu">
                 <span id="userName">Usuario</span>
@@ -1614,53 +1614,31 @@
             
             <div id="comercialView" class="module-view">
                 <div class="module-header" id="comercialHomeHeader">
-                    <div class="button-group module-actions">
-                        <button class="btn btn-primary" onclick="mostrarAgregarClienteComercial()" aria-label="Nuevo Cliente">
-                            <span class="btn-icon">+</span><span class="btn-label">Nuevo Cliente</span>
+                    <div class="button-group module-actions comercial-main-nav" role="tablist" aria-label="Menú Comercial">
+                        <button id="comercialNavVendedores" type="button" class="btn btn-secondary" data-comercial-section="vendedores" onclick="switchComercialSection('vendedores')">
+                            <span class="btn-label">Vendedores</span>
                         </button>
-                        <button class="btn btn-primary" onclick="mostrarAgregarItemCatalogoComercial()" aria-label="Nuevo Examen o Paquete">
-                            <span class="btn-icon">+</span><span class="btn-label">Nuevo Examen/Paquete</span>
+                        <button id="comercialNavExamenes" type="button" class="btn btn-secondary" data-comercial-section="examenes" onclick="switchComercialSection('examenes')">
+                            <span class="btn-label">Exámenes</span>
                         </button>
-                        <button class="btn btn-primary" onclick="mostrarAgregarTarifaCliente()" aria-label="Nueva Tarifa Cliente">
-                            <span class="btn-icon">$</span><span class="btn-label">Tarifa Cliente</span>
+                        <button id="comercialNavClientes" type="button" class="btn btn-secondary" data-comercial-section="clientes" onclick="switchComercialSection('clientes')">
+                            <span class="btn-label">Clientes</span>
                         </button>
-                        <button class="btn btn-primary" onclick="mostrarAgregarVendedor()" aria-label="Nuevo Vendedor">
-                            <span class="btn-icon">+</span><span class="btn-label">Nuevo Vendedor</span>
+                        <button id="comercialNavMes" type="button" class="btn btn-secondary" data-comercial-section="mes" onclick="switchComercialSection('mes')">
+                            <span class="btn-label">Mes</span>
                         </button>
-                        <button class="btn btn-primary" onclick="consultarComercial()" aria-label="Consultar Comercial">
-                            <span class="btn-icon">?</span><span class="btn-label">Consultar</span>
+                        <button id="comercialNavHistorial" type="button" class="btn btn-secondary" onclick="notImplemented('Comercial: Historial')">
+                            <span class="btn-label">Ver Historial</span>
                         </button>
-                        <button class="btn btn-primary" onclick="toggleComercialMesPanel()" aria-label="Mes">
-                            <span class="btn-icon">📅</span><span class="btn-label">Mes</span>
-                        </button>
-                        <button class="btn btn-primary" onclick="notImplemented('Comercial: Historial')" aria-label="Ver Historial">
-                            <span class="btn-icon">📜</span><span class="btn-label">Ver Historial</span>
+                        <button id="comercialNavInicio" type="button" class="btn btn-secondary active" data-comercial-section="inicio" onclick="switchComercialSection('inicio')">
+                            <span class="btn-label">Inicio</span>
                         </button>
                     </div>
                 </div>
 
-                <div id="comercialMesActualPanel" class="recent-section" style="margin-bottom: 16px;">
+                <div id="comercialMesActualPanel" class="recent-section" style="margin-bottom: 16px; display: none;">
                     <h2 style="margin-bottom: 4px;">Mes en proceso</h2>
                     <p id="comercialMesActual" style="margin:0; color:#555; font-size:0.95rem;">No hay mes en proceso registrado.</p>
-                </div>
-
-                <div id="comercialDashboardResumen" class="stats-grid" style="margin-bottom: 16px;">
-                    <div class="stat-card">
-                        <h3>Vendedores activos</h3>
-                        <p class="stat-number" id="comercialVendedoresActivos">-</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Clientes activos</h3>
-                        <p class="stat-number" id="comercialClientesActivos">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Cartera pendiente</h3>
-                        <p class="stat-number" id="comercialCarteraPendiente">$0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Rentabilidad mes</h3>
-                        <p class="stat-number" id="comercialRentabilidadMes">$0</p>
-                    </div>
                 </div>
 
                 <div id="comercialPeriodoSeleccionModal" class="modal">
@@ -1720,130 +1698,166 @@
                     </div>
                 </div>
 
-                <div id="comercialResumenOperativo" class="recent-section" style="margin-bottom: 16px;">
-                    <h2>Base Comercial</h2>
-                    <p style="margin-top:0; color:#555;">Este módulo nace con la misma lógica visual de los demás y absorbe el catálogo de vendedores. El siguiente crecimiento natural será clientes, documentos, tarifas, atenciones, facturas, recaudos, alertas y liquidación de comisiones.</p>
-                </div>
-
-                <div id="comercialCatalogoPanel" class="table-container" style="margin-bottom: 16px;">
-                    <div class="module-header" style="margin-bottom:12px;">
-                        <h3>Catálogo General de Exámenes y Paquetes</h3>
-                        <div class="button-group module-actions">
-                            <button class="btn btn-secondary" onclick="mostrarAgregarItemCatalogoComercial()" aria-label="Nuevo Item Comercial">
-                                <span class="btn-icon">+</span><span class="btn-label">Nuevo Item</span>
-                            </button>
-                        </div>
-                    </div>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Tipo</th>
-                                <th>Código</th>
-                                <th>Nombre</th>
-                                <th>Tarifa Base</th>
-                                <th>Estado</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody id="comercialCatalogoTable">
-                            <tr>
-                                <td colspan="6" class="loading">Cargando catálogo comercial...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <div id="comercialClientesPanel" class="table-container" style="margin-bottom: 16px;">
-                    <div class="module-header" style="margin-bottom:12px;">
-                        <h3>Clientes Comerciales</h3>
-                        <div class="button-group module-actions">
-                            <button class="btn btn-secondary" onclick="mostrarAgregarClienteComercial()" aria-label="Nuevo Cliente Comercial">
-                                <span class="btn-icon">+</span><span class="btn-label">Nuevo Cliente</span>
-                            </button>
-                        </div>
-                    </div>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Cliente</th>
-                                <th>Vendedor</th>
-                                <th>Condición</th>
-                                <th>Facturación</th>
-                                <th>Contacto</th>
-                                <th>Documentos</th>
-                                <th>Estado</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody id="comercialClientesTable">
-                            <tr>
-                                <td colspan="8" class="loading">Cargando clientes comerciales...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <div id="comercialTarifasPanel" class="table-container" style="margin-bottom: 16px;">
-                    <div class="module-header" style="margin-bottom:12px;">
-                        <h3>Tarifas Diferenciales por Cliente</h3>
-                        <div class="button-group module-actions">
-                            <button class="btn btn-secondary" onclick="mostrarAgregarTarifaCliente()" aria-label="Nueva Tarifa Comercial">
-                                <span class="btn-icon">$</span><span class="btn-label">Nueva Tarifa</span>
-                            </button>
-                        </div>
-                    </div>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Cliente</th>
-                                <th>Item</th>
-                                <th>Tarifa Base</th>
-                                <th>Tarifa Cliente</th>
-                                <th>Vigencia</th>
-                                <th>Estado</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody id="comercialTarifasTable">
-                            <tr>
-                                <td colspan="7" class="loading">Cargando tarifas comerciales...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <div id="comercialVendedoresPanel" class="table-container">
-                    <div class="module-header" style="margin-bottom:12px;">
-                        <h3>Vendedores</h3>
+                <div id="comercialVendedoresSection" class="comercial-section-panels">
+                    <div class="recent-section comercial-section-entry" style="margin-bottom: 16px;">
+                        <h3 style="margin-top:0;">Vendedores</h3>
+                        <p style="margin-top:0; color:#555;">Crea vendedores nuevos o consulta uno existente para editar su información.</p>
                         <div class="button-group module-actions">
                             <button class="btn btn-secondary" onclick="mostrarAgregarVendedor()" aria-label="Nuevo Vendedor">
-                                <span class="btn-icon">+</span><span class="btn-label">Nuevo Vendedor</span>
+                                <span class="btn-icon">+</span><span class="btn-label">Nuevo</span>
+                            </button>
+                            <button class="btn btn-secondary" onclick="consultarComercial('vendedores')" aria-label="Consultar Vendedores">
+                                <span class="btn-icon">?</span><span class="btn-label">Consultar</span>
                             </button>
                         </div>
                     </div>
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Nombre</th>
-                                <th>Documento</th>
-                                <th>% Venta</th>
-                                <th>% Recaudo</th>
-                                <th>Monto Base</th>
-                                <th>Estado</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody id="comercialVendedoresTable">
-                            <tr>
-                                <td colspan="7" class="loading">Cargando vendedores...</td>
-                            </tr>
-                        </tbody>
-                    </table>
+
+                    <div id="comercialVendedoresPanel" class="table-container comercial-consulta-panel" style="display:none;">
+                        <div class="module-header" style="margin-bottom:12px;">
+                            <h3>Consultar Vendedores</h3>
+                        </div>
+                        <div class="consulta-toolbar">
+                            <div class="consulta-toolbar-grid" style="grid-template-columns: 1fr;">
+                                <div class="form-group">
+                                    <label for="comercialVendedoresSearch">Buscar vendedor</label>
+                                    <input id="comercialVendedoresSearch" type="text" placeholder="Escribe nombre, documento, correo o teléfono..." oninput="filtrarConsultaComercial('vendedores')" />
+                                </div>
+                            </div>
+                            <div class="consulta-resumen" id="comercialVendedoresResumen">Escribe para buscar un vendedor y abrir su ficha.</div>
+                        </div>
+                        <div id="comercialVendedoresResults" class="comercial-search-results">
+                            <div class="loading">Escribe para buscar un vendedor.</div>
+                        </div>
+                        <table class="data-table" style="display:none;">
+                            <tbody id="comercialVendedoresTable"></tbody>
+                        </table>
+                    </div>
                 </div>
 
-                <div class="recent-section" style="margin-top: 16px;">
-                    <h2>Siguiente Etapa</h2>
-                    <p style="margin:0; color:#555;">Clientes, documentos, condiciones comerciales, cartera, alertas, punto de equilibrio y rentabilidad mensual/acumulada se montarán sobre esta base sin romper la uniformidad del aplicativo.</p>
+                <div id="comercialCatalogoSection" class="comercial-section-panels">
+                    <div class="recent-section comercial-section-entry" style="margin-bottom: 16px;">
+                        <h3 style="margin-top:0;">Exámenes</h3>
+                        <p style="margin-top:0; color:#555;">Registra exámenes o paquetes nuevos y consulta el catálogo para editarlo.</p>
+                        <div class="button-group module-actions">
+                            <button class="btn btn-secondary" onclick="mostrarAgregarItemCatalogoComercial()" aria-label="Nuevo Examen o Paquete">
+                                <span class="btn-icon">+</span><span class="btn-label">Nuevo</span>
+                            </button>
+                            <button class="btn btn-secondary" onclick="consultarComercial('examenes')" aria-label="Consultar Exámenes">
+                                <span class="btn-icon">?</span><span class="btn-label">Consultar</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="comercialCatalogoPanel" class="table-container comercial-consulta-panel" style="margin-bottom: 16px; display:none;">
+                        <div class="module-header" style="margin-bottom:12px;">
+                            <h3>Consultar Exámenes y Paquetes</h3>
+                        </div>
+                        <div class="catalogo-inline-help">
+                            Escribe para encontrar un examen o paquete y abrir directamente su formulario de edición.
+                        </div>
+                        <div class="consulta-toolbar">
+                            <div class="consulta-toolbar-grid" style="grid-template-columns: 1fr;">
+                                <div class="form-group">
+                                    <label for="comercialCatalogoSearch">Buscar examen o paquete</label>
+                                    <input id="comercialCatalogoSearch" type="text" placeholder="Escribe nombre, código o clasificación..." oninput="filtrarConsultaComercial('examenes')" />
+                                </div>
+                            </div>
+                            <div class="consulta-resumen" id="comercialCatalogoResumen">Escribe para buscar un examen o paquete.</div>
+                        </div>
+                        <div id="comercialCatalogoResults" class="comercial-search-results">
+                            <div class="loading">Escribe para buscar un examen o paquete.</div>
+                        </div>
+                        <table class="data-table" style="display:none;">
+                            <tbody id="comercialCatalogoTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="comercialClientesSection" class="comercial-section-panels">
+                    <div class="recent-section comercial-section-entry" style="margin-bottom: 16px;">
+                        <h3 style="margin-top:0;">Clientes</h3>
+                        <p style="margin-top:0; color:#555;">Crea clientes nuevos o consulta uno existente para completar su configuración comercial.</p>
+                        <div class="button-group module-actions">
+                            <button class="btn btn-secondary" onclick="mostrarAgregarClienteComercial()" aria-label="Nuevo Cliente Comercial">
+                                <span class="btn-icon">+</span><span class="btn-label">Nuevo</span>
+                            </button>
+                            <button class="btn btn-secondary" onclick="consultarComercial('clientes')" aria-label="Consultar Clientes">
+                                <span class="btn-icon">?</span><span class="btn-label">Consultar</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="comercialClientesPanel" class="table-container comercial-consulta-panel" style="margin-bottom: 16px; display:none;">
+                        <div class="module-header" style="margin-bottom:12px;">
+                            <h3>Consultar Clientes</h3>
+                        </div>
+                        <div class="consulta-toolbar">
+                            <div class="consulta-toolbar-grid" style="grid-template-columns: 1fr;">
+                                <div class="form-group">
+                                    <label for="comercialClientesSearch">Buscar cliente</label>
+                                    <input id="comercialClientesSearch" type="text" placeholder="Escribe razón social, NIT, vendedor o contacto..." oninput="filtrarConsultaComercial('clientes')" />
+                                </div>
+                            </div>
+                            <div class="consulta-resumen" id="comercialClientesResumen">Escribe para buscar un cliente y abrir su ficha.</div>
+                        </div>
+                        <div id="comercialClientesResults" class="comercial-search-results">
+                            <div class="loading">Escribe para buscar un cliente.</div>
+                        </div>
+                        <table class="data-table" style="display:none;">
+                            <tbody id="comercialClientesTable"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="comercialTarifasPanel" style="display:none;">
+                        <table class="data-table" style="display:none;">
+                            <tbody id="comercialTarifasTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="recepcionView" class="module-view">
+                <div class="recent-section" id="recepcionClienteDetalle" style="display:none; margin-bottom: 16px; padding-top: 14px;">
+                    <div class="module-header" style="margin-bottom:8px;">
+                        <h3 id="recepcionClienteDetalleTitulo" style="margin:0;">Cliente</h3>
+                        <div class="button-group">
+                            <button type="button" class="btn btn-secondary" onclick="volverConsultaRecepcion()">Volver a consulta</button>
+                        </div>
+                    </div>
+                    <div class="recepcion-cliente-grid">
+                        <div class="recepcion-cliente-card">
+                            <h4>Puntos de Atención - Recepción</h4>
+                            <div id="recepcionClientePuntosAtencion" class="recepcion-cliente-note">Sin instrucciones registradas.</div>
+                        </div>
+                        <div class="recepcion-cliente-card">
+                            <h4>Contacto Principal</h4>
+                            <div id="recepcionClienteContactoPrincipal" class="recepcion-cliente-contact">Sin contacto registrado.</div>
+                            <div id="recepcionClienteCelularPrincipal" class="recepcion-cliente-contact-sub">Sin celular registrado.</div>
+                        </div>
+                    </div>
+                    <div class="recepcion-cliente-card" style="margin-top:12px;">
+                        <h4>Exámenes y Paquetes del Cliente</h4>
+                        <div id="recepcionClienteItems" class="recepcion-cliente-items">
+                            <div class="loading">Selecciona un cliente para ver su detalle.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="recent-section" id="recepcionConsultaPanel" style="margin-bottom: 16px;">
+                    <h2 style="margin-top:0;">Consulta Clientes</h2>
+                    <p style="margin-top:0; color:#555;">Consulta rápida para recepción. Busca un cliente y revisa instrucciones, contacto y los exámenes o paquetes con sus precios.</p>
+                    <div class="consulta-toolbar">
+                        <div class="consulta-toolbar-grid" style="grid-template-columns: 1fr;">
+                            <div class="form-group">
+                                <label for="recepcionClientesSearch">Buscar cliente</label>
+                                <input id="recepcionClientesSearch" type="text" placeholder="Escribe razón social, NIT, contacto o nombre comercial..." oninput="renderRecepcionClientesResults()" />
+                            </div>
+                        </div>
+                        <div class="consulta-resumen" id="recepcionClientesResumen">Escribe para buscar un cliente y abrir su guía de recepción.</div>
+                    </div>
+                    <div id="recepcionClientesResults" class="comercial-search-results">
+                        <div class="loading">Escribe para buscar un cliente.</div>
+                    </div>
                 </div>
             </div>
 
@@ -2502,17 +2516,20 @@
 </div>
 
 <div id="clienteComercialModal" class="modal">
-    <div class="modal-content" style="max-width: 980px; width: 96%;">
+    <div class="modal-content modal-content-workspace">
         <div class="modal-header">
-            <h2 id="clienteComercialModalTitle">Nuevo Cliente Comercial</h2>
+            <div class="cliente-comercial-header-main">
+                <h2 id="clienteComercialModalTitle">Nuevo Cliente Comercial</h2>
+                <button type="button" class="btn btn-secondary" id="clienteComercialSeguimientoBtn" onclick="abrirSeguimientoClienteDesdeFicha()" disabled>Seguimiento a Clientes</button>
+            </div>
             <span class="close" onclick="closeClienteComercialModal()">&times;</span>
         </div>
-        <form id="clienteComercialForm" enctype="multipart/form-data">
+        <form id="clienteComercialForm" class="cliente-comercial-form" enctype="multipart/form-data">
             <input type="hidden" id="clienteComercialId">
 
-            <div class="recent-section" style="margin-bottom: 16px;">
+            <div class="recent-section cliente-form-section">
                 <h3 style="margin-top:0;">Relación Comercial</h3>
-                <div class="form-row">
+                <div class="form-row cliente-form-row cliente-form-row-relacion">
                     <div class="form-group">
                         <label for="clienteComercialVendedorId">Vendedor responsable *</label>
                         <select id="clienteComercialVendedorId" required></select>
@@ -2534,9 +2551,9 @@
                 </div>
             </div>
 
-            <div class="recent-section" style="margin-bottom: 16px;">
+            <div class="recent-section cliente-form-section">
                 <h3 style="margin-top:0;">Datos de la Empresa</h3>
-                <div class="form-row">
+                <div class="form-row cliente-form-row cliente-form-row-empresa-top">
                     <div class="form-group">
                         <label for="clienteComercialRazonSocial">Razón social *</label>
                         <input type="text" id="clienteComercialRazonSocial" maxlength="200" required>
@@ -2545,8 +2562,6 @@
                         <label for="clienteComercialNombreComercial">Nombre comercial</label>
                         <input type="text" id="clienteComercialNombreComercial" maxlength="200">
                     </div>
-                </div>
-                <div class="form-row">
                     <div class="form-group">
                         <label for="clienteComercialNit">NIT</label>
                         <input type="text" id="clienteComercialNit" maxlength="50">
@@ -2555,40 +2570,40 @@
                         <label for="clienteComercialCiudad">Ciudad</label>
                         <input type="text" id="clienteComercialCiudad" maxlength="120">
                     </div>
-                    <div class="form-group">
-                        <label for="clienteComercialDireccion">Dirección</label>
-                        <input type="text" id="clienteComercialDireccion" maxlength="255">
-                    </div>
                 </div>
-                <div class="form-row">
+                <div class="form-row cliente-form-row cliente-form-row-empresa-bottom">
                     <div class="form-group">
-                        <label for="clienteComercialTelefonoEmpresa">Teléfono empresa</label>
-                        <input type="text" id="clienteComercialTelefonoEmpresa" maxlength="50">
+                        <label for="clienteComercialDireccion">Dirección *</label>
+                        <input type="text" id="clienteComercialDireccion" maxlength="255" required>
                     </div>
                     <div class="form-group">
-                        <label for="clienteComercialEmailEmpresa">Email empresa</label>
-                        <input type="email" id="clienteComercialEmailEmpresa" maxlength="120">
+                        <label for="clienteComercialTelefonoEmpresa">Teléfono empresa *</label>
+                        <input type="text" id="clienteComercialTelefonoEmpresa" maxlength="50" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialEmailEmpresa">Email empresa *</label>
+                        <input type="email" id="clienteComercialEmailEmpresa" maxlength="120" required>
                     </div>
                 </div>
             </div>
 
-            <div class="recent-section" style="margin-bottom: 16px;">
+            <div class="recent-section cliente-form-section">
                 <h3 style="margin-top:0;">Contactos</h3>
-                <div class="form-row">
+                <div class="form-row cliente-form-row cliente-form-row-triple">
                     <div class="form-group">
-                        <label for="clienteComercialContactoPrincipal">Contacto principal</label>
-                        <input type="text" id="clienteComercialContactoPrincipal" maxlength="150">
+                        <label for="clienteComercialContactoPrincipal">Contacto principal *</label>
+                        <input type="text" id="clienteComercialContactoPrincipal" maxlength="150" required>
                     </div>
                     <div class="form-group">
-                        <label for="clienteComercialCelularPrincipal">Celular principal</label>
-                        <input type="text" id="clienteComercialCelularPrincipal" maxlength="50">
+                        <label for="clienteComercialCelularPrincipal">Celular principal *</label>
+                        <input type="text" id="clienteComercialCelularPrincipal" maxlength="50" required>
                     </div>
                     <div class="form-group">
                         <label for="clienteComercialEmailPrincipal">Email principal</label>
                         <input type="email" id="clienteComercialEmailPrincipal" maxlength="120">
                     </div>
                 </div>
-                <div class="form-row">
+                <div class="form-row cliente-form-row cliente-form-row-triple">
                     <div class="form-group">
                         <label for="clienteComercialContactoFacturacion">Contacto facturación</label>
                         <input type="text" id="clienteComercialContactoFacturacion" maxlength="150">
@@ -2604,9 +2619,9 @@
                 </div>
             </div>
 
-            <div class="recent-section" style="margin-bottom: 16px;">
+            <div class="recent-section cliente-form-section">
                 <h3 style="margin-top:0;">Facturación y Condiciones</h3>
-                <div class="form-row">
+                <div class="form-row cliente-form-row cliente-form-row-facturacion">
                     <div class="form-group checkbox-group">
                         <label>
                             <input type="checkbox" id="clienteComercialRequiereFactura">
@@ -2614,34 +2629,65 @@
                         </label>
                     </div>
                     <div class="form-group">
-                        <label for="clienteComercialFechasFacturacion">Fechas de facturación</label>
+                        <label for="clienteComercialFechasFacturacion">Días o fechas pactadas de facturación</label>
                         <input type="text" id="clienteComercialFechasFacturacion" maxlength="120" placeholder="Ej. 5 y 20 de cada mes">
                     </div>
                     <div class="form-group">
-                        <label for="clienteComercialFechaSolicitudFactura">Fecha solicitud de factura</label>
-                        <input type="date" id="clienteComercialFechaSolicitudFactura">
+                        <label for="clienteComercialFechaSolicitudFactura">Fecha primera factura</label>
+                        <input type="date" id="clienteComercialFechaSolicitudFactura" disabled>
                     </div>
                 </div>
-                <p id="clienteComercialFacturaHint" style="margin-top:0; color:#666; font-size:0.92rem;">Si el cliente no requiere factura, queda registrado como cliente en efectivo. Cuando solicite facturación, la fecha de solicitud marcará el cambio.</p>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="clienteComercialExamenes">Exámenes convenidos</label>
-                        <textarea id="clienteComercialExamenes" rows="3"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label for="clienteComercialServicios">Servicios convenidos</label>
-                        <textarea id="clienteComercialServicios" rows="3"></textarea>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="clienteComercialTarifas">Tarifas convenidas</label>
-                    <textarea id="clienteComercialTarifas" rows="3" placeholder="Detalle de tarifas, rangos o acuerdos comerciales"></textarea>
+                <p id="clienteComercialFacturaHint" style="margin-top:0; color:#666; font-size:0.92rem;">Si el cliente requiere factura, registra aquí los días pactados. La fecha de la primera factura quedará bloqueada por ahora y más adelante se llenará automáticamente desde el módulo de facturación.</p>
+            </div>
+
+            <div class="recent-section cliente-form-section">
+                <h3 style="margin-top:0;">Puntos de Atención - Recepción</h3>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label for="clienteComercialPuntosAtencionRecepcion">Instrucciones clave para recepción</label>
+                    <textarea id="clienteComercialPuntosAtencionRecepcion" rows="4" placeholder="Ej. Si paga o no, si se lleva el concepto, validaciones para mujeres, mayores de 50 años, restricciones o pasos especiales de ingreso."></textarea>
                 </div>
             </div>
 
-            <div class="recent-section" style="margin-bottom: 16px;">
+            <div class="recent-section cliente-form-section">
+                <h3 style="margin-top:0;">Valores y Exámenes Negociados</h3>
+                <p id="clienteComercialTarifaHint" style="margin-top:0; color:#666; font-size:0.92rem;">
+                    Aquí consultas los valores especiales ya negociados para este cliente.
+                </p>
+                <div id="clienteComercialTarifasResumen" class="recent-section" style="padding:12px; min-height: 52px;">Sin tarifas configuradas.</div>
+                <div class="cliente-convenio-toolbar" style="margin-top:10px;">
+                    <button type="button" class="btn btn-secondary" id="clienteComercialToggleAsignacionBtn" onclick="toggleAsignacionConveniosClienteComercial()">
+                        <span class="btn-label">Ayuda de Exámenes y Paquetes</span>
+                    </button>
+                </div>
+                <div id="clienteComercialConveniosHelp" class="cliente-convenio-help-panel" style="display:none;">
+                    <p class="cliente-form-minihelp" style="margin-top:10px;">Busca aquí los exámenes o paquetes que quieres agregar al acuerdo del cliente.</p>
+                    <div class="cliente-convenio-builder">
+                        <div class="cliente-convenio-column">
+                            <h4>Buscar exámenes</h4>
+                            <div id="clienteComercialExamenesAsignacion" class="cliente-convenio-assign-panel">
+                                <input type="text" id="clienteComercialExamenesSearch" placeholder="Buscar y agregar examen">
+                                <div id="clienteComercialExamenesList" class="cliente-convenio-search-list">Escribe para buscar exámenes creados.</div>
+                            </div>
+                        </div>
+                        <div class="cliente-convenio-column">
+                            <h4>Buscar paquetes</h4>
+                            <div id="clienteComercialServiciosAsignacion" class="cliente-convenio-assign-panel">
+                                <input type="text" id="clienteComercialServiciosSearch" placeholder="Buscar y agregar paquete">
+                                <div id="clienteComercialServiciosList" class="cliente-convenio-search-list">Escribe para buscar paquetes creados.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div style="display:none;">
+                    <textarea id="clienteComercialExamenes" rows="3"></textarea>
+                    <textarea id="clienteComercialServicios" rows="3"></textarea>
+                    <textarea id="clienteComercialTarifas" rows="3"></textarea>
+                </div>
+            </div>
+
+            <div class="recent-section cliente-form-section">
                 <h3 style="margin-top:0;">Documentos y Soportes</h3>
-                <div class="form-row">
+                <div class="form-row cliente-form-row">
                     <div class="form-group checkbox-group">
                         <label>
                             <input type="checkbox" id="clienteComercialDocumentosCompletos">
@@ -2651,11 +2697,11 @@
                     <div class="form-group checkbox-group">
                         <label>
                             <input type="checkbox" id="clienteComercialPagareFirmado">
-                            Pagaré firmado
+                            Pagaré diligenciado y firmado
                         </label>
                     </div>
                 </div>
-                <div class="form-row">
+                <div class="form-row cliente-form-row">
                     <div class="form-group">
                         <label for="clienteComercialDocumentosDetalle">Detalle documentos legales</label>
                         <textarea id="clienteComercialDocumentosDetalle" rows="3" placeholder="RUT, cámara de comercio, cédula representante, contrato, etc."></textarea>
@@ -2665,14 +2711,15 @@
                         <textarea id="clienteComercialPagareDetalle" rows="3" placeholder="Condición del pagaré, fecha firma, observaciones de crédito"></textarea>
                     </div>
                 </div>
-                <div class="form-row">
+                <div class="form-row cliente-form-row">
                     <div class="form-group">
                         <label for="clienteComercialDocumentosAdjuntos">Adjuntar documentos legales</label>
                         <input type="file" id="clienteComercialDocumentosAdjuntos" multiple>
                     </div>
                     <div class="form-group">
-                        <label for="clienteComercialPagareAdjuntos">Adjuntar pagaré</label>
+                        <label for="clienteComercialPagareAdjuntos">Adjuntar pagaré firmado</label>
                         <input type="file" id="clienteComercialPagareAdjuntos" multiple>
+                        <small id="clienteComercialPagareHint" class="form-help">Obligatorio para clientes con condición crédito o mixta.</small>
                     </div>
                 </div>
                 <div class="form-row">
@@ -2700,59 +2747,438 @@
     </div>
 </div>
 
-<div id="catalogoComercialModal" class="modal">
-    <div class="modal-content" style="max-width: 720px;">
+<div id="clienteSeguimientoModal" class="modal">
+    <div class="modal-content modal-content-workspace modal-content-seguimiento">
         <div class="modal-header">
-            <h2 id="catalogoComercialModalTitle">Nuevo Item Comercial</h2>
-            <span class="close" onclick="closeCatalogoComercialModal()">&times;</span>
+            <div>
+                <h2 style="margin:0;">Seguimiento a Clientes</h2>
+                <div id="clienteSeguimientoResumenCliente" class="seguimiento-modal-subtitle">Cliente</div>
+            </div>
+            <div class="button-group seguimiento-top-nav">
+                <button type="button" id="clienteSeguimientoMenuAtenciones" class="btn btn-secondary" onclick="abrirAccionClienteSeguimiento('atenciones')">Nueva Atención</button>
+                <button type="button" id="clienteSeguimientoMenuDocumentos" class="btn btn-secondary" onclick="abrirAccionClienteSeguimiento('documentos')">Nuevo Documento</button>
+                <button type="button" id="clienteSeguimientoMenuPagos" class="btn btn-secondary" onclick="abrirAccionClienteSeguimiento('pagos')">Registrar Pago</button>
+                <button type="button" id="clienteSeguimientoMenuVolver" class="btn btn-secondary" onclick="volverClienteDesdeSeguimiento()">Volver al cliente</button>
+            </div>
+            <span class="close" onclick="closeClienteSeguimientoModal()">&times;</span>
         </div>
-        <form id="catalogoComercialForm">
-            <input type="hidden" id="catalogoComercialId">
+        <div class="seguimiento-resumen-grid">
+            <div class="seguimiento-resumen-card">
+                <div class="seguimiento-resumen-label">Vendedor responsable</div>
+                <div id="clienteSeguimientoResumenVendedor" class="seguimiento-resumen-value">-</div>
+            </div>
+            <div class="seguimiento-resumen-card">
+                <div class="seguimiento-resumen-label">Condición comercial</div>
+                <div id="clienteSeguimientoResumenCondicion" class="seguimiento-resumen-value">-</div>
+            </div>
+            <div class="seguimiento-resumen-card">
+                <div class="seguimiento-resumen-label">Documentos registrados</div>
+                <div id="clienteSeguimientoResumenCantidad" class="seguimiento-resumen-value">0</div>
+            </div>
+            <div class="seguimiento-resumen-card">
+                <div class="seguimiento-resumen-label">Saldo pendiente</div>
+                <div id="clienteSeguimientoResumenSaldo" class="seguimiento-resumen-value">$0</div>
+            </div>
+        </div>
+        <div id="clienteSeguimientoEmptyState" class="seguimiento-empty-state">
+            Selecciona una opción del menú para continuar.
+        </div>
+        <div id="clienteSeguimientoAtencionesPanel" class="seguimiento-panel" style="display:none;">
+            <div class="module-header seguimiento-section-header" style="margin: 16px 0 10px;">
+                <div>
+                    <h3 style="margin:0;">Atenciones</h3>
+                </div>
+                <div class="button-group seguimiento-section-actions">
+                    <button type="button" class="btn btn-primary" onclick="mostrarAgregarAtencionCliente()">Agregar atención</button>
+                </div>
+            </div>
+            <div class="seguimiento-documentos-box">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nro atención</th>
+                            <th>Fecha</th>
+                            <th>Paciente</th>
+                            <th>Detalle</th>
+                            <th>Valor</th>
+                            <th>Saldo</th>
+                            <th>Estado</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clienteSeguimientoAtencionesTable">
+                        <tr><td colspan="8" class="loading">Selecciona un cliente para ver sus atenciones.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div id="clienteSeguimientoDocumentosPanel" class="seguimiento-panel" style="display:none;">
+            <div class="module-header seguimiento-section-header" style="margin: 16px 0 10px;">
+                <div>
+                    <h3 style="margin:0;">Documentos Comerciales</h3>
+                </div>
+                <div class="button-group seguimiento-section-actions">
+                    <button type="button" class="btn btn-primary" onclick="mostrarAgregarSeguimientoDocumento()">Agregar documento</button>
+                </div>
+            </div>
+            <div class="seguimiento-documentos-box">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Tipo</th>
+                            <th>Número</th>
+                            <th>Fecha</th>
+                            <th>Vence</th>
+                            <th>Valor</th>
+                            <th>Saldo</th>
+                            <th>Cartera</th>
+                            <th>Estado</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clienteSeguimientoDocumentosTable">
+                        <tr><td colspan="9" class="loading">Selecciona un cliente para ver su seguimiento.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div id="clienteSeguimientoPagosPanel" class="seguimiento-panel" style="display:none;">
+            <div class="module-header seguimiento-section-header" style="margin: 16px 0 10px;">
+                <div>
+                    <h3 style="margin:0;">Pagos y Abonos</h3>
+                </div>
+                <div class="button-group seguimiento-section-actions">
+                    <button type="button" class="btn btn-primary" onclick="mostrarAgregarSeguimientoPago()">Agregar pago</button>
+                </div>
+            </div>
+            <div class="seguimiento-documentos-box">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Documento</th>
+                            <th>Recibo / Fechas</th>
+                            <th>Paciente / Atención</th>
+                            <th>Valor</th>
+                            <th>Tipo</th>
+                            <th>Medio</th>
+                            <th>Canal</th>
+                            <th>Comprobante</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clienteSeguimientoPagosTable">
+                        <tr><td colspan="9" class="loading">Selecciona un cliente para ver sus pagos.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="seguimientoAtencionModal" class="modal">
+    <div class="modal-content" style="max-width: 860px;">
+        <div class="modal-header">
+            <h2 id="seguimientoAtencionModalTitle">Nueva Atención</h2>
+            <span class="close" onclick="closeSeguimientoAtencionModal()">&times;</span>
+        </div>
+        <form id="seguimientoAtencionForm">
             <div class="form-row">
                 <div class="form-group">
-                    <label for="catalogoComercialTipo">Tipo *</label>
-                    <select id="catalogoComercialTipo" required>
-                        <option value="EXAMEN">EXAMEN</option>
-                        <option value="PAQUETE">PAQUETE</option>
-                        <option value="SERVICIO">SERVICIO</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="catalogoComercialCodigo">Código</label>
-                    <input type="text" id="catalogoComercialCodigo" maxlength="50">
+                    <label for="seguimientoAtencionFecha">Fecha atención *</label>
+                    <input type="date" id="seguimientoAtencionFecha" required>
                 </div>
             </div>
             <div class="form-row">
                 <div class="form-group">
+                    <label for="seguimientoAtencionPacienteDocumento">Documento paciente *</label>
+                    <input type="text" id="seguimientoAtencionPacienteDocumento" maxlength="50">
+                </div>
+                <div class="form-group">
+                    <label for="seguimientoAtencionPacienteNombre">Nombre paciente *</label>
+                    <input type="text" id="seguimientoAtencionPacienteNombre" maxlength="200">
+                </div>
+                <div class="form-group" style="flex: 2;">
+                    <label for="seguimientoAtencionItemSelect">Examen y/o paquete convenido *</label>
+                    <select id="seguimientoAtencionItemSelect">
+                        <option value="">Seleccione un item convenido...</option>
+                    </select>
+                    <small id="seguimientoAtencionItemHint" class="form-help">Solo se muestran los items convenidos para este cliente y se usa la tarifa registrada en el convenio.</small>
+                </div>
+                <div class="form-group" style="max-width: 180px;">
+                    <label>&nbsp;</label>
+                    <button type="button" class="btn btn-secondary" style="width:100%;" onclick="agregarDetalleAtencionSeleccionado()">Agregar item</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Detalle de la atención</label>
+                <div class="seguimiento-documentos-box">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Paciente</th>
+                                <th>Item</th>
+                                <th>Tipo</th>
+                                <th>Valor</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="seguimientoAtencionDetalleTable">
+                            <tr><td colspan="5" class="loading">Agrega uno o más pacientes con sus exámenes o paquetes convenidos.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="seguimientoAtencionTotal" class="seguimiento-modal-subtitle" style="margin-top:10px;">Total atención: $0</div>
+            </div>
+            <div class="form-group">
+                <label for="seguimientoAtencionObservaciones">Observaciones</label>
+                <textarea id="seguimientoAtencionObservaciones" rows="3" placeholder="Notas de la atención o del cobro"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeSeguimientoAtencionModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar Atención</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="seguimientoDocumentoModal" class="modal">
+    <div class="modal-content" style="max-width: 760px;">
+        <div class="modal-header">
+            <h2 id="seguimientoDocumentoModalTitle">Nuevo Documento Comercial</h2>
+            <span class="close" onclick="closeSeguimientoDocumentoModal()">&times;</span>
+        </div>
+        <form id="seguimientoDocumentoForm">
+            <input type="hidden" id="seguimientoDocumentoId">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="seguimientoDocumentoTipo">Tipo de documento *</label>
+                    <select id="seguimientoDocumentoTipo" required>
+                        <option value="FACTURA">FACTURA</option>
+                        <option value="CUENTA_COBRO">CUENTA DE COBRO</option>
+                        <option value="VENTA_DIRECTA">VENTA DIRECTA</option>
+                        <option value="INGRESO_SIN_FACTURA">INGRESO SIN FACTURA</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="seguimientoDocumentoNumero">Número documento</label>
+                    <input type="text" id="seguimientoDocumentoNumero" maxlength="80">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="seguimientoDocumentoFecha">Fecha documento *</label>
+                    <input type="date" id="seguimientoDocumentoFecha" required>
+                </div>
+                <div class="form-group">
+                    <label for="seguimientoDocumentoVencimiento">Fecha vencimiento</label>
+                    <input type="date" id="seguimientoDocumentoVencimiento">
+                </div>
+                <div class="form-group">
+                    <label for="seguimientoDocumentoValor">Valor documento *</label>
+                    <input type="text" id="seguimientoDocumentoValor" inputmode="decimal" autocomplete="off" placeholder="0" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input type="checkbox" id="seguimientoDocumentoGeneraCartera">
+                        Genera cartera
+                    </label>
+                </div>
+            </div>
+            <p id="seguimientoDocumentoHint" class="form-help" style="margin-top:0;">Si este documento deja saldo pendiente para seguimiento de cobro, marca que genera cartera y registra la fecha de vencimiento.</p>
+            <div class="form-group">
+                <label for="seguimientoDocumentoObservaciones">Observaciones</label>
+                <textarea id="seguimientoDocumentoObservaciones" rows="3" placeholder="Notas comerciales, acuerdo del cliente o detalle del documento"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeSeguimientoDocumentoModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar Documento</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="seguimientoPagoModal" class="modal">
+    <div class="modal-content" style="max-width: 820px;">
+        <div class="modal-header">
+            <h2 id="seguimientoPagoModalTitle">Registrar Pago</h2>
+            <span class="close" onclick="closeSeguimientoPagoModal()">&times;</span>
+        </div>
+        <form id="seguimientoPagoForm" enctype="multipart/form-data">
+            <input type="hidden" id="seguimientoPagoId">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="seguimientoPagoDocumentoId">Documento aplicado *</label>
+                    <select id="seguimientoPagoDocumentoId" required></select>
+                </div>
+                <div class="form-group">
+                    <label for="seguimientoPagoFecha">Fecha pago *</label>
+                    <input type="date" id="seguimientoPagoFecha" required>
+                </div>
+                <div class="form-group">
+                    <label for="seguimientoPagoValor">Valor pago *</label>
+                    <input type="number" id="seguimientoPagoValor" min="0.01" step="0.01" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="seguimientoPagoTipo">Tipo de pago *</label>
+                    <select id="seguimientoPagoTipo" required>
+                        <option value="ABONO">ABONO</option>
+                        <option value="PAGO_TOTAL">PAGO TOTAL</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="seguimientoPagoMedio">Medio de pago *</label>
+                    <select id="seguimientoPagoMedio" required>
+                        <option value="EFECTIVO">EFECTIVO</option>
+                        <option value="TRANSFERENCIA">TRANSFERENCIA</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="seguimientoPagoCanal">Canal transferencia</label>
+                    <select id="seguimientoPagoCanal">
+                        <option value="">Seleccione...</option>
+                        <option value="NEQUI">NEQUI</option>
+                        <option value="DAVIPLATA">DAVIPLATA</option>
+                        <option value="BANCO">BANCO</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="seguimientoPagoComprobante">Comprobante de pago</label>
+                    <input type="file" id="seguimientoPagoComprobante">
+                    <small id="seguimientoPagoComprobanteActual" class="form-help">Obligatorio cuando el pago se registra por transferencia.</small>
+                </div>
+            </div>
+            <div id="seguimientoPagoReciboCajaSection" class="recent-section" style="display:none; margin-bottom:16px;">
+                <div style="margin-bottom:12px;">
+                    <strong>Recibo de caja</strong>
+                    <div class="form-help" style="margin-top:4px;">Para clientes en efectivo sin factura, este pago queda identificado con recibo de caja y detalle del paciente. El valor del recibo corresponde al valor del pago registrado arriba.</div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="seguimientoPagoNumeroRecibo">Número de recibo</label>
+                        <input type="text" id="seguimientoPagoNumeroRecibo" readonly placeholder="Se genera automáticamente al guardar">
+                    </div>
+                    <div class="form-group">
+                        <label for="seguimientoPagoFechaRecibo">Fecha recibo</label>
+                        <input type="date" id="seguimientoPagoFechaRecibo">
+                    </div>
+                    <div class="form-group">
+                        <label for="seguimientoPagoPacienteDocumento">Documento paciente</label>
+                        <input type="text" id="seguimientoPagoPacienteDocumento" maxlength="50">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="seguimientoPagoPacienteNombre">Nombre paciente</label>
+                        <input type="text" id="seguimientoPagoPacienteNombre" maxlength="200">
+                    </div>
+                    <div class="form-group">
+                        <label for="seguimientoPagoFechaAtencion">Fecha atención</label>
+                        <input type="date" id="seguimientoPagoFechaAtencion">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="seguimientoPagoExamenesRealizados">Exámenes realizados</label>
+                    <textarea id="seguimientoPagoExamenesRealizados" rows="3" placeholder="Detalle de los exámenes realizados al paciente"></textarea>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="seguimientoPagoObservaciones">Observaciones</label>
+                <textarea id="seguimientoPagoObservaciones" rows="3" placeholder="Detalle del abono, nota del recaudo o referencia del pago"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeSeguimientoPagoModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar Pago</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="catalogoComercialModal" class="modal">
+    <div class="modal-content modal-content-workspace modal-content-catalogo">
+        <div class="modal-header">
+            <h2 id="catalogoComercialModalTitle">Nuevo Examen o Paquete</h2>
+            <span class="close" onclick="closeCatalogoComercialModal()">&times;</span>
+        </div>
+        <form id="catalogoComercialForm" class="catalogo-comercial-form">
+            <input type="hidden" id="catalogoComercialId">
+            <div class="form-row catalogo-form-row-top">
+                <div class="form-group catalogo-field-tipo">
+                    <label for="catalogoComercialTipo">Qué vas a crear *</label>
+                    <select id="catalogoComercialTipo" required>
+                        <option value="EXAMEN">EXAMEN</option>
+                        <option value="PAQUETE">PAQUETE</option>
+                        <option value="SERVICIO" hidden>SERVICIO LEGADO</option>
+                    </select>
+                </div>
+                <div class="form-group catalogo-field-codigo">
+                    <label for="catalogoComercialCodigo">Código</label>
+                    <input type="text" id="catalogoComercialCodigo" maxlength="50">
+                </div>
+                <div class="form-group catalogo-field-nombre">
                     <label for="catalogoComercialNombre">Nombre *</label>
                     <input type="text" id="catalogoComercialNombre" maxlength="200" required>
                 </div>
-                <div class="form-group">
+                <div class="form-group catalogo-field-tarifa">
                     <label for="catalogoComercialTarifaBase">Tarifa base *</label>
                     <input type="number" id="catalogoComercialTarifaBase" min="0" step="0.01" required>
                 </div>
             </div>
             <div class="form-row" id="catalogoComercialTipoExamenRow" style="display:none;">
                 <div class="form-group">
-                    <label for="catalogoComercialTipoExamen">Tipo de examen *</label>
+                    <label for="catalogoComercialTipoExamen">Clasificación del examen</label>
                     <select id="catalogoComercialTipoExamen">
-                        <option value="">Seleccione...</option>
+                        <option value="">Pendiente de clasificar</option>
                         <option value="CONSULTA">CONSULTA</option>
                         <option value="LABORATORIO">LABORATORIO</option>
                         <option value="PARACLINICO">PARACLINICO</option>
                     </select>
                 </div>
             </div>
+            <div class="form-row" id="catalogoComercialSubtipoLaboratorioRow" style="display:none;">
+                <div class="form-group">
+                    <label for="catalogoComercialSubtipoLaboratorio">Subtipo de laboratorio</label>
+                    <select id="catalogoComercialSubtipoLaboratorio">
+                        <option value="">Pendiente de definir</option>
+                        <option value="REMITIDO">REMITIDO</option>
+                        <option value="REALIZADO">REALIZADO EN LABORATORIO</option>
+                    </select>
+                </div>
+            </div>
             <div class="form-group">
                 <label for="catalogoComercialDescripcion">Descripción</label>
-                <textarea id="catalogoComercialDescripcion" rows="3"></textarea>
+                <textarea id="catalogoComercialDescripcion" rows="2"></textarea>
             </div>
             <div class="form-group" id="catalogoComercialComponentesRow" style="display:none;">
                 <label>Examenes que incluye el paquete *</label>
-                <div class="catalogo-componentes-box" id="catalogoComercialComponentesList">
-                    <div class="catalogo-componentes-empty">Cargando examenes del catalogo...</div>
+                <div class="catalogo-paquete-builder">
+                    <div class="catalogo-paquete-column">
+                        <h4>Composición actual</h4>
+                        <p class="form-help" style="margin-top:0;">Aquí ves los examenes que hoy componen el paquete.</p>
+                        <div class="catalogo-componentes-box" id="catalogoComercialComponentesActuales">
+                            <div class="catalogo-componentes-empty">Todavía no has agregado examenes al paquete.</div>
+                        </div>
+                        <div id="catalogoComercialComponentesResumen" class="catalogo-componentes-summary">
+                            Sin examenes seleccionados.
+                        </div>
+                    </div>
+                    <div class="catalogo-paquete-column">
+                        <h4>Buscar y ajustar</h4>
+                        <p class="form-help" style="margin-top:0;">Busca un examen para agregarlo. Si quieres reemplazar uno, primero elimínalo de la composición actual y luego añade el nuevo.</p>
+                        <div class="form-group" style="margin-bottom:12px;">
+                            <input type="text" id="catalogoComercialComponentesSearch" placeholder="Buscar por nombre, código o clasificación..." oninput="filtrarCatalogoComponentesDisponibles()">
+                        </div>
+                        <div class="catalogo-componentes-box" id="catalogoComercialComponentesList">
+                            <div class="catalogo-componentes-empty">Cargando examenes del catalogo...</div>
+                        </div>
+                    </div>
                 </div>
-                <small class="form-help">Solo aplica cuando el item es tipo PAQUETE. Si cambias el item a EXAMEN o SERVICIO, esta composicion se limpia.</small>
+                <small class="form-help">Solo aplica cuando el registro es un PAQUETE. Si cambias a EXAMEN, esta composición se limpia.</small>
             </div>
             <div class="form-group checkbox-group">
                 <label>
@@ -2789,7 +3215,7 @@
             <div class="form-row">
                 <div class="form-group">
                     <label for="tarifaClienteTarifaNegociada">Tarifa cliente *</label>
-                    <input type="number" id="tarifaClienteTarifaNegociada" min="0" step="0.01" required>
+                    <input type="text" id="tarifaClienteTarifaNegociada" inputmode="decimal" autocomplete="off" placeholder="0" required>
                 </div>
                 <div class="form-group">
                     <label for="tarifaClienteVigenciaDesde">Vigencia desde</label>

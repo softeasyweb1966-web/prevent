@@ -242,6 +242,7 @@ class ClienteComercial(db.Model):
     contacto_facturacion = db.Column(db.String(150))
     celular_facturacion = db.Column(db.String(50))
     email_facturacion = db.Column(db.String(120))
+    puntos_atencion_recepcion = db.Column(db.Text)
     condicion_comercial = db.Column(db.String(20), nullable=False, default='EFECTIVO')
     requiere_factura = db.Column(db.Boolean, default=False, nullable=False)
     fechas_facturacion = db.Column(db.String(120))
@@ -269,9 +270,87 @@ class ClienteComercial(db.Model):
         lazy='dynamic',
         cascade='all, delete-orphan'
     )
+    seguimiento_documentos = db.relationship(
+        'ClienteSeguimientoDocumento',
+        backref='cliente',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
+    atenciones = db.relationship(
+        'ClienteAtencion',
+        backref='cliente',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
 
     def __repr__(self):
         return f'<ClienteComercial {self.razon_social}>'
+
+
+class ClienteSeguimientoDocumento(db.Model):
+    """Documentos comerciales base para seguimiento, cartera y recaudo"""
+    __tablename__ = 'clientes_seguimiento_documentos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes_comerciales.id'), nullable=False, index=True)
+    vendedor_id = db.Column(db.Integer, db.ForeignKey('vendedores.id'), nullable=False, index=True)
+    atencion_id = db.Column(db.Integer, db.ForeignKey('clientes_atenciones.id'), index=True, unique=True)
+    tipo_documento = db.Column(db.String(30), nullable=False, index=True)
+    numero_documento = db.Column(db.String(80), index=True)
+    fecha_documento = db.Column(db.DateTime, nullable=False, index=True)
+    fecha_vencimiento = db.Column(db.DateTime, index=True)
+    valor_documento = db.Column(Numeric(15, 2), default=0, nullable=False)
+    saldo_actual = db.Column(Numeric(15, 2), default=0, nullable=False)
+    genera_cartera = db.Column(db.Boolean, default=False, nullable=False)
+    estado_documento = db.Column(db.String(20), default='PENDIENTE', nullable=False, index=True)
+    observaciones = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    pagos = db.relationship(
+        'ClienteSeguimientoPago',
+        backref='documento',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
+
+    vendedor = db.relationship('Vendedor', backref=db.backref('seguimiento_documentos', lazy='dynamic'))
+
+    def __repr__(self):
+        return f'<ClienteSeguimientoDocumento {self.tipo_documento} {self.numero_documento or self.id}>'
+
+
+class ClienteSeguimientoPago(db.Model):
+    """Pagos y abonos registrados sobre documentos comerciales del cliente"""
+    __tablename__ = 'clientes_seguimiento_pagos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    documento_id = db.Column(db.Integer, db.ForeignKey('clientes_seguimiento_documentos.id'), nullable=False, index=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes_comerciales.id'), nullable=False, index=True)
+    vendedor_id = db.Column(db.Integer, db.ForeignKey('vendedores.id'), nullable=False, index=True)
+    fecha_pago = db.Column(db.DateTime, nullable=False, index=True)
+    valor_pago = db.Column(Numeric(15, 2), default=0, nullable=False)
+    tipo_pago = db.Column(db.String(20), nullable=False, default='ABONO', index=True)
+    medio_pago = db.Column(db.String(20), nullable=False, default='EFECTIVO', index=True)
+    canal_transferencia = db.Column(db.String(20), index=True)
+    numero_recibo_caja = db.Column(db.String(50), index=True)
+    fecha_recibo = db.Column(db.DateTime, index=True)
+    paciente_documento = db.Column(db.String(50), index=True)
+    paciente_nombre = db.Column(db.String(200), index=True)
+    fecha_atencion = db.Column(db.DateTime, index=True)
+    examenes_realizados = db.Column(db.Text)
+    nombre_comprobante = db.Column(db.String(255))
+    ruta_comprobante = db.Column(db.String(500))
+    mime_type = db.Column(db.String(120))
+    tamano_bytes = db.Column(db.Integer)
+    observaciones = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    cliente = db.relationship('ClienteComercial', backref=db.backref('seguimiento_pagos', lazy='dynamic'))
+    vendedor = db.relationship('Vendedor', backref=db.backref('seguimiento_pagos', lazy='dynamic'))
+
+    def __repr__(self):
+        return f'<ClienteSeguimientoPago {self.documento_id} {self.valor_pago}>'
 
 
 class ClienteComercialAdjunto(db.Model):
@@ -292,6 +371,61 @@ class ClienteComercialAdjunto(db.Model):
         return f'<ClienteComercialAdjunto {self.tipo_documento} - {self.nombre_original}>'
 
 
+class ClienteAtencion(db.Model):
+    """Atenciones prestadas al cliente comercial como base del control de cobro"""
+    __tablename__ = 'clientes_atenciones'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nro_atencion = db.Column(db.String(50), unique=True, index=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes_comerciales.id'), nullable=False, index=True)
+    vendedor_id = db.Column(db.Integer, db.ForeignKey('vendedores.id'), nullable=False, index=True)
+    fecha_atencion = db.Column(db.DateTime, nullable=False, index=True)
+    paciente_documento = db.Column(db.String(50), nullable=False, index=True)
+    paciente_nombre = db.Column(db.String(200), nullable=False, index=True)
+    valor_total = db.Column(Numeric(15, 2), default=0, nullable=False)
+    saldo_pendiente = db.Column(Numeric(15, 2), default=0, nullable=False)
+    estado_cobro = db.Column(db.String(20), default='PENDIENTE', nullable=False, index=True)
+    observaciones = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    detalles = db.relationship(
+        'ClienteAtencionDetalle',
+        backref='atencion',
+        lazy='select',
+        cascade='all, delete-orphan'
+    )
+    documento_cobro = db.relationship(
+        'ClienteSeguimientoDocumento',
+        backref=db.backref('atencion', uselist=False),
+        uselist=False
+    )
+
+    vendedor = db.relationship('Vendedor', backref=db.backref('atenciones_cliente', lazy='dynamic'))
+
+    def __repr__(self):
+        return f'<ClienteAtencion {self.nro_atencion or self.id}>'
+
+
+class ClienteAtencionDetalle(db.Model):
+    """Detalle de exámenes o paquetes convenidos aplicados a una atención"""
+    __tablename__ = 'clientes_atenciones_detalle'
+
+    id = db.Column(db.Integer, primary_key=True)
+    atencion_id = db.Column(db.Integer, db.ForeignKey('clientes_atenciones.id'), nullable=False, index=True)
+    paciente_documento = db.Column(db.String(50), nullable=False, index=True)
+    paciente_nombre = db.Column(db.String(200), nullable=False, index=True)
+    catalogo_item_id = db.Column(db.Integer, db.ForeignKey('comercial_catalogo_items.id'), nullable=False, index=True)
+    tipo_item = db.Column(db.String(20), nullable=False, index=True)
+    nombre_item = db.Column(db.String(200), nullable=False)
+    valor_item = db.Column(Numeric(15, 2), default=0, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    item_catalogo = db.relationship('ComercialCatalogoItem', backref=db.backref('atenciones_detalle', lazy='dynamic'))
+
+    def __repr__(self):
+        return f'<ClienteAtencionDetalle atencion={self.atencion_id} item={self.catalogo_item_id}>'
+
+
 class ComercialCatalogoItem(db.Model):
     """Catalogo general de examenes, paquetes y otros items comerciales"""
     __tablename__ = 'comercial_catalogo_items'
@@ -299,6 +433,8 @@ class ComercialCatalogoItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     tipo_item = db.Column(db.String(20), nullable=False, index=True)
     tipo_examen = db.Column(db.String(20), index=True)
+    subtipo_laboratorio = db.Column(db.String(30), index=True)
+    clasificacion_completa = db.Column(db.Boolean, default=True, nullable=False)
     nombre = db.Column(db.String(200), nullable=False, index=True)
     codigo = db.Column(db.String(50), unique=True, index=True)
     descripcion = db.Column(db.Text)
