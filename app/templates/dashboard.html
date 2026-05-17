@@ -1834,7 +1834,7 @@
                             <span class="btn-label">Ver Historial</span>
                         </button>
                         <button id="comercialNavCargue" type="button" class="btn btn-secondary" onclick="abrirCargueAtencionDia()">
-                            <span class="btn-label">Cargue Información Día</span>
+                            <span class="btn-label">Ingreso Información</span>
                         </button>
                         <button id="comercialNavInicio" type="button" class="btn btn-secondary active" data-comercial-section="inicio" onclick="switchComercialSection('inicio')">
                             <span class="btn-label">Inicio</span>
@@ -2673,6 +2673,156 @@
     </div>
 </div>
 
+<div id="cargueAtencionesDiaModal" class="modal">
+    <div class="modal-content" style="max-width: 1240px; width: 96%; max-height: 92vh; overflow-y: auto;">
+        <div class="modal-header">
+            <h2>Ingreso Información</h2>
+            <span class="close" onclick="closeCargueAtencionDia()">&times;</span>
+        </div>
+        <div class="button-group module-actions ingreso-info-top-nav" role="tablist" aria-label="Menú Ingreso Información">
+            <button type="button" class="btn btn-secondary" id="ingresoInfoNavCargueAtenciones" onclick="setIngresoInformacionSection('cargue_atenciones')">
+                <span class="btn-label">Cargue Atenciones</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="ingresoInfoNavPrefacturas" onclick="setIngresoInformacionSection('prefacturas')">
+                <span class="btn-label">Prefacturas</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="ingresoInfoNavConsulta" onclick="setIngresoInformacionSection('consulta')">
+                <span class="btn-label">Consulta</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="ingresoInfoNavInicio" onclick="setIngresoInformacionSection('inicio')">
+                <span class="btn-label">Inicio</span>
+            </button>
+        </div>
+        <div id="ingresoInfoInicioPanel" class="recent-section ingreso-info-panel" style="margin-bottom: 16px;">
+            <div class="ingreso-info-empty-state">Selecciona una opción del menú para continuar.</div>
+        </div>
+        <div id="ingresoInfoPrefacturasPanel" class="recent-section ingreso-info-panel" style="display:none; margin-bottom: 16px;">
+            <h3 style="margin-top:0;">Generación de Prefacturas</h3>
+            <p style="margin-top:0; color:#555;">
+                Genera un archivo Excel por empresa con las atenciones a <strong>crédito</strong> en el rango de fechas seleccionado.
+                Se excluyen automáticamente los exámenes clasificados como <strong>ECOBABY</strong>.
+                Los exámenes se agrupan por clasificación: Consultas (nombre completo), Paraclínicos y Laboratorios (primeras 5 letras).
+            </p>
+            <div class="form-row" style="align-items:flex-end; gap:12px; flex-wrap:wrap;">
+                <div class="form-group" style="flex:1; min-width:160px;">
+                    <label for="prefacturaFechaDesde">Fecha inicio *</label>
+                    <input type="date" id="prefacturaFechaDesde">
+                </div>
+                <div class="form-group" style="flex:1; min-width:160px;">
+                    <label for="prefacturaFechaHasta">Fecha fin *</label>
+                    <input type="date" id="prefacturaFechaHasta">
+                </div>
+            </div>
+            <div class="form-row" style="align-items:flex-end; gap:12px; flex-wrap:wrap; margin-top:4px;">
+                <div class="form-group" style="flex:3; min-width:260px;">
+                    <label for="prefacturaCarpeta">Carpeta destino (ruta en el servidor donde se guardarán los archivos)</label>
+                    <input type="text" id="prefacturaCarpeta" placeholder="Ej: C:\Prefacturas\2026 o /home/prevent/prefacturas">
+                </div>
+                <div class="form-group" style="display:flex; align-items:flex-end; gap:8px;">
+                    <button type="button" class="btn btn-primary" id="btnGenerarPrefacturas" onclick="generarPrefacturas()">
+                        <span id="btnGenerarPrefacturasLabel">Generar Prefacturas</span>
+                    </button>
+                </div>
+            </div>
+            <div id="prefacturasResultado" style="margin-top:10px; color:#555;"></div>
+        </div>
+        <div id="ingresoInfoCarguePanel" class="recent-section ingreso-info-panel" style="display:none; margin-bottom: 16px;">
+            <h3 style="margin-top:0;">Subir archivo Estado de las Atenciones</h3>
+            <p style="margin-top:0; color:#555;">Carga archivos con la misma estructura de <strong>Estado-de-las-Atenciones.xlsx</strong>. El sistema intentará relacionar cada fila con el cliente comercial y su vendedor responsable.</p>
+            <form id="cargueAtencionesDiaForm">
+                <div class="form-row">
+                    <div class="form-group" style="flex:2;">
+                        <label for="cargueAtencionesDiaArchivo">Archivo .xlsx *</label>
+                        <input type="file" id="cargueAtencionesDiaArchivo" accept=".xlsx" required>
+                    </div>
+                    <div class="form-group" style="display:flex; align-items:flex-end;">
+                        <button type="submit" class="btn btn-primary" id="cargueAtencionesDiaSubmit">Cargar archivo</button>
+                    </div>
+                </div>
+            </form>
+            <div id="cargueAtencionesDiaResultado" style="margin-top: 12px; color:#555;">Selecciona un archivo para iniciar el cargue.</div>
+            <div id="cargueAtencionesDiaScope" style="margin-top: 8px; color:#555;"></div>
+        </div>
+
+        <div id="ingresoInfoConsultaPanel" class="recent-section ingreso-info-panel" style="display:none; margin-bottom: 16px;">
+            <h3 style="margin-top:0;">Consulta de atenciones cargadas</h3>
+            <div class="consulta-toolbar-grid" style="grid-template-columns: repeat(6, minmax(150px, 1fr));">
+                <div class="form-group cargue-atenciones-cliente-group">
+                    <label for="cargueAtencionesDiaFiltroAcuerdo">Cliente / Acuerdo</label>
+                    <input type="hidden" id="cargueAtencionesDiaFiltroClienteId">
+                    <input type="text" id="cargueAtencionesDiaFiltroAcuerdo" placeholder="Razón social o acuerdo">
+                    <div id="cargueAtencionesDiaClienteSuggestions" class="cargue-atenciones-suggestions" style="display:none;"></div>
+                </div>
+                <div class="form-group" id="cargueAtencionesDiaFiltroVendedorWrap">
+                    <label for="cargueAtencionesDiaFiltroVendedor">Vendedor</label>
+                    <input type="text" id="cargueAtencionesDiaFiltroVendedor" placeholder="Nombre del vendedor">
+                </div>
+                <div class="form-group">
+                    <label for="cargueAtencionesDiaFiltroCondicionComercial">Condicion comercial</label>
+                    <select id="cargueAtencionesDiaFiltroCondicionComercial">
+                        <option value="">Todos</option>
+                        <option value="EFECTIVO">EFECTIVO</option>
+                        <option value="CREDITO">CREDITO</option>
+                        <option value="MIXTO">MIXTO</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="cargueAtencionesDiaFiltroEstado">Estado</label>
+                    <select id="cargueAtencionesDiaFiltroEstado">
+                        <option value="">Todos</option>
+                        <option value="PROCESADA">Procesada</option>
+                        <option value="ANULADA">Anulada</option>
+                        <option value="PENDIENTE">Pendiente</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="cargueAtencionesDiaFechaDesde">Fecha desde</label>
+                    <input type="date" id="cargueAtencionesDiaFechaDesde">
+                </div>
+                <div class="form-group">
+                    <label for="cargueAtencionesDiaFechaHasta">Fecha hasta</label>
+                    <input type="date" id="cargueAtencionesDiaFechaHasta">
+                </div>
+            </div>
+            <div class="button-group module-actions" style="margin-top: 8px;">
+                <button type="button" class="btn btn-secondary" onclick="consultarAtencionesDiaCargadas(1)">Consultar</button>
+                <button type="button" class="btn btn-secondary" onclick="limpiarFiltrosCargueAtencionDia()">Limpiar</button>
+            </div>
+            <div id="cargueAtencionesDiaResumen" style="margin-top: 12px; color:#555;">Sin consulta realizada aún.</div>
+            <div id="cargueAtencionesDiaResults" class="cargue-atenciones-results" style="margin-top: 12px;">
+                <div class="loading">Aún no hay registros para mostrar.</div>
+            </div>
+            <div class="button-group module-actions" style="margin-top: 12px; justify-content: space-between;">
+                <button type="button" class="btn btn-secondary" id="cargueAtencionesDiaPrevBtn" onclick="consultarAtencionesDiaCargadas(window.cargueAtencionesDiaState.page - 1)">Anterior</button>
+                <span id="cargueAtencionesDiaPageInfo" style="align-self:center; color:#555;">Página 0 de 0</span>
+                <button type="button" class="btn btn-secondary" id="cargueAtencionesDiaNextBtn" onclick="consultarAtencionesDiaCargadas(window.cargueAtencionesDiaState.page + 1)">Siguiente</button>
+            </div>
+        </div>
+
+        <div id="ingresoInfoHistorialPanel" class="recent-section ingreso-info-panel" style="display:none;">
+            <h3 style="margin-top:0;">Historial reciente de cargues</h3>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Archivo</th>
+                            <th>Filas</th>
+                            <th>Importadas</th>
+                            <th>Usuario</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cargueAtencionesDiaHistorialTable">
+                        <tr>
+                            <td colspan="5" class="loading">Cargando historial...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="vendedorModal" class="modal">
     <div class="modal-content" style="max-width: 620px;">
         <div class="modal-header">
@@ -3347,6 +3497,10 @@
                 <div class="form-group catalogo-field-nombre">
                     <label for="catalogoComercialNombre">Nombre *</label>
                     <input type="text" id="catalogoComercialNombre" maxlength="200" required>
+                </div>
+                <div class="form-group catalogo-field-nombre-corto">
+                    <label for="catalogoComercialNombreCorto">Nombre corto <span style="font-weight:normal; color:#888;">(para prefacturas)</span></label>
+                    <input type="text" id="catalogoComercialNombreCorto" maxlength="50" placeholder="Ej: AUDIO, RX COL">
                 </div>
                 <div class="form-group catalogo-field-tarifa">
                     <label for="catalogoComercialTarifaBase">Tarifa base *</label>

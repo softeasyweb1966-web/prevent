@@ -532,6 +532,7 @@ class ComercialCatalogoItem(db.Model):
     subtipo_laboratorio = db.Column(db.String(30), index=True)
     clasificacion_completa = db.Column(db.Boolean, default=True, nullable=False)
     nombre = db.Column(db.String(200), nullable=False, index=True)
+    nombre_corto = db.Column(db.String(50), nullable=True)
     codigo = db.Column(db.String(50), unique=True, index=True)
     descripcion = db.Column(db.Text)
     tarifa_base = db.Column(Numeric(15, 2), default=0)
@@ -1110,6 +1111,8 @@ class AtencionDiaDetalle(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     cargue_id = db.Column(db.Integer, db.ForeignKey('cargue_atenciones_dia.id'), nullable=False, index=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes_comerciales.id'), index=True)
+    vendedor_id = db.Column(db.Integer, db.ForeignKey('vendedores.id'), index=True)
 
     # Campos del Excel
     nro_orden = db.Column(db.String(50), index=True)
@@ -1131,6 +1134,8 @@ class AtencionDiaDetalle(db.Model):
     archivo_origen = db.Column(db.String(300))
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    cliente = db.relationship('ClienteComercial', backref=db.backref('atenciones_dia', lazy='dynamic'))
+    vendedor = db.relationship('Vendedor', backref=db.backref('atenciones_dia', lazy='dynamic'))
 
     # Índice compuesto para detectar duplicados exactos
     __table_args__ = (

@@ -1461,6 +1461,7 @@ function syncComercialPermissionUI() {
     setComercialElementsVisibility('#comercialNavVendedores', hasAnyComercialPermission('vendedores'));
     setComercialElementsVisibility('#comercialNavExamenes', hasAnyCatalogoPermission());
     setComercialElementsVisibility('#comercialNavClientes', hasAnyComercialPermission('clientes'));
+    setComercialElementsVisibility('#comercialNavCargue', canManageComercial('atenciones', 'read') || canManageComercial('atenciones', 'create'));
     setComercialElementsVisibility('button[onclick="mostrarAgregarVendedor()"]', canManageComercial('vendedores', 'create'));
     setComercialElementsVisibility('button[onclick="consultarComercial(\'vendedores\')"]', canManageComercial('vendedores', 'read'));
     setComercialElementsVisibility('button[onclick="mostrarAgregarItemCatalogoComercial()"]', canCreateCatalogoComercial());
@@ -3300,6 +3301,801 @@ let clienteSeguimientoContext = {
     pagos: [],
     draftDetalles: []
 };
+window.cargueAtencionesDiaState = {
+    page: 1,
+    pages: 0,
+    perPage: 50,
+    total: 0,
+    clienteSearchTimer: null,
+    activeSection: 'inicio'
+};
+
+function updateCargueAtencionesDiaScope(scope, extraMessage = '') {
+    const scopeContainer = document.getElementById('cargueAtencionesDiaScope');
+    if (!scopeContainer) return;
+
+    let baseMessage = '';
+    if (scope === 'admin') {
+        baseMessage = 'Vista general: estás viendo todos los registros cargados.';
+    } else if (scope === 'vendedor') {
+        baseMessage = 'Vista restringida: solo se muestran registros asociados a tus clientes.';
+    } else if (scope === 'sin_vendedor_asociado') {
+        baseMessage = 'Tu usuario no está asociado a un vendedor comercial, por eso no se pueden mostrar registros.';
+    }
+
+    scopeContainer.textContent = [baseMessage, extraMessage].filter(Boolean).join(' ');
+}
+
+function applyCargueAtencionesDiaScopeUI(scope) {
+    const vendedorWrap = document.getElementById('cargueAtencionesDiaFiltroVendedorWrap');
+    const vendedorInput = document.getElementById('cargueAtencionesDiaFiltroVendedor');
+    const isAdminScope = scope === 'admin';
+
+    if (vendedorWrap) {
+        vendedorWrap.style.display = isAdminScope ? '' : 'none';
+    }
+    if (!isAdminScope && vendedorInput) {
+        vendedorInput.value = '';
+    }
+}
+
+function resetConsultaAtencionesDia(message = 'Ingresa uno o varios criterios para consultar atenciones cargadas.') {
+    const results = document.getElementById('cargueAtencionesDiaResults');
+    const resumen = document.getElementById('cargueAtencionesDiaResumen');
+    const pageInfo = document.getElementById('cargueAtencionesDiaPageInfo');
+    const prevBtn = document.getElementById('cargueAtencionesDiaPrevBtn');
+    const nextBtn = document.getElementById('cargueAtencionesDiaNextBtn');
+
+    window.cargueAtencionesDiaState.page = 1;
+    window.cargueAtencionesDiaState.pages = 0;
+    window.cargueAtencionesDiaState.total = 0;
+
+    if (results) {
+        results.innerHTML = `<div class="loading">${escapeHtml(message)}</div>`;
+    }
+    if (resumen) resumen.textContent = message;
+    if (pageInfo) pageInfo.textContent = 'Pagina 0 de 0';
+    if (prevBtn) prevBtn.disabled = true;
+    if (nextBtn) nextBtn.disabled = true;
+}
+
+function obtenerFechaBaseCargueAtenciones(item) {
+    return String(item?.fecha_creacion_orden || item?.fecha_factura || '').trim();
+}
+
+function obtenerFechaComparableCargueAtenciones(item) {
+    const base = obtenerFechaBaseCargueAtenciones(item);
+    return base ? base.slice(0, 10) : '';
+}
+
+function formatearRangoFechasCargueAtenciones(fechas) {
+    const valores = Array.isArray(fechas) ? fechas.filter(Boolean).sort() : [];
+    if (!valores.length) return 'Sin fecha';
+    if (valores[0] === valores[valores.length - 1]) return valores[0];
+    return `${valores[0]} a ${valores[valores.length - 1]}`;
+}
+
+const cargueAtencionesOrderCollator = new Intl.Collator('es', {
+    numeric: true,
+    sensitivity: 'base'
+});
+
+function compararOrdenCargueAtenciones(a, b) {
+    return cargueAtencionesOrderCollator.compare(String(a || ''), String(b || ''));
+}
+
+function construirResultadosAgrupadosCargueAtenciones(registros) {
+    const gruposMap = new Map();
+
+    (Array.isArray(registros) ? registros : []).forEach(item => {
+        const clienteLabel = item.cliente_nombre || item.acuerdo_comercial || item.empresa_mision || 'Sin cliente relacionado';
+        const vendedorLabel = item.vendedor_responsable || item.nombre_vendedor || 'Sin vendedor';
+        const groupKey = `${item.cliente_id || clienteLabel}::${item.vendedor_id || vendedorLabel}`;
+
+        if (!gruposMap.has(groupKey)) {
+            gruposMap.set(groupKey, {
+                clienteLabel,
+                vendedorLabel,
+                fechas: new Set(),
+                ordenes: new Map()
+            });
+        }
+
+        const grupo = gruposMap.get(groupKey);
+        const fechaComparable = obtenerFechaComparableCargueAtenciones(item);
+        if (fechaComparable) grupo.fechas.add(fechaComparable);
+
+        const orderKey = item.nro_orden || `sin-orden-${item.id || grupo.ordenes.size}`;
+        const ordenLabel = item.nro_orden || 'SIN ORDEN';
+        if (!grupo.ordenes.has(orderKey)) {
+            grupo.ordenes.set(orderKey, {
+                ordenLabel,
+                detalles: []
+            });
+        }
+
+        grupo.ordenes.get(orderKey).detalles.push({
+            fecha: obtenerFechaBaseCargueAtenciones(item) || 'N/A',
+            paciente: item.nombre_paciente || 'N/A',
+            formaPago: item.forma_pago || 'N/A',
+            servicio: item.servicio || 'N/A',
+            valor: Number(item.precio || 0)
+        });
+    });
+
+    const grupos = Array.from(gruposMap.values()).map(grupo => ({
+        ...grupo,
+        rangoFechas: formatearRangoFechasCargueAtenciones(Array.from(grupo.fechas)),
+        ordenes: Array.from(grupo.ordenes.values()).sort((a, b) => compararOrdenCargueAtenciones(a.ordenLabel, b.ordenLabel))
+    }));
+
+    if (!grupos.length) {
+        return '<div class="loading">No hay registros para mostrar.</div>';
+    }
+
+    return grupos.map(grupo => `
+        <section class="cargue-atenciones-group-card">
+            <div class="cargue-atenciones-group-header">
+                <div class="cargue-atenciones-group-pill"><strong>Cliente:</strong> ${escapeHtml(grupo.clienteLabel)}</div>
+                <div class="cargue-atenciones-group-pill"><strong>Vendedor:</strong> ${escapeHtml(grupo.vendedorLabel)}</div>
+                <div class="cargue-atenciones-group-pill"><strong>Rango de fechas:</strong> ${escapeHtml(grupo.rangoFechas)}</div>
+            </div>
+            <div class="cargue-atenciones-orders">
+                ${grupo.ordenes.map(orden => `
+                    <article class="cargue-atenciones-order-card">
+                        <div class="cargue-atenciones-order-title">
+                            <div class="cargue-atenciones-order-main">
+                                <span class="cargue-atenciones-order-main-id">Orden ${escapeHtml(orden.ordenLabel)}</span>
+                                <span class="cargue-atenciones-order-main-meta"><strong>Paciente:</strong> ${escapeHtml(orden.detalles[0]?.paciente || 'N/A')}</span>
+                                <span class="cargue-atenciones-order-main-meta"><strong>Fecha:</strong> ${escapeHtml(orden.detalles[0]?.fecha || 'N/A')}</span>
+                                <span class="cargue-atenciones-order-main-meta"><strong>Forma pago:</strong> ${escapeHtml(orden.detalles[0]?.formaPago || 'N/A')}</span>
+                            </div>
+                            <div class="cargue-atenciones-order-total">
+                                <span>Total orden</span>
+                                <strong>${formatCurrency(orden.detalles.reduce((sum, detalle) => sum + Number(detalle.valor || 0), 0))}</strong>
+                            </div>
+                        </div>
+                        <div class="cargue-atenciones-order-body">
+                            ${orden.detalles.map((detalle, index) => `
+                                <div class="cargue-atenciones-detail-row">
+                                    <div class="cargue-atenciones-detail-cell">${index === 0 ? '<span>Servicio</span>' : ''}<strong>${escapeHtml(detalle.servicio)}</strong></div>
+                                    <div class="cargue-atenciones-detail-cell cargue-atenciones-detail-value">${index === 0 ? '<span>Valor</span>' : ''}<strong>${formatCurrency(detalle.valor)}</strong></div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </article>
+                `).join('')}
+            </div>
+        </section>
+    `).join('');
+}
+
+function hideCargueAtencionesClienteSuggestions() {
+    const container = document.getElementById('cargueAtencionesDiaClienteSuggestions');
+    if (!container) return;
+    container.style.display = 'none';
+    container.innerHTML = '';
+}
+
+function clearCargueAtencionesClienteSelection(preserveText = true) {
+    const clienteIdInput = document.getElementById('cargueAtencionesDiaFiltroClienteId');
+    const acuerdoInput = document.getElementById('cargueAtencionesDiaFiltroAcuerdo');
+    if (clienteIdInput) clienteIdInput.value = '';
+    if (acuerdoInput) {
+        acuerdoInput.dataset.selectedLabel = '';
+        if (!preserveText) acuerdoInput.value = '';
+    }
+}
+
+function hasActiveFiltersCargueAtencionesDia() {
+    const acuerdoInput = document.getElementById('cargueAtencionesDiaFiltroAcuerdo');
+    const clienteIdInput = document.getElementById('cargueAtencionesDiaFiltroClienteId');
+    const vendedorWrap = document.getElementById('cargueAtencionesDiaFiltroVendedorWrap');
+    const vendedorInput = document.getElementById('cargueAtencionesDiaFiltroVendedor');
+    const condicionComercialInput = document.getElementById('cargueAtencionesDiaFiltroCondicionComercial');
+    const estadoInput = document.getElementById('cargueAtencionesDiaFiltroEstado');
+    const fechaDesdeInput = document.getElementById('cargueAtencionesDiaFechaDesde');
+    const fechaHastaInput = document.getElementById('cargueAtencionesDiaFechaHasta');
+
+    return Boolean(
+        (clienteIdInput?.value || '').trim()
+        || (acuerdoInput?.value || '').trim()
+        || ((vendedorWrap?.style.display !== 'none' ? vendedorInput?.value : '') || '').trim()
+        || (condicionComercialInput?.value || '').trim()
+        || (estadoInput?.value || '').trim()
+        || (fechaDesdeInput?.value || '').trim()
+        || (fechaHastaInput?.value || '').trim()
+    );
+}
+
+function renderCargueAtencionesClienteSuggestions(clientes, query = '') {
+    const container = document.getElementById('cargueAtencionesDiaClienteSuggestions');
+    if (!container) return;
+
+    if (!Array.isArray(clientes) || clientes.length === 0) {
+        container.innerHTML = `<div class="cargue-atenciones-suggestion-empty">No se encontraron clientes para "${escapeHtml(query)}".</div>`;
+        container.style.display = 'block';
+        return;
+    }
+
+    container.innerHTML = clientes.map(cliente => {
+        const label = cliente.razon_social || cliente.nombre_comercial || 'Cliente sin nombre';
+        const secondary = [cliente.nombre_comercial, cliente.nit].filter(Boolean).join(' | ');
+        const vendedor = cliente.vendedor_nombre ? `Vendedor: ${cliente.vendedor_nombre}` : '';
+        return `
+            <button
+                type="button"
+                class="cargue-atenciones-suggestion-item"
+                data-cliente-id="${Number(cliente.id)}"
+                data-cliente-label="${escapeHtml(label)}"
+                data-cliente-nombre-comercial="${escapeHtml(cliente.nombre_comercial || '')}"
+                data-cliente-nit="${escapeHtml(cliente.nit || '')}"
+            >
+                <strong>${escapeHtml(label)}</strong>
+                ${secondary ? `<span>${escapeHtml(secondary)}</span>` : ''}
+                ${vendedor ? `<span>${escapeHtml(vendedor)}</span>` : ''}
+            </button>
+        `;
+    }).join('');
+    container.style.display = 'block';
+}
+
+function seleccionarClienteCargueAtenciones(cliente) {
+    const acuerdoInput = document.getElementById('cargueAtencionesDiaFiltroAcuerdo');
+    const clienteIdInput = document.getElementById('cargueAtencionesDiaFiltroClienteId');
+    if (acuerdoInput) {
+        const label = cliente.razon_social || cliente.nombre_comercial || '';
+        acuerdoInput.value = label;
+        acuerdoInput.dataset.selectedLabel = label;
+    }
+    if (clienteIdInput) {
+        clienteIdInput.value = cliente.id || '';
+    }
+    hideCargueAtencionesClienteSuggestions();
+}
+
+async function cargarClientesSugeridosCargueAtenciones(query) {
+    const response = await fetch(`/api/comercial/cargue-atenciones/clientes-sugeridos?q=${encodeURIComponent(query)}`, {
+        credentials: 'include'
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(data.error || 'No se pudieron cargar los clientes sugeridos');
+    }
+    applyCargueAtencionesDiaScopeUI(data.scope);
+    updateCargueAtencionesDiaScope(data.scope);
+    return Array.isArray(data.clientes) ? data.clientes : [];
+}
+
+function programarBusquedaClientesCargueAtenciones() {
+    const acuerdoInput = document.getElementById('cargueAtencionesDiaFiltroAcuerdo');
+    if (!acuerdoInput) return;
+
+    const currentValue = acuerdoInput.value.trim();
+    const selectedLabel = (acuerdoInput.dataset.selectedLabel || '').trim();
+    if (!currentValue) {
+        clearCargueAtencionesClienteSelection(false);
+        hideCargueAtencionesClienteSuggestions();
+        return;
+    }
+
+    if (!selectedLabel || currentValue !== selectedLabel) {
+        clearCargueAtencionesClienteSelection(true);
+    }
+
+    window.clearTimeout(window.cargueAtencionesDiaState.clienteSearchTimer);
+    window.cargueAtencionesDiaState.clienteSearchTimer = window.setTimeout(async () => {
+        try {
+            const clientes = await cargarClientesSugeridosCargueAtenciones(currentValue);
+            renderCargueAtencionesClienteSuggestions(clientes, currentValue);
+        } catch (error) {
+            console.error('Error cargando sugerencias de clientes para atenciones:', error);
+            hideCargueAtencionesClienteSuggestions();
+        }
+    }, 180);
+}
+
+function openCargueAtencionesDiaModal() {
+    const modal = document.getElementById('cargueAtencionesDiaModal');
+    if (modal) {
+        modal.classList.add('active');
+    }
+}
+
+function setIngresoInformacionSection(section = 'inicio') {
+    const normalized = String(section || 'inicio');
+    window.cargueAtencionesDiaState.activeSection = normalized;
+
+    const panelMap = {
+        inicio: ['ingresoInfoInicioPanel'],
+        cargue_atenciones: ['ingresoInfoCarguePanel', 'ingresoInfoHistorialPanel'],
+        prefacturas: ['ingresoInfoPrefacturasPanel'],
+        consulta: ['ingresoInfoConsultaPanel']
+    };
+    const buttonMap = {
+        inicio: 'ingresoInfoNavInicio',
+        cargue_atenciones: 'ingresoInfoNavCargueAtenciones',
+        prefacturas: 'ingresoInfoNavPrefacturas',
+        consulta: 'ingresoInfoNavConsulta'
+    };
+
+    Object.values(panelMap).flat().forEach(id => {
+        const panel = document.getElementById(id);
+        if (panel) panel.style.display = 'none';
+    });
+    Object.values(buttonMap).forEach(id => {
+        const button = document.getElementById(id);
+        if (button) button.classList.remove('active');
+    });
+
+    (panelMap[normalized] || panelMap.inicio).forEach(id => {
+        const panel = document.getElementById(id);
+        if (panel) panel.style.display = '';
+    });
+    const activeButton = document.getElementById(buttonMap[normalized] || buttonMap.inicio);
+    if (activeButton) activeButton.classList.add('active');
+
+    hideCargueAtencionesClienteSuggestions();
+
+    if (normalized === 'inicio') {
+        return;
+    }
+
+    if (normalized === 'cargue_atenciones') {
+        const canUpload = canManageComercial('atenciones', 'create');
+        updateCargueAtencionesDiaScope('', canUpload ? '' : 'Tu perfil puede consultar, pero no cargar archivos.');
+        cargarHistorialCarguesAtenciones();
+        return;
+    }
+
+    if (normalized === 'consulta') {
+        if (!hasActiveFiltersCargueAtencionesDia()) {
+            resetConsultaAtencionesDia('Ingresa uno o varios criterios para consultar atenciones cargadas.');
+        }
+        cargarHistorialCarguesAtenciones();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PREFACTURAS
+// ---------------------------------------------------------------------------
+async function generarPrefacturas() {
+    const fechaDesde = (document.getElementById('prefacturaFechaDesde') || {}).value || '';
+    const fechaHasta = (document.getElementById('prefacturaFechaHasta') || {}).value || '';
+    const carpeta = ((document.getElementById('prefacturaCarpeta') || {}).value || '').trim();
+    const resultado = document.getElementById('prefacturasResultado');
+    const btn = document.getElementById('btnGenerarPrefacturas');
+    const label = document.getElementById('btnGenerarPrefacturasLabel');
+
+    if (!fechaDesde || !fechaHasta) {
+        if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">&#9888; Debes seleccionar fecha inicio y fecha fin.</span>';
+        return;
+    }
+    if (fechaDesde > fechaHasta) {
+        if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">&#9888; La fecha inicio no puede ser mayor que la fecha fin.</span>';
+        return;
+    }
+
+    if (btn) btn.disabled = true;
+    if (label) label.textContent = 'Generando\u2026';
+    if (resultado) resultado.innerHTML = '<span style="color:#555;">Consultando atenciones y generando archivos\u2026</span>';
+
+    try {
+        const params = new URLSearchParams({ fecha_desde: fechaDesde, fecha_hasta: fechaHasta });
+        if (carpeta) params.set('carpeta', carpeta);
+
+        const response = await fetch(`/api/comercial/prefacturas/generar?${params}`, {
+            method: 'GET',
+            credentials: 'same-origin',
+        });
+
+        if (!response.ok) {
+            let msg = 'Error generando prefacturas.';
+            try {
+                const data = await response.json();
+                msg = data.error || msg;
+            } catch (_) {}
+            if (resultado) resultado.innerHTML = `<span style="color:#c0392b;">&#9888; ${msg}</span>`;
+            return;
+        }
+
+        // Nombre del archivo desde Content-Disposition
+        const disposition = response.headers.get('Content-Disposition') || '';
+        let filename = 'Prefacturas.zip';
+        const match = disposition.match(/filename[^;=\n]*=(?:(['"])([^'"]*)\1|([^;\n]*))/i);
+        if (match) filename = (match[2] || match[3] || filename).trim();
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
+
+        let msg = `&#10004; Prefacturas descargadas: <strong>${filename}</strong>`;
+        if (carpeta) msg += `<br><small style="color:#27ae60;">Archivos también guardados en: ${carpeta}</small>`;
+        if (resultado) resultado.innerHTML = `<span style="color:#27ae60;">${msg}</span>`;
+    } catch (err) {
+        console.error('generarPrefacturas error:', err);
+        if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">&#9888; Error de conexi\u00f3n al generar prefacturas.</span>';
+    } finally {
+        if (btn) btn.disabled = false;
+        if (label) label.textContent = 'Generar Prefacturas';
+    }
+}
+
+function abrirCargueAtencionDia() {
+    if (!canManageComercial('atenciones', 'read') && !canManageComercial('atenciones', 'create')) {
+        showError('No tienes permisos para consultar o cargar atenciones comerciales.');
+        return;
+    }
+
+    openCargueAtencionesDiaModal();
+
+    const submitButton = document.getElementById('cargueAtencionesDiaSubmit');
+    const fileInput = document.getElementById('cargueAtencionesDiaArchivo');
+    const canUpload = canManageComercial('atenciones', 'create');
+    if (submitButton) submitButton.disabled = !canUpload;
+    if (fileInput) fileInput.disabled = !canUpload;
+
+    applyCargueAtencionesDiaScopeUI('');
+    updateCargueAtencionesDiaScope('', '');
+    hideCargueAtencionesClienteSuggestions();
+    resetConsultaAtencionesDia('Ingresa uno o varios criterios para consultar atenciones cargadas.');
+    setIngresoInformacionSection('inicio');
+}
+
+function closeCargueAtencionDia() {
+    const modal = document.getElementById('cargueAtencionesDiaModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+    hideCargueAtencionesClienteSuggestions();
+    setIngresoInformacionSection('inicio');
+}
+
+function limpiarFiltrosCargueAtencionDia() {
+    const ids = [
+        'cargueAtencionesDiaFiltroAcuerdo',
+        'cargueAtencionesDiaFiltroVendedor',
+        'cargueAtencionesDiaFiltroCondicionComercial',
+        'cargueAtencionesDiaFiltroEstado',
+        'cargueAtencionesDiaFechaDesde',
+        'cargueAtencionesDiaFechaHasta'
+    ];
+    ids.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.value = '';
+    });
+    clearCargueAtencionesClienteSelection(false);
+    hideCargueAtencionesClienteSuggestions();
+    resetConsultaAtencionesDia('Ingresa uno o varios criterios para consultar atenciones cargadas.');
+}
+
+async function cargarHistorialCarguesAtenciones() {
+    const tbody = document.getElementById('cargueAtencionesDiaHistorialTable');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="5" class="loading">Cargando historial...</td></tr>';
+    try {
+        const response = await fetch('/api/comercial/cargue-atenciones/historial', { credentials: 'include' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || 'No se pudo cargar el historial de cargues');
+        }
+
+        const registros = Array.isArray(data.registros) ? data.registros : [];
+        applyCargueAtencionesDiaScopeUI(data.scope);
+        updateCargueAtencionesDiaScope(data.scope);
+
+        if (!registros.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="loading">No hay cargues visibles para este usuario.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = registros.map(item => `
+            <tr>
+                <td>${escapeHtml(item.fecha || 'N/A')}</td>
+                <td>${escapeHtml(item.nombre_archivo || 'N/A')}</td>
+                <td>${Number(item.total_filas || 0)}</td>
+                <td>${item.importadas == null ? 'N/A' : Number(item.importadas || 0)}</td>
+                <td>${escapeHtml(item.usuario || 'Sistema')}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando historial de atenciones del día:', error);
+        tbody.innerHTML = `<tr><td colspan="5" class="loading">${escapeHtml(error.message || 'Error al cargar historial')}</td></tr>`;
+    }
+}
+
+async function consultarAtencionesDiaCargadas(page = 1) {
+    const results = document.getElementById('cargueAtencionesDiaResults');
+    const resumen = document.getElementById('cargueAtencionesDiaResumen');
+    const pageInfo = document.getElementById('cargueAtencionesDiaPageInfo');
+    const prevBtn = document.getElementById('cargueAtencionesDiaPrevBtn');
+    const nextBtn = document.getElementById('cargueAtencionesDiaNextBtn');
+    if (!results || !resumen || !pageInfo || !prevBtn || !nextBtn) return;
+
+    const nextPage = Math.max(1, Number(page || 1));
+    const acuerdoInput = document.getElementById('cargueAtencionesDiaFiltroAcuerdo');
+    const clienteIdInput = document.getElementById('cargueAtencionesDiaFiltroClienteId');
+    const vendedorWrap = document.getElementById('cargueAtencionesDiaFiltroVendedorWrap');
+    if (!hasActiveFiltersCargueAtencionesDia()) {
+        hideCargueAtencionesClienteSuggestions();
+        resetConsultaAtencionesDia('Ingresa uno o varios criterios para consultar atenciones cargadas.');
+        return;
+    }
+
+    results.innerHTML = '<div class="loading">Consultando registros...</div>';
+
+    const params = new URLSearchParams({
+        page: String(nextPage),
+        per_page: String(window.cargueAtencionesDiaState.perPage || 50)
+    });
+
+    const acuerdo = acuerdoInput?.value?.trim();
+    const clienteId = clienteIdInput?.value?.trim();
+    const vendedor = vendedorWrap?.style.display === 'none'
+        ? ''
+        : (document.getElementById('cargueAtencionesDiaFiltroVendedor')?.value?.trim() || '');
+    const condicionComercial = document.getElementById('cargueAtencionesDiaFiltroCondicionComercial')?.value?.trim();
+    const estado = document.getElementById('cargueAtencionesDiaFiltroEstado')?.value?.trim();
+    const fechaDesde = document.getElementById('cargueAtencionesDiaFechaDesde')?.value?.trim();
+    const fechaHasta = document.getElementById('cargueAtencionesDiaFechaHasta')?.value?.trim();
+
+    if (clienteId) params.set('cliente_id', clienteId);
+    if (acuerdo && !clienteId) params.set('acuerdo', acuerdo);
+    if (vendedor) params.set('vendedor', vendedor);
+    if (condicionComercial) params.set('condicion_comercial', condicionComercial);
+    if (estado) params.set('estado', estado);
+    if (fechaDesde) params.set('fecha_desde', fechaDesde);
+    if (fechaHasta) params.set('fecha_hasta', fechaHasta);
+
+    try {
+        const response = await fetch(`/api/comercial/cargue-atenciones/consulta?${params.toString()}`, { credentials: 'include' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || 'No se pudo consultar la información cargada');
+        }
+
+        const registros = Array.isArray(data.registros) ? data.registros : [];
+        window.cargueAtencionesDiaState.page = Number(data.page || 1);
+        window.cargueAtencionesDiaState.pages = Number(data.pages || 0);
+        window.cargueAtencionesDiaState.total = Number(data.total || 0);
+
+        applyCargueAtencionesDiaScopeUI(data.scope);
+        updateCargueAtencionesDiaScope(data.scope);
+        if (data.search_required) {
+            resetConsultaAtencionesDia('Ingresa uno o varios criterios para consultar atenciones cargadas.');
+            return;
+        }
+        resumen.textContent = data.total
+            ? `${Number(data.total)} registro(s) encontrados.`
+            : 'No se encontraron registros con los filtros actuales.';
+        pageInfo.textContent = `Página ${Number(data.page || 0)} de ${Number(data.pages || 0)}`;
+        pageInfo.textContent = `Pagina ${Number(data.page || 0)} de ${Number(data.pages || 0)}`;
+        prevBtn.disabled = Number(data.page || 1) <= 1;
+        nextBtn.disabled = Number(data.page || 1) >= Number(data.pages || 0) || Number(data.pages || 0) === 0;
+
+        if (!registros.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay registros para mostrar.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = registros.map(item => `
+            <tr>
+                <td>${escapeHtml(item.fecha_creacion_orden || item.fecha_factura || 'N/A')}</td>
+                <td>
+                    <strong>${escapeHtml(item.cliente_nombre || item.acuerdo_comercial || 'Sin cliente relacionado')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.empresa_mision || 'Sin empresa en misión')}</div>
+                </td>
+                <td>
+                    <strong>${escapeHtml(item.nombre_paciente || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.nro_identificacion || 'Sin identificación')}</div>
+                </td>
+                <td>
+                    <strong>${escapeHtml(item.servicio || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">Orden ${escapeHtml(item.nro_orden || 'N/A')}</div>
+                </td>
+                <td>${formatCurrency(Number(item.precio || 0))}</td>
+                <td>
+                    <strong>${escapeHtml(item.vendedor_responsable || item.nombre_vendedor || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.usuario_creacion || 'Sin usuario origen')}</div>
+                </td>
+                <td>${escapeHtml(item.estado_orden || 'N/A')}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error consultando atenciones cargadas:', error);
+        resumen.textContent = 'No se pudo consultar la información cargada.';
+        pageInfo.textContent = 'Página 0 de 0';
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        tbody.innerHTML = `<tr><td colspan="7" class="loading">${escapeHtml(error.message || 'Error al consultar registros')}</td></tr>`;
+    }
+}
+
+async function consultarAtencionesDiaCargadas(page = 1) {
+    const results = document.getElementById('cargueAtencionesDiaResults');
+    const resumen = document.getElementById('cargueAtencionesDiaResumen');
+    const pageInfo = document.getElementById('cargueAtencionesDiaPageInfo');
+    const prevBtn = document.getElementById('cargueAtencionesDiaPrevBtn');
+    const nextBtn = document.getElementById('cargueAtencionesDiaNextBtn');
+    if (!results || !resumen || !pageInfo || !prevBtn || !nextBtn) return;
+
+    const nextPage = Math.max(1, Number(page || 1));
+    const acuerdoInput = document.getElementById('cargueAtencionesDiaFiltroAcuerdo');
+    const clienteIdInput = document.getElementById('cargueAtencionesDiaFiltroClienteId');
+    const vendedorWrap = document.getElementById('cargueAtencionesDiaFiltroVendedorWrap');
+    if (!hasActiveFiltersCargueAtencionesDia()) {
+        hideCargueAtencionesClienteSuggestions();
+        resetConsultaAtencionesDia('Ingresa uno o varios criterios para consultar atenciones cargadas.');
+        return;
+    }
+
+    results.innerHTML = '<div class="loading">Consultando registros...</div>';
+
+    const params = new URLSearchParams({
+        page: String(nextPage),
+        per_page: String(window.cargueAtencionesDiaState.perPage || 50)
+    });
+
+    const acuerdo = acuerdoInput?.value?.trim();
+    const clienteId = clienteIdInput?.value?.trim();
+    const vendedor = vendedorWrap?.style.display === 'none'
+        ? ''
+        : (document.getElementById('cargueAtencionesDiaFiltroVendedor')?.value?.trim() || '');
+    const estado = document.getElementById('cargueAtencionesDiaFiltroEstado')?.value?.trim();
+    const fechaDesde = document.getElementById('cargueAtencionesDiaFechaDesde')?.value?.trim();
+    const fechaHasta = document.getElementById('cargueAtencionesDiaFechaHasta')?.value?.trim();
+
+    if (clienteId) params.set('cliente_id', clienteId);
+    if (acuerdo && !clienteId) params.set('acuerdo', acuerdo);
+    if (vendedor) params.set('vendedor', vendedor);
+    if (estado) params.set('estado', estado);
+    if (fechaDesde) params.set('fecha_desde', fechaDesde);
+    if (fechaHasta) params.set('fecha_hasta', fechaHasta);
+
+    try {
+        const response = await fetch(`/api/comercial/cargue-atenciones/consulta?${params.toString()}`, { credentials: 'include' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || 'No se pudo consultar la informacion cargada');
+        }
+
+        const registros = Array.isArray(data.registros) ? data.registros : [];
+        window.cargueAtencionesDiaState.page = Number(data.page || 1);
+        window.cargueAtencionesDiaState.pages = Number(data.pages || 0);
+        window.cargueAtencionesDiaState.total = Number(data.total || 0);
+
+        applyCargueAtencionesDiaScopeUI(data.scope);
+        updateCargueAtencionesDiaScope(data.scope);
+        if (data.search_required) {
+            resetConsultaAtencionesDia('Ingresa uno o varios criterios para consultar atenciones cargadas.');
+            return;
+        }
+
+        resumen.textContent = data.total
+            ? `${Number(data.total)} registro(s) encontrados.`
+            : 'No se encontraron registros con los filtros actuales.';
+        pageInfo.textContent = `Pagina ${Number(data.page || 0)} de ${Number(data.pages || 0)}`;
+        prevBtn.disabled = Number(data.page || 1) <= 1;
+        nextBtn.disabled = Number(data.page || 1) >= Number(data.pages || 0) || Number(data.pages || 0) === 0;
+
+        if (!registros.length) {
+            results.innerHTML = '<div class="loading">No hay registros para mostrar.</div>';
+            return;
+        }
+
+        results.innerHTML = construirResultadosAgrupadosCargueAtenciones(registros);
+    } catch (error) {
+        console.error('Error consultando atenciones cargadas:', error);
+        resumen.textContent = 'No se pudo consultar la informacion cargada.';
+        pageInfo.textContent = 'Pagina 0 de 0';
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        results.innerHTML = `<div class="loading">${escapeHtml(error.message || 'Error al consultar registros')}</div>`;
+    }
+}
+
+async function subirArchivoAtencionesDia(event) {
+    event.preventDefault();
+    if (!canManageComercial('atenciones', 'create')) {
+        showError('No tienes permiso para cargar atenciones comerciales.');
+        return;
+    }
+
+    const input = document.getElementById('cargueAtencionesDiaArchivo');
+    const resultado = document.getElementById('cargueAtencionesDiaResultado');
+    const submitButton = document.getElementById('cargueAtencionesDiaSubmit');
+    const archivo = input?.files?.[0];
+
+    if (!archivo) {
+        showError('Debes seleccionar un archivo .xlsx antes de cargar.');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+
+    if (submitButton) submitButton.disabled = true;
+    if (resultado) resultado.textContent = 'Cargando archivo, por favor espera...';
+
+    try {
+        const response = await fetch('/api/comercial/cargue-atenciones', {
+            method: 'POST',
+            credentials: 'include',
+            body: formData
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || 'No se pudo completar el cargue');
+        }
+
+        const partes = [
+            `${Number(data.importadas || 0)} importadas`,
+            `${Number(data.duplicadas || 0)} duplicadas`,
+            `${Number(data.errores || 0)} con error`,
+            `${Number(data.relacionadas_cliente || 0)} relacionadas con cliente`,
+            `${Number(data.relacionadas_vendedor || 0)} relacionadas con vendedor`
+        ];
+        if (resultado) resultado.textContent = `Archivo ${data.nombre_archivo || archivo.name}: ${partes.join(' · ')}`;
+
+        if (input) input.value = '';
+        showSuccess('Cargue de atenciones completado.');
+        await cargarHistorialCarguesAtenciones();
+        if (hasActiveFiltersCargueAtencionesDia()) {
+            await consultarAtencionesDiaCargadas(1);
+        } else {
+            resetConsultaAtencionesDia('Ingresa uno o varios criterios para consultar atenciones cargadas.');
+        }
+    } catch (error) {
+        console.error('Error cargando archivo de atenciones:', error);
+        if (resultado) resultado.textContent = error.message || 'No se pudo completar el cargue.';
+        showError(error.message || 'No se pudo completar el cargue.');
+    } finally {
+        if (submitButton) submitButton.disabled = false;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('cargueAtencionesDiaForm');
+    if (form && !form.dataset.boundCargueAtencionesDia) {
+        form.addEventListener('submit', subirArchivoAtencionesDia);
+        form.dataset.boundCargueAtencionesDia = 'true';
+    }
+
+    const acuerdoInput = document.getElementById('cargueAtencionesDiaFiltroAcuerdo');
+    const suggestionsContainer = document.getElementById('cargueAtencionesDiaClienteSuggestions');
+    if (acuerdoInput && !acuerdoInput.dataset.boundClienteSuggestions) {
+        acuerdoInput.addEventListener('input', programarBusquedaClientesCargueAtenciones);
+        acuerdoInput.addEventListener('focus', () => {
+            if (acuerdoInput.value.trim()) {
+                programarBusquedaClientesCargueAtenciones();
+            }
+        });
+        acuerdoInput.addEventListener('blur', () => {
+            window.setTimeout(hideCargueAtencionesClienteSuggestions, 150);
+        });
+        acuerdoInput.dataset.boundClienteSuggestions = 'true';
+    }
+    if (suggestionsContainer && !suggestionsContainer.dataset.boundClienteSuggestions) {
+        suggestionsContainer.addEventListener('mousedown', event => {
+            const button = event.target.closest('.cargue-atenciones-suggestion-item');
+            if (!button) return;
+            seleccionarClienteCargueAtenciones({
+                id: button.dataset.clienteId,
+                razon_social: button.dataset.clienteLabel,
+                nombre_comercial: button.dataset.clienteNombreComercial,
+                nit: button.dataset.clienteNit,
+            });
+        });
+        suggestionsContainer.dataset.boundClienteSuggestions = 'true';
+    }
+});
+
 function formatearNombreContactoCliente(nombre, cargo) {
     const nombreLimpio = (nombre || '').trim();
     const cargoLimpio = (cargo || '').trim();
@@ -4415,54 +5211,178 @@ function resetRecepcionConsulta() {
     if (items) items.innerHTML = '<div class="loading">Selecciona un cliente para ver su detalle.</div>';
 }
 
-function construirTarjetasRecepcionCliente(cliente, tarifasCliente, catalogoMap) {
-    if (Array.isArray(tarifasCliente) && tarifasCliente.length > 0) {
-        return tarifasCliente.map(tarifa => {
-            const itemCatalogo = catalogoMap.get(String(tarifa.catalogo_item_id));
-            const componentesPaquete = Array.isArray(itemCatalogo?.componentes) ? itemCatalogo.componentes : [];
-            const descripcion = tarifa.tipo_item === 'PAQUETE'
-                ? ''
-                : (tarifa.clasificacion_resumen || tarifa.tipo_item || 'Item convenido');
-            const vigencia = [tarifa.vigencia_desde, tarifa.vigencia_hasta].filter(Boolean).join(' a ');
-            const valorMostrar = tarifa.tarifa_negociada || tarifa.tarifa_base || 0;
-            const detallePaquete = tarifa.tipo_item === 'PAQUETE'
-                ? (componentesPaquete.length > 0
-                    ? `<ol class="recepcion-paquete-list">${componentesPaquete.map((componente, index) => `<li>${escapeHtml(componente?.nombre || `Examen ${index + 1}`)}</li>`).join('')}</ol>`
-                    : '<div class="recepcion-cliente-item-meta">Paquete sin componentes detallados.</div>')
-                : '';
+function normalizarTextoConvenioRecepcion(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, ' ')
+        .trim();
+}
 
-            return `
-                <div class="recepcion-cliente-item">
-                    <div>
-                        <strong>${escapeHtml(tarifa.item_nombre || 'Item convenido')}</strong>
-                        ${descripcion ? `<div class="recepcion-cliente-item-meta">${escapeHtml(descripcion)}</div>` : ''}
-                        ${detallePaquete}
-                        ${vigencia ? `<div class="recepcion-cliente-item-meta">Vigencia: ${escapeHtml(vigencia)}</div>` : ''}
-                    </div>
-                    <div class="recepcion-cliente-item-price">${formatCurrency(valorMostrar)}</div>
-                </div>
-            `;
-        }).join('');
+function separarTokensConvenioRecepcion(value) {
+    return String(value || '')
+        .split(/[\n,;]+/)
+        .map(token => token.trim())
+        .filter(Boolean);
+}
+
+function construirItemsConvenioRecepcionFallback(cliente, tarifasCliente, catalogo) {
+    const itemsCatalogo = Array.isArray(catalogo) ? catalogo : [];
+    const tarifasActivas = Array.isArray(tarifasCliente)
+        ? tarifasCliente.filter(tarifa => tarifa && tarifa.activo !== false)
+        : [];
+    const itemsResultado = new Map();
+    const catalogoMap = new Map(itemsCatalogo.map(item => [String(item.id), item]));
+
+    if (tarifasActivas.length > 0) {
+        tarifasActivas.forEach(tarifa => {
+            const itemCatalogo = catalogoMap.get(String(tarifa.catalogo_item_id));
+            const itemNormalizado = {
+                id: tarifa.catalogo_item_id || itemCatalogo?.id || null,
+                tipo_item: tarifa.tipo_item || itemCatalogo?.tipo_item || 'EXAMEN',
+                nombre: tarifa.item_nombre || itemCatalogo?.nombre || 'Item convenido',
+                valor_unitario: Number(tarifa.tarifa_negociada || tarifa.tarifa_base || itemCatalogo?.tarifa_base || 0),
+                clasificacion_resumen: tarifa.clasificacion_resumen || itemCatalogo?.clasificacion_resumen || '',
+                componentes: Array.isArray(itemCatalogo?.componentes)
+                    ? itemCatalogo.componentes.map(componente => componente?.nombre || '').filter(Boolean)
+                    : [],
+                vigencia_desde: tarifa.vigencia_desde || null,
+                vigencia_hasta: tarifa.vigencia_hasta || null
+            };
+            const itemKey = itemNormalizado.id != null ? String(itemNormalizado.id) : `tarifa-${tarifa.id || itemNormalizado.nombre}`;
+            itemsResultado.set(itemKey, itemNormalizado);
+        });
     }
+
+    const itemsPorClave = new Map();
+    itemsCatalogo.forEach(item => {
+        [item?.nombre, item?.codigo].forEach(valor => {
+            const clave = normalizarTextoConvenioRecepcion(valor);
+            if (clave) itemsPorClave.set(clave, item);
+        });
+    });
+
+    const idsPermitidos = new Set();
+    separarTokensConvenioRecepcion(cliente?.examenes_convenidos).forEach(token => {
+        const item = itemsPorClave.get(normalizarTextoConvenioRecepcion(token));
+        if (item && item.tipo_item === 'EXAMEN') {
+            idsPermitidos.add(item.id);
+        }
+    });
+    separarTokensConvenioRecepcion(cliente?.servicios_convenidos).forEach(token => {
+        const item = itemsPorClave.get(normalizarTextoConvenioRecepcion(token));
+        if (item && item.tipo_item !== 'EXAMEN') {
+            idsPermitidos.add(item.id);
+        }
+    });
+
+    itemsCatalogo
+        .filter(item => idsPermitidos.has(item.id))
+        .forEach(item => {
+            const itemKey = String(item.id);
+            const previo = itemsResultado.get(itemKey);
+            itemsResultado.set(itemKey, {
+                id: item.id,
+                tipo_item: item.tipo_item || previo?.tipo_item || 'EXAMEN',
+                nombre: item.nombre || previo?.nombre || 'Item convenido',
+                valor_unitario: Number(previo?.valor_unitario || item.tarifa_base || 0),
+                clasificacion_resumen: item.clasificacion_resumen || previo?.clasificacion_resumen || '',
+                componentes: Array.isArray(item.componentes)
+                    ? item.componentes.map(componente => componente?.nombre || '').filter(Boolean)
+                    : (previo?.componentes || []),
+                vigencia_desde: previo?.vigencia_desde || null,
+                vigencia_hasta: previo?.vigencia_hasta || null
+            });
+        });
+
+    return Array.from(itemsResultado.values()).sort((a, b) => {
+        const tipoA = a.tipo_item === 'EXAMEN' ? 0 : 1;
+        const tipoB = b.tipo_item === 'EXAMEN' ? 0 : 1;
+        if (tipoA !== tipoB) return tipoA - tipoB;
+        return (a.nombre || '').localeCompare(b.nombre || '');
+    });
+}
+
+async function cargarConvenioRecepcionCliente(clienteId) {
+    const response = await fetch(`/api/comercial/clientes/${clienteId}/convenio-items`, {
+        credentials: 'include'
+    });
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.error || 'No se pudieron cargar los items convenidos del cliente');
+    }
+    return Array.isArray(data) ? data : [];
+}
+
+function construirTarjetasRecepcionCliente(cliente, convenioItems) {
+    const items = Array.isArray(convenioItems) ? convenioItems : [];
+    const examenes = items
+        .filter(item => item?.tipo_item === 'EXAMEN')
+        .sort((a, b) => (a?.nombre || '').localeCompare(b?.nombre || ''));
+    const paquetes = items
+        .filter(item => item?.tipo_item !== 'EXAMEN')
+        .sort((a, b) => (a?.nombre || '').localeCompare(b?.nombre || ''));
 
     const notasConvenio = [
-        cliente.examenes_convenidos ? `Examenes: ${cliente.examenes_convenidos}` : '',
-        cliente.servicios_convenidos ? `Paquetes/Servicios: ${cliente.servicios_convenidos}` : '',
-        cliente.tarifas_convenidas ? `Observaciones de tarifa: ${cliente.tarifas_convenidas}` : ''
+        cliente?.tarifas_convenidas ? `Observaciones de tarifa: ${cliente.tarifas_convenidas}` : ''
     ].filter(Boolean);
 
-    if (notasConvenio.length === 0) {
-        return '<div class="loading">Este cliente no tiene examenes o paquetes convenidos registrados.</div>';
+    if (examenes.length === 0 && paquetes.length === 0) {
+        const notaHtml = notasConvenio.length > 0
+            ? `<div class="recepcion-convenio-notes">${notasConvenio.map(texto => `<div class="recepcion-cliente-item-meta">${escapeHtml(texto)}</div>`).join('')}</div>`
+            : '';
+        return `<div class="loading">Este cliente no tiene examenes o paquetes convenidos registrados.</div>${notaHtml}`;
     }
 
-    return notasConvenio.map(texto => `
-        <div class="recepcion-cliente-item">
-            <div>
-                <strong>Convenio registrado</strong>
-                <div class="recepcion-cliente-item-meta">${escapeHtml(texto)}</div>
+    const examenesHtml = examenes.length > 0
+        ? `<ol class="recepcion-convenio-list">${examenes.map(item => `
+                <li class="recepcion-convenio-row">
+                    <div class="recepcion-convenio-item-copy">
+                        <strong>${escapeHtml(item.nombre || 'Examen convenido')}</strong>
+                    </div>
+                    <div class="recepcion-cliente-item-price">${formatCurrency(item.valor_unitario || 0)}</div>
+                </li>
+            `).join('')}</ol>`
+        : '<div class="recepcion-convenio-empty">Este cliente no tiene examenes convenidos.</div>';
+
+    const paquetesHtml = paquetes.length > 0
+        ? `<ol class="recepcion-paquetes-list">${paquetes.map((item, index) => {
+            const componentes = Array.isArray(item.componentes) ? item.componentes.filter(Boolean) : [];
+            return `
+                <li class="recepcion-paquete-card">
+                    <strong>${escapeHtml(item.nombre || `Paquete ${index + 1}`)}</strong>
+                    ${componentes.length > 0
+                        ? `<ol class="recepcion-paquete-list">${componentes.map(componente => `<li>${escapeHtml(componente)}</li>`).join('')}</ol>`
+                        : '<div class="recepcion-cliente-item-meta">Paquete sin componentes detallados.</div>'}
+                </li>
+            `;
+        }).join('')}</ol>`
+        : '<div class="recepcion-convenio-empty">Este cliente no tiene paquetes convenidos.</div>';
+
+    const notasHtml = notasConvenio.length > 0
+        ? `<div class="recepcion-convenio-notes">${notasConvenio.map(texto => `<div class="recepcion-cliente-item-meta">${escapeHtml(texto)}</div>`).join('')}</div>`
+        : '';
+
+    return `
+        <div class="recepcion-convenio-columns">
+            <div class="recepcion-convenio-column">
+                <div class="recepcion-convenio-column-header">
+                    <h5>Examenes</h5>
+                    <span class="recepcion-convenio-count">${examenes.length}</span>
+                </div>
+                ${examenesHtml}
+            </div>
+            <div class="recepcion-convenio-column">
+                <div class="recepcion-convenio-column-header">
+                    <h5>Paquetes</h5>
+                    <span class="recepcion-convenio-count">${paquetes.length}</span>
+                </div>
+                ${paquetesHtml}
             </div>
         </div>
-    `).join('');
+        ${notasHtml}
+    `;
 }
 
 async function abrirClienteRecepcion(id) {
@@ -4481,10 +5401,16 @@ async function abrirClienteRecepcion(id) {
             asegurarTarifasComerciales(),
             asegurarCatalogoComercial()
         ]);
-        const catalogoMap = new Map((catalogo || []).map(item => [String(item.id), item]));
         const tarifasCliente = (tarifas || [])
             .filter(tarifa => String(tarifa.cliente_id) === String(cliente.id) && tarifa.activo !== false)
             .sort((a, b) => (a.item_nombre || '').localeCompare(b.item_nombre || ''));
+        let convenioItems = [];
+        try {
+            convenioItems = await cargarConvenioRecepcionCliente(cliente.id);
+        } catch (convenioError) {
+            console.warn('No se pudo cargar convenio detallado para recepcion, se usa respaldo local.', convenioError);
+            convenioItems = construirItemsConvenioRecepcionFallback(cliente, tarifasCliente, catalogo);
+        }
 
         recepcionClienteActivoId = Number(cliente.id);
 
@@ -4528,7 +5454,7 @@ async function abrirClienteRecepcion(id) {
             ].filter(Boolean).join(' · ') || 'Sin celular registrado.';
         }
         if (items) {
-            items.innerHTML = construirTarjetasRecepcionCliente(cliente, tarifasCliente, catalogoMap);
+            items.innerHTML = construirTarjetasRecepcionCliente(cliente, convenioItems);
         }
         if (consultaPanel) consultaPanel.style.display = 'none';
         if (detallePanel) detallePanel.style.display = 'block';
@@ -7482,6 +8408,7 @@ async function editarItemCatalogoComercialLegacy(id) {
     document.getElementById('catalogoComercialTipoExamen').value = item.tipo_examen || '';
     document.getElementById('catalogoComercialCodigo').value = item.codigo || '';
     document.getElementById('catalogoComercialNombre').value = item.nombre || '';
+    document.getElementById('catalogoComercialNombreCorto').value = item.nombre_corto || '';
     document.getElementById('catalogoComercialTarifaBase').value = item.tarifa_base || 0;
     document.getElementById('catalogoComercialDescripcion').value = item.descripcion || '';
     document.getElementById('catalogoComercialActivo').checked = item.activo !== false;
@@ -7883,6 +8810,7 @@ async function guardarCatalogoComercialConfigLegacy(event) {
                 tipo_examen: tipoItem === 'EXAMEN' ? tipoExamen : null,
                 codigo: document.getElementById('catalogoComercialCodigo').value.trim() || null,
                 nombre: document.getElementById('catalogoComercialNombre').value.trim(),
+                nombre_corto: document.getElementById('catalogoComercialNombreCorto').value.trim() || null,
                 tarifa_base: tarifaBase,
                 descripcion: document.getElementById('catalogoComercialDescripcion').value.trim() || null,
                 activo: document.getElementById('catalogoComercialActivo').checked,
@@ -8333,6 +9261,7 @@ async function editarItemCatalogoComercial(id) {
     document.getElementById('catalogoComercialSubtipoLaboratorio').value = item.subtipo_laboratorio || '';
     document.getElementById('catalogoComercialCodigo').value = item.codigo || '';
     document.getElementById('catalogoComercialNombre').value = item.nombre || '';
+    document.getElementById('catalogoComercialNombreCorto').value = item.nombre_corto || '';
     document.getElementById('catalogoComercialTarifaBase').value = item.tarifa_base || 0;
     document.getElementById('catalogoComercialDescripcion').value = item.descripcion || '';
     document.getElementById('catalogoComercialActivo').checked = item.activo !== false;
@@ -8368,6 +9297,7 @@ async function guardarCatalogoComercialConfig(event) {
                 subtipo_laboratorio: tipoItem === 'EXAMEN' ? (subtipoLaboratorio || null) : null,
                 codigo: document.getElementById('catalogoComercialCodigo').value.trim() || null,
                 nombre: document.getElementById('catalogoComercialNombre').value.trim(),
+                nombre_corto: document.getElementById('catalogoComercialNombreCorto').value.trim() || null,
                 tarifa_base: tarifaBase,
                 descripcion: document.getElementById('catalogoComercialDescripcion').value.trim() || null,
                 activo: document.getElementById('catalogoComercialActivo').checked,
