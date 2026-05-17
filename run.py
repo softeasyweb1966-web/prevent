@@ -37,6 +37,7 @@ if __name__ == "__main__":
             "dashboard": "/api/dashboard",
             "nomina": "/api/nomina",
             "usuarios": "/api/usuarios",
+            "chat": "/api/chat",
         },
     }
 

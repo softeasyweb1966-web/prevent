@@ -13,6 +13,10 @@ def _normalize_database_url(url):
     return url
 
 
+def _env_flag(name, default='false'):
+    return os.environ.get(name, default).lower() == 'true'
+
+
 class Config:
     """Configuracion base de la aplicacion."""
 
@@ -35,7 +39,7 @@ class Config:
 
     # Sesiones
     PERMANENT_SESSION_LIFETIME = timedelta(hours=24)
-    SESSION_COOKIE_SECURE = False
+    SESSION_COOKIE_SECURE = _env_flag('SESSION_COOKIE_SECURE', 'false')
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
 
@@ -78,7 +82,6 @@ class ProductionConfig(Config):
 
     DEBUG = False
     TESTING = False
-    SESSION_COOKIE_SECURE = True
     AUTO_CREATE_TABLES = os.environ.get('AUTO_CREATE_TABLES', 'false').lower() == 'true'
     AUTO_SEED_ADMIN = os.environ.get('AUTO_SEED_ADMIN', 'false').lower() == 'true'
 

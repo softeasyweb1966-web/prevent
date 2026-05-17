@@ -53,15 +53,107 @@ class Usuario(UserMixin, db.Model):
     usuario = db.Column(db.String(100), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey('roles.id'), nullable=False)
-    
+
+    # Superusuario del sistema — único, indestructible, gestionado por SOFTEASY-WEB
+    is_easy = db.Column(db.Boolean, default=False, nullable=False)
+
     activo = db.Column(db.Boolean, default=True)
     ultimo_acceso = db.Column(db.DateTime)
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
+    # Permisos adicionales asignados directamente al usuario (por encima del rol)
+    permisos_extra = db.relationship(
+        'Permiso',
+        secondary='usuario_permiso',
+        backref=db.backref('usuarios_directos', lazy='dynamic'),
+        lazy='select',
+    )
+
     def __repr__(self):
         return f'<Usuario {self.usuario}>'
+
+
+usuario_permiso = db.Table(
+    'usuario_permiso',
+    db.Column('usuario_id', db.Integer, db.ForeignKey('usuarios.id'), primary_key=True),
+    db.Column('permiso_id', db.Integer, db.ForeignKey('permisos.id'), primary_key=True),
+)
+
+
+# ==================== MODELOS DE CHAT INTERNO ====================
+
+class ChatConversacion(db.Model):
+    """Conversacion interna entre usuarios del sistema."""
+    __tablename__ = 'chat_conversaciones'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tipo = db.Column(db.String(20), nullable=False, default='DIRECTO', index=True)
+    titulo = db.Column(db.String(200))
+    direct_key = db.Column(db.String(50), unique=True, index=True)
+    creada_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False, index=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False, index=True)
+
+    creador = db.relationship('Usuario', foreign_keys=[creada_por_id])
+    participantes = db.relationship(
+        'ChatParticipante',
+        backref='conversacion',
+        lazy='select',
+        cascade='all, delete-orphan',
+        order_by='ChatParticipante.id.asc()'
+    )
+    mensajes = db.relationship(
+        'ChatMensaje',
+        backref='conversacion',
+        lazy='select',
+        cascade='all, delete-orphan',
+        order_by='ChatMensaje.created_at.asc()'
+    )
+
+    def __repr__(self):
+        return f'<ChatConversacion {self.id} {self.tipo}>'
+
+
+class ChatParticipante(db.Model):
+    """Participantes que tienen acceso a una conversacion."""
+    __tablename__ = 'chat_participantes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    conversacion_id = db.Column(db.Integer, db.ForeignKey('chat_conversaciones.id'), nullable=False, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False, index=True)
+    ultimo_leido_at = db.Column(db.DateTime)
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('conversacion_id', 'usuario_id', name='uq_chat_participante_conversacion_usuario'),
+    )
+
+    def __repr__(self):
+        return f'<ChatParticipante conv={self.conversacion_id} user={self.usuario_id}>'
+
+
+class ChatMensaje(db.Model):
+    """Mensaje enviado dentro de una conversacion interna."""
+    __tablename__ = 'chat_mensajes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    conversacion_id = db.Column(db.Integer, db.ForeignKey('chat_conversaciones.id'), nullable=False, index=True)
+    remitente_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False, index=True)
+    contenido = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    remitente = db.relationship('Usuario', foreign_keys=[remitente_id])
+
+    def __repr__(self):
+        return f'<ChatMensaje {self.id} conv={self.conversacion_id}>'
 
 
 # ==================== MODELOS DE NÓMINA ====================
@@ -237,12 +329,16 @@ class ClienteComercial(db.Model):
     telefono_empresa = db.Column(db.String(50))
     email_empresa = db.Column(db.String(120))
     contacto_principal = db.Column(db.String(150))
+    cargo_contacto_principal = db.Column(db.String(150))
     celular_contacto_principal = db.Column(db.String(50))
     email_contacto_principal = db.Column(db.String(120))
     contacto_facturacion = db.Column(db.String(150))
+    cargo_contacto_facturacion = db.Column(db.String(150))
     celular_facturacion = db.Column(db.String(50))
     email_facturacion = db.Column(db.String(120))
+    medio_autorizacion = db.Column(db.String(30))
     puntos_atencion_recepcion = db.Column(db.Text)
+    estado_cliente = db.Column(db.String(30), nullable=False, default='ACTIVO')
     condicion_comercial = db.Column(db.String(20), nullable=False, default='EFECTIVO')
     requiere_factura = db.Column(db.Boolean, default=False, nullable=False)
     fechas_facturacion = db.Column(db.String(120))
@@ -979,3 +1075,67 @@ class PrestamoPago(db.Model):
     def __repr__(self):
         return f'<PrestamoPago {self.prestamo_id} - {self.id}>'
 
+
+
+# ==================== MODELO CARGUE DIARIO DE ATENCIONES ====================
+
+class CargueAtencionDia(db.Model):
+    """Registro de cada cargue de archivo Excel de atenciones del día."""
+    __tablename__ = 'cargue_atenciones_dia'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre_archivo = db.Column(db.String(255), nullable=False)
+    total_filas = db.Column(db.Integer, default=0)
+    filas_importadas = db.Column(db.Integer, default=0)
+    filas_duplicadas = db.Column(db.Integer, default=0)
+    filas_error = db.Column(db.Integer, default=0)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+    detalles = db.relationship(
+        'AtencionDiaDetalle',
+        backref='cargue',
+        lazy='dynamic',
+        cascade='all, delete-orphan',
+    )
+
+    def __repr__(self):
+        return f'<CargueAtencionDia {self.nombre_archivo}>'
+
+
+class AtencionDiaDetalle(db.Model):
+    """Línea de detalle de una orden de servicio cargada desde Excel."""
+    __tablename__ = 'atenciones_dia_detalle'
+
+    id = db.Column(db.Integer, primary_key=True)
+    cargue_id = db.Column(db.Integer, db.ForeignKey('cargue_atenciones_dia.id'), nullable=False, index=True)
+
+    # Campos del Excel
+    nro_orden = db.Column(db.String(50), index=True)
+    nro_factura = db.Column(db.String(100))
+    fecha_factura = db.Column(db.DateTime)
+    precio = db.Column(Numeric(15, 2))
+    forma_pago = db.Column(db.String(30))
+    servicio = db.Column(db.String(300))
+    nro_identificacion = db.Column(db.String(60))
+    nombre_paciente = db.Column(db.String(300))
+    acuerdo_comercial = db.Column(db.String(300), index=True)
+    empresa_mision = db.Column(db.String(300))
+    sede = db.Column(db.String(100))
+    nombre_vendedor = db.Column(db.String(200), index=True)
+    fecha_creacion_orden = db.Column(db.DateTime)
+    usuario_creacion = db.Column(db.String(100))
+    estado_orden = db.Column(db.String(50), index=True)
+    fecha_anulacion = db.Column(db.DateTime)
+    archivo_origen = db.Column(db.String(300))
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    # Índice compuesto para detectar duplicados exactos
+    __table_args__ = (
+        db.Index('ix_atencion_dia_orden_servicio', 'nro_orden', 'servicio', 'nro_identificacion'),
+    )
+
+    def __repr__(self):
+        return f'<AtencionDiaDetalle orden={self.nro_orden} paciente={self.nombre_paciente}>'

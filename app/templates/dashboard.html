@@ -27,6 +27,9 @@
             <li><a href="#" class="menu-item" data-module="recepcion">
                 <span class="icon">RP</span> Consulta Clientes
             </a></li>
+            <li><a href="#" class="menu-item" data-module="chat">
+                <span class="icon">CI</span> Chat Interno
+            </a></li>
             <li><a href="#" class="menu-item" data-module="impuestos">
                 <span class="icon">📋</span> Impuestos
             </a></li>
@@ -45,11 +48,13 @@
             <li><a href="#" class="menu-item" data-module="tablas">
                 <span class="icon">⚙️</span> Tablas
             </a></li>
+            <li>
+                <button id="logoutMenuBtn" type="button" class="menu-item menu-item-button" data-action="logout">
+                    <span class="icon">SL</span> Salir
+                </button>
+            </li>
         </ul>
         
-        <div class="sidebar-footer">
-            <button id="logoutBtn" class="btn btn-secondary">Cerrar Sesión</button>
-        </div>
     </nav>
     
     <main class="main-content">
@@ -1130,18 +1135,90 @@
                 </div>
             </div>
             
+            <div id="chatView" class="module-view">
+                <div class="recent-section" style="margin-bottom: 16px;">
+                    <h2 style="margin-bottom: 4px;">Chat Interno</h2>
+                    <p style="margin:0; color:#555; font-size:0.95rem;">Mensajeria interna entre usuarios autenticados: individual, grupal o general.</p>
+                </div>
+
+                <div class="chat-layout">
+                    <aside class="chat-sidebar-panel">
+                        <div class="chat-toolbar">
+                            <div class="form-group" style="margin-bottom: 12px;">
+                                <label for="chatGroupTitle">Nuevo chat interno</label>
+                                <input id="chatGroupTitle" type="text" placeholder="Titulo opcional para chat grupal o general..." />
+                            </div>
+                            <div class="chat-recipient-actions">
+                                <button id="chatSelectAllBtn" class="btn btn-secondary" type="button">Todos</button>
+                                <button id="chatClearSelectionBtn" class="btn btn-secondary" type="button">Limpiar</button>
+                            </div>
+                            <div id="chatRecipientSummary" class="chat-recipient-summary">Selecciona uno o varios usuarios.</div>
+                            <div id="chatUserChecklist" class="chat-user-checklist">
+                                <div class="loading">Cargando usuarios...</div>
+                            </div>
+                            <button id="chatStartConversationBtn" class="btn btn-primary" type="button">Crear chat</button>
+                        </div>
+
+                        <div class="form-group chat-search-group">
+                            <label for="chatConversationSearch">Buscar conversacion</label>
+                            <input id="chatConversationSearch" type="text" placeholder="Nombre o usuario..." />
+                        </div>
+
+                        <div id="chatConversationList" class="chat-conversation-list">
+                            <div class="loading">Cargando conversaciones...</div>
+                        </div>
+                    </aside>
+
+                    <section class="chat-main-panel">
+                        <div id="chatEmptyState" class="chat-empty-state">
+                            <h3>Selecciona una conversacion</h3>
+                            <p>Abre un chat con otro usuario para empezar a intercambiar mensajes internos.</p>
+                        </div>
+
+                        <div id="chatConversationPanel" class="chat-conversation-panel" style="display:none;">
+                            <div class="chat-header">
+                                <div>
+                                    <h3 id="chatConversationTitle">Conversacion</h3>
+                                    <p id="chatConversationSubtitle">Sin mensajes por ahora.</p>
+                                </div>
+                                <span id="chatConversationUnread" class="badge badge-info" style="display:none;">0 nuevos</span>
+                            </div>
+
+                            <div id="chatMessages" class="chat-messages">
+                                <div class="loading">Cargando mensajes...</div>
+                            </div>
+
+                            <form id="chatMessageForm" class="chat-compose-form">
+                                <input type="hidden" id="chatConversationId" />
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="chatMessageInput">Mensaje</label>
+                                    <textarea id="chatMessageInput" rows="3" placeholder="Escribe un mensaje interno..." required></textarea>
+                                </div>
+                                <div class="chat-compose-actions">
+                                    <span class="chat-compose-hint">Actualizacion automatica cada pocos segundos.</span>
+                                    <button type="submit" class="btn btn-primary">Enviar</button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
             <div id="usuariosView" class="module-view">
                 <div id="usuariosHomeHeader" class="module-header">
                     <div class="button-group module-actions">
                         <button class="btn btn-primary" onclick="showNewUserForm()" aria-label="Nuevo Usuario">
                             <span class="btn-icon">＋</span><span class="btn-label">Nuevo Usuario</span>
                         </button>
+                        <button class="btn btn-secondary" onclick="showNewRoleForm()" aria-label="Nuevo Rol">
+                            <span class="btn-icon">＋</span><span class="btn-label">Nuevo Rol</span>
+                        </button>
                     </div>
                 </div>
 
                 <div class="recent-section" style="margin-bottom: 16px;">
                     <h2 style="margin-bottom: 4px;">Gestión de Usuarios</h2>
-                    <p style="margin:0; color:#555; font-size:0.95rem;">Cree, edite y administre los usuarios del sistema.</p>
+                    <p style="margin:0; color:#555; font-size:0.95rem;">Cree roles, relacione accesos del menu y permisos comerciales, y luego asigne esos roles a los usuarios del sistema.</p>
                 </div>
 
                 <div class="table-container">
@@ -1149,6 +1226,7 @@
                         <thead>
                             <tr>
                                 <th>Usuario</th>
+                                <th>Nombre</th>
                                 <th>Email</th>
                                 <th>Rol</th>
                                 <th>Estado</th>
@@ -1157,10 +1235,135 @@
                         </thead>
                         <tbody id="usuariosTable">
                             <tr>
-                                <td colspan="5" class="loading">Cargando usuarios...</td>
+                                <td colspan="6" class="loading">Cargando usuarios...</td>
                             </tr>
                         </tbody>
                     </table>
+                </div>
+
+                <div class="table-container" style="margin-top: 18px;">
+                    <div class="module-header" style="margin-bottom: 12px;">
+                        <h3 style="margin:0;">Roles y Permisos</h3>
+                        <div class="button-group module-actions">
+                            <button class="btn btn-secondary" onclick="showNewRoleForm()" aria-label="Nuevo Rol">
+                                <span class="btn-icon">+</span><span class="btn-label">Nuevo Rol</span>
+                            </button>
+                        </div>
+                    </div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Rol</th>
+                                <th>Descripción</th>
+                                <th>Accesos</th>
+                                <th>Usuarios</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rolesTable">
+                            <tr>
+                                <td colspan="5" class="loading">Cargando roles...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="usuarioModal" class="modal">
+                <div class="modal-content" style="max-width: 760px;">
+                    <div class="modal-header">
+                        <h2 id="usuarioModalTitle">Nuevo Usuario</h2>
+                        <span class="close" onclick="closeUsuarioModal()">&times;</span>
+                    </div>
+                    <form id="usuarioForm">
+                        <input type="hidden" id="usuarioId">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="usuarioLogin">Usuario *</label>
+                                <input type="text" id="usuarioLogin" maxlength="100" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="usuarioNombreCompleto">Nombre completo *</label>
+                                <input type="text" id="usuarioNombreCompleto" maxlength="200" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="usuarioEmail">Email *</label>
+                                <input type="email" id="usuarioEmail" maxlength="120" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="usuarioRoleId">Rol *</label>
+                                <select id="usuarioRoleId" required></select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="usuarioPassword">Contraseña</label>
+                                <input type="password" id="usuarioPassword" minlength="6" placeholder="Obligatoria al crear; opcional al editar">
+                                <small class="form-help">La clave actual no se puede consultar. Si el usuario la olvido, use "Restablecer clave" desde la tabla para generar una temporal.</small>
+                            </div>
+                            <div class="form-group checkbox-group">
+                                <label>
+                                    <input type="checkbox" id="usuarioActivo" checked>
+                                    Usuario activo
+                                </label>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" onclick="closeUsuarioModal()">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Guardar Usuario</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Modal Permisos Extra por Usuario -->
+            <div id="permisosExtraModal" class="modal">
+                <div class="modal-content" style="max-width: 860px; max-height: 90vh; overflow-y: auto;">
+                    <div class="modal-header">
+                        <h2 id="permisosExtraModalTitle">Permisos extra</h2>
+                        <span class="close" onclick="closePermisosExtraModal()">&times;</span>
+                    </div>
+                    <div id="permisosExtraContainer" style="padding: 0 4px;">
+                        <div class="loading">Cargando permisos...</div>
+                    </div>
+                    <div class="modal-footer" style="margin-top: 16px;">
+                        <button type="button" class="btn btn-secondary" onclick="closePermisosExtraModal()">Cancelar</button>
+                        <button type="button" class="btn btn-primary" onclick="guardarPermisosExtra()">Guardar permisos extra</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="rolModal" class="modal">
+                <div class="modal-content" style="max-width: 860px;">
+                    <div class="modal-header">
+                        <h2 id="rolModalTitle">Nuevo Rol</h2>
+                        <span class="close" onclick="closeRolModal()">&times;</span>
+                    </div>
+                    <form id="rolForm">
+                        <input type="hidden" id="rolId">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="rolNombre">Nombre del rol *</label>
+                                <input type="text" id="rolNombre" maxlength="100" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="rolDescripcion">Descripción</label>
+                                <input type="text" id="rolDescripcion" maxlength="255">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Accesos y permisos del rol</label>
+                            <div id="rolMenuPermissions" class="role-menu-grid">
+                                <div class="loading">Cargando opciones...</div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" onclick="closeRolModal()">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Guardar Rol</button>
+                        </div>
+                    </form>
                 </div>
             </div>
             
@@ -1630,6 +1833,9 @@
                         <button id="comercialNavHistorial" type="button" class="btn btn-secondary" onclick="notImplemented('Comercial: Historial')">
                             <span class="btn-label">Ver Historial</span>
                         </button>
+                        <button id="comercialNavCargue" type="button" class="btn btn-secondary" onclick="abrirCargueAtencionDia()">
+                            <span class="btn-label">Cargue Información Día</span>
+                        </button>
                         <button id="comercialNavInicio" type="button" class="btn btn-secondary active" data-comercial-section="inicio" onclick="switchComercialSection('inicio')">
                             <span class="btn-label">Inicio</span>
                         </button>
@@ -1819,21 +2025,33 @@
             <div id="recepcionView" class="module-view">
                 <div class="recent-section" id="recepcionClienteDetalle" style="display:none; margin-bottom: 16px; padding-top: 14px;">
                     <div class="module-header" style="margin-bottom:8px;">
-                        <h3 id="recepcionClienteDetalleTitulo" style="margin:0;">Cliente</h3>
+                        <div class="recepcion-cliente-header-block">
+                            <div class="recepcion-cliente-header-label">EMPRESA</div>
+                            <h3 id="recepcionClienteDetalleTitulo" style="margin:0;">Cliente</h3>
+                        </div>
+                        <div id="recepcionClienteEstadoBadge" class="recepcion-estado-badge recepcion-estado-activo">ACTIVO</div>
                         <div class="button-group">
                             <button type="button" class="btn btn-secondary" onclick="volverConsultaRecepcion()">Volver a consulta</button>
                         </div>
                     </div>
-                    <div class="recepcion-cliente-grid">
+                    <div class="recepcion-cliente-grid recepcion-cliente-grid-triple">
                         <div class="recepcion-cliente-card">
-                            <h4>Puntos de Atención - Recepción</h4>
-                            <div id="recepcionClientePuntosAtencion" class="recepcion-cliente-note">Sin instrucciones registradas.</div>
+                            <h4>Medio de Autorización</h4>
+                            <div id="recepcionClienteMedioAutorizacion" class="recepcion-cliente-note">No registrado.</div>
                         </div>
                         <div class="recepcion-cliente-card">
-                            <h4>Contacto Principal</h4>
+                            <h4>Contacto de Autorizaciones</h4>
                             <div id="recepcionClienteContactoPrincipal" class="recepcion-cliente-contact">Sin contacto registrado.</div>
                             <div id="recepcionClienteCelularPrincipal" class="recepcion-cliente-contact-sub">Sin celular registrado.</div>
                         </div>
+                        <div class="recepcion-cliente-card">
+                            <h4>Forma de Pago</h4>
+                            <div id="recepcionClienteFormaPago" class="recepcion-cliente-note">No registrada.</div>
+                        </div>
+                    </div>
+                    <div class="recepcion-cliente-card" style="margin-top:12px;">
+                        <h4>Anotaciones Especiales para Recepción</h4>
+                        <div id="recepcionClientePuntosAtencion" class="recepcion-cliente-note">Sin anotaciones especiales registradas.</div>
                     </div>
                     <div class="recepcion-cliente-card" style="margin-top:12px;">
                         <h4>Exámenes y Paquetes del Cliente</h4>
@@ -2542,11 +2760,13 @@
                             <option value="MIXTO">MIXTO</option>
                         </select>
                     </div>
-                    <div class="form-group checkbox-group">
-                        <label>
-                            <input type="checkbox" id="clienteComercialActivo" checked>
-                            Cliente activo
-                        </label>
+                    <div class="form-group">
+                        <label for="clienteComercialEstado">Estado del cliente *</label>
+                        <select id="clienteComercialEstado" required>
+                            <option value="ACTIVO">ACTIVO</option>
+                            <option value="INACTIVO">INACTIVO</option>
+                            <option value="BLOQUEO_TEMPORAL">BLOQUEO TEMPORAL</option>
+                        </select>
                     </div>
                 </div>
             </div>
@@ -2585,14 +2805,28 @@
                         <input type="email" id="clienteComercialEmailEmpresa" maxlength="120" required>
                     </div>
                 </div>
+                <div class="form-row cliente-form-row cliente-form-row-empresa-extra">
+                    <div class="form-group">
+                        <label for="clienteComercialMedioAutorizacion">Medio de autorización *</label>
+                        <select id="clienteComercialMedioAutorizacion" required>
+                            <option value="WHATSAPP">WHATSAPP</option>
+                            <option value="EMAIL">EMAIL</option>
+                            <option value="PAGINA_WEB">PAGINA WEB</option>
+                        </select>
+                    </div>
+                </div>
             </div>
 
             <div class="recent-section cliente-form-section">
                 <h3 style="margin-top:0;">Contactos</h3>
-                <div class="form-row cliente-form-row cliente-form-row-triple">
+                <div class="form-row cliente-form-row cliente-form-row-contacto">
                     <div class="form-group">
                         <label for="clienteComercialContactoPrincipal">Contacto principal *</label>
                         <input type="text" id="clienteComercialContactoPrincipal" maxlength="150" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialCargoPrincipal">Cargo principal</label>
+                        <input type="text" id="clienteComercialCargoPrincipal" maxlength="150">
                     </div>
                     <div class="form-group">
                         <label for="clienteComercialCelularPrincipal">Celular principal *</label>
@@ -2603,10 +2837,14 @@
                         <input type="email" id="clienteComercialEmailPrincipal" maxlength="120">
                     </div>
                 </div>
-                <div class="form-row cliente-form-row cliente-form-row-triple">
+                <div class="form-row cliente-form-row cliente-form-row-contacto">
                     <div class="form-group">
                         <label for="clienteComercialContactoFacturacion">Contacto facturación</label>
                         <input type="text" id="clienteComercialContactoFacturacion" maxlength="150">
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialCargoFacturacion">Cargo facturación</label>
+                        <input type="text" id="clienteComercialCargoFacturacion" maxlength="150">
                     </div>
                     <div class="form-group">
                         <label for="clienteComercialCelularFacturacion">Celular facturación</label>
@@ -2641,47 +2879,33 @@
             </div>
 
             <div class="recent-section cliente-form-section">
-                <h3 style="margin-top:0;">Puntos de Atención - Recepción</h3>
+                <h3 style="margin-top:0;">Anotaciones Especiales para Recepción</h3>
                 <div class="form-group" style="margin-bottom:0;">
-                    <label for="clienteComercialPuntosAtencionRecepcion">Instrucciones clave para recepción</label>
-                    <textarea id="clienteComercialPuntosAtencionRecepcion" rows="4" placeholder="Ej. Si paga o no, si se lleva el concepto, validaciones para mujeres, mayores de 50 años, restricciones o pasos especiales de ingreso."></textarea>
+                    <label for="clienteComercialPuntosAtencionRecepcion">Anotaciones especiales que debe ver recepción</label>
+                    <textarea id="clienteComercialPuntosAtencionRecepcion" rows="4" placeholder="Escriba aquí las anotaciones especiales para recepción."></textarea>
+                    <small class="cliente-form-minihelp">Ejemplo: si paga o no, si se lleva el concepto, validaciones para mujeres, mayores de 50 años, restricciones o pasos especiales de ingreso.</small>
                 </div>
             </div>
 
             <div class="recent-section cliente-form-section">
                 <h3 style="margin-top:0;">Valores y Exámenes Negociados</h3>
-                <p id="clienteComercialTarifaHint" style="margin-top:0; color:#666; font-size:0.92rem;">
-                    Aquí consultas los valores especiales ya negociados para este cliente.
-                </p>
                 <div id="clienteComercialTarifasResumen" class="recent-section" style="padding:12px; min-height: 52px;">Sin tarifas configuradas.</div>
                 <div class="cliente-convenio-toolbar" style="margin-top:10px;">
-                    <button type="button" class="btn btn-secondary" id="clienteComercialToggleAsignacionBtn" onclick="toggleAsignacionConveniosClienteComercial()">
-                        <span class="btn-label">Ayuda de Exámenes y Paquetes</span>
+                    <button type="button" class="btn btn-primary" id="clienteComercialAsignarTarifaBtn" onclick="abrirGestionTarifasCliente()" style="min-width:0;">
+                        <span class="btn-label">Gestión Exámenes y/o Paquetes</span>
                     </button>
-                </div>
-                <div id="clienteComercialConveniosHelp" class="cliente-convenio-help-panel" style="display:none;">
-                    <p class="cliente-form-minihelp" style="margin-top:10px;">Busca aquí los exámenes o paquetes que quieres agregar al acuerdo del cliente.</p>
-                    <div class="cliente-convenio-builder">
-                        <div class="cliente-convenio-column">
-                            <h4>Buscar exámenes</h4>
-                            <div id="clienteComercialExamenesAsignacion" class="cliente-convenio-assign-panel">
-                                <input type="text" id="clienteComercialExamenesSearch" placeholder="Buscar y agregar examen">
-                                <div id="clienteComercialExamenesList" class="cliente-convenio-search-list">Escribe para buscar exámenes creados.</div>
-                            </div>
-                        </div>
-                        <div class="cliente-convenio-column">
-                            <h4>Buscar paquetes</h4>
-                            <div id="clienteComercialServiciosAsignacion" class="cliente-convenio-assign-panel">
-                                <input type="text" id="clienteComercialServiciosSearch" placeholder="Buscar y agregar paquete">
-                                <div id="clienteComercialServiciosList" class="cliente-convenio-search-list">Escribe para buscar paquetes creados.</div>
-                            </div>
-                        </div>
-                    </div>
                 </div>
                 <div style="display:none;">
                     <textarea id="clienteComercialExamenes" rows="3"></textarea>
                     <textarea id="clienteComercialServicios" rows="3"></textarea>
                     <textarea id="clienteComercialTarifas" rows="3"></textarea>
+                    <input type="text" id="clienteComercialExamenesSearch">
+                    <input type="text" id="clienteComercialServiciosSearch">
+                    <div id="clienteComercialConveniosHelp"></div>
+                    <div id="clienteComercialExamenesList"></div>
+                    <div id="clienteComercialServiciosList"></div>
+                    <button id="clienteComercialToggleAsignacionBtn"></button>
+                    <button id="clienteComercialExamenesToggleAllBtn"></button>
                 </div>
             </div>
 
@@ -3137,12 +3361,14 @@
                         <option value="CONSULTA">CONSULTA</option>
                         <option value="LABORATORIO">LABORATORIO</option>
                         <option value="PARACLINICO">PARACLINICO</option>
+                        <option value="ECOBABY">ECOBABY</option>
+                        <option value="CURSOS">CURSOS</option>
                     </select>
                 </div>
             </div>
             <div class="form-row" id="catalogoComercialSubtipoLaboratorioRow" style="display:none;">
                 <div class="form-group">
-                    <label for="catalogoComercialSubtipoLaboratorio">Subtipo de laboratorio</label>
+                    <label for="catalogoComercialSubtipoLaboratorio" id="catalogoComercialSubtipoLaboratorioLabel">Subtipo del examen</label>
                     <select id="catalogoComercialSubtipoLaboratorio">
                         <option value="">Pendiente de definir</option>
                         <option value="REMITIDO">REMITIDO</option>
@@ -3155,30 +3381,29 @@
                 <textarea id="catalogoComercialDescripcion" rows="2"></textarea>
             </div>
             <div class="form-group" id="catalogoComercialComponentesRow" style="display:none;">
-                <label>Examenes que incluye el paquete *</label>
+                <label>Exámenes del paquete *</label>
                 <div class="catalogo-paquete-builder">
                     <div class="catalogo-paquete-column">
-                        <h4>Composición actual</h4>
-                        <p class="form-help" style="margin-top:0;">Aquí ves los examenes que hoy componen el paquete.</p>
                         <div class="catalogo-componentes-box" id="catalogoComercialComponentesActuales">
-                            <div class="catalogo-componentes-empty">Todavía no has agregado examenes al paquete.</div>
+                            <div class="catalogo-componentes-empty">Todavía no has agregado exámenes al paquete.</div>
                         </div>
                         <div id="catalogoComercialComponentesResumen" class="catalogo-componentes-summary">
-                            Sin examenes seleccionados.
+                            Sin exámenes seleccionados.
                         </div>
                     </div>
                     <div class="catalogo-paquete-column">
-                        <h4>Buscar y ajustar</h4>
-                        <p class="form-help" style="margin-top:0;">Busca un examen para agregarlo. Si quieres reemplazar uno, primero elimínalo de la composición actual y luego añade el nuevo.</p>
-                        <div class="form-group" style="margin-bottom:12px;">
+                        <div class="form-row" style="margin-bottom:12px;">
                             <input type="text" id="catalogoComercialComponentesSearch" placeholder="Buscar por nombre, código o clasificación..." oninput="filtrarCatalogoComponentesDisponibles()">
                         </div>
+                        <div class="catalogo-componentes-toolbar">
+                            <div id="catalogoComercialComponentesPendientesResumen" class="catalogo-componentes-pending-summary">No hay exámenes marcados para agregar.</div>
+                            <button type="button" class="catalogo-componentes-bulk-add" onclick="agregarComponentesCatalogoSeleccionados()">Agregar seleccionados</button>
+                        </div>
                         <div class="catalogo-componentes-box" id="catalogoComercialComponentesList">
-                            <div class="catalogo-componentes-empty">Cargando examenes del catalogo...</div>
+                            <div class="catalogo-componentes-empty">Cargando exámenes del catálogo...</div>
                         </div>
                     </div>
                 </div>
-                <small class="form-help">Solo aplica cuando el registro es un PAQUETE. Si cambias a EXAMEN, esta composición se limpia.</small>
             </div>
             <div class="form-group checkbox-group">
                 <label>
@@ -3191,6 +3416,49 @@
                 <button type="submit" class="btn btn-primary">Guardar Item</button>
             </div>
         </form>
+    </div>
+</div>
+
+<div id="gestionTarifasClienteModal" class="modal">
+    <div class="modal-content" style="max-width: 900px; max-height: 90vh; display:flex; flex-direction:column;">
+        <div class="modal-header">
+            <h2 id="gestionTarifasClienteTitle">Gestión Exámenes y/o Paquetes</h2>
+            <span class="close" onclick="cerrarGestionTarifasCliente()">&times;</span>
+        </div>
+
+        <!-- Tarifas asignadas -->
+        <div style="flex:1; overflow-y:auto; padding: 0 4px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h4 style="margin:0;">Asignados a este cliente</h4>
+                <button type="button" class="btn btn-primary btn-sm" onclick="nuevaTarifaDesdeGestion()">+ Agregar</button>
+            </div>
+            <div id="gestionTarifasClienteLista" style="margin-bottom:20px; min-height:40px;">
+                <div class="loading">Cargando...</div>
+            </div>
+
+            <!-- Buscador del catálogo -->
+            <h4 style="margin:16px 0 8px 0; border-top:1px solid #e5e7eb; padding-top:14px;">Buscar en el catálogo para agregar</h4>
+            <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+                <input type="text" id="gestionTarifasSearch" placeholder="Buscar examen o paquete por nombre o código..."
+                    style="flex:1; min-width:200px;"
+                    oninput="renderGestionTarifasCatalogo()">
+                <select id="gestionTarifasFiltroTipo" onchange="renderGestionTarifasCatalogo()" style="min-width:140px;">
+                    <option value="">Todos</option>
+                    <option value="EXAMEN">Solo exámenes</option>
+                    <option value="PAQUETE">Solo paquetes</option>
+                </select>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="toggleVerTodosGestionTarifas()">
+                    <span id="gestionTarifasVerTodosLabel">Ver todos</span>
+                </button>
+            </div>
+            <div id="gestionTarifasCatalogoLista" style="max-height:320px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:6px; padding:4px;">
+                <div class="loading">Escribe para buscar o pulsa "Ver todos".</div>
+            </div>
+        </div>
+
+        <div class="modal-footer" style="margin-top:12px;">
+            <button type="button" class="btn btn-secondary" onclick="cerrarGestionTarifasCliente()">Cerrar</button>
+        </div>
     </div>
 </div>
 

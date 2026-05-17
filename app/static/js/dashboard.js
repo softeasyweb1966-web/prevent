@@ -3,6 +3,19 @@
 let currentUser = null;
 let empleadosList = [];
 let tiposNovedadList = [];
+let rolesData = [];
+let menuOptionsData = [];
+let chatState = {
+    initialized: false,
+    users: [],
+    conversations: [],
+    activeConversationId: null,
+    pollHandle: null,
+    notificationPrimed: false,
+    audioContext: null,
+    audioUnlockBound: false,
+    desktopPermissionRequested: false
+};
 // Contexto actual de período de nómina seleccionado (año/mes/quincena)
 let nominaPeriodoSeleccionado = null;
 let nominaDashboardRequestSeq = 0;
@@ -47,6 +60,79 @@ function persistNominaPeriodoSeleccionado() {
         }
     } catch (e) {
         console.warn('No se pudo guardar periodo de nomina en localStorage', e);
+    }
+}
+
+function updateCurrentUserDisplay() {
+    if (!currentUser) {
+        return;
+    }
+
+    const userName = document.getElementById('userName');
+    const userInfo = document.getElementById('userInfo');
+    if (userName) {
+        userName.textContent = currentUser.usuario || currentUser.nombre || 'Usuario';
+    }
+    if (userInfo) {
+        userInfo.textContent = `${currentUser.usuario || currentUser.nombre || 'Usuario'} (${currentUser.role || 'Sin rol'})`;
+    }
+}
+
+function applySidebarAccess() {
+    const menuItems = document.querySelectorAll('.menu-item');
+    const allowedModules = Array.isArray(currentUser?.menu_modules) ? currentUser.menu_modules : [];
+    const isAdminUser = currentUser?.role === 'Administrador';
+
+    menuItems.forEach(item => {
+        const moduleName = item.dataset.module;
+        const visible = !moduleName || isAdminUser || allowedModules.includes(moduleName);
+        const container = item.closest('li') || item;
+        container.style.display = visible ? '' : 'none';
+    });
+}
+
+function getCurrentPermissionNames() {
+    if (currentUser?.is_superuser || currentUser?.is_easy) {
+        return new Set(['*']);
+    }
+    if (currentUser?.role === 'Administrador') {
+        return new Set(['*']);
+    }
+    return new Set(Array.isArray(currentUser?.permission_names) ? currentUser.permission_names : []);
+}
+
+function hasRolePermission(permissionName) {
+    const permissions = getCurrentPermissionNames();
+    return permissions.has('*') || permissions.has(permissionName);
+}
+
+function getComercialPermissionName(entity, action) {
+    return `comercial_${entity}_${action}`;
+}
+
+function canManageComercial(entity, action) {
+    return hasRolePermission(getComercialPermissionName(entity, action));
+}
+
+function getCatalogEntityFromTipoItem(tipoItem) {
+    return String(tipoItem || '').toUpperCase() === 'EXAMEN' ? 'examenes' : 'paquetes';
+}
+
+async function refreshCurrentUserContext() {
+    try {
+        const response = await fetch('/api/auth/me', { credentials: 'include' });
+        if (!response.ok) {
+            return;
+        }
+
+        const data = await response.json();
+        currentUser = data;
+        localStorage.setItem('user', JSON.stringify(data));
+        updateCurrentUserDisplay();
+        applySidebarAccess();
+        ensureChatMonitoring();
+    } catch (error) {
+        console.error('Error actualizando contexto del usuario actual:', error);
     }
 }
 
@@ -118,21 +204,22 @@ function getNominaPeriodoActivo() {
 
 document.addEventListener('DOMContentLoaded', () => {
     currentUser = checkAuth();
-    
-    if (currentUser) {
-        document.getElementById('userName').textContent = currentUser.usuario || currentUser.nombre;
-        document.getElementById('userInfo').textContent = `${currentUser.usuario} (${currentUser.role})`;
-    }
+    updateCurrentUserDisplay();
+    applySidebarAccess();
+    ensureChatMonitoring();
     
     setupMenuNavigation();
     setupLogout();
+    setupUsuariosModule();
     setupEmpleadoForm();
     setupConsultaEmpleados();
     setupEstructuraLaboralForms();
     setupNovedadForm();
     setupNovedadesFiltro();
     setupNominaQuincenaSeleccion();
+    setupChatModule();
     setupModulosPeriodoActual();
+    refreshCurrentUserContext();
 });
 
 // ==================== TOGGLE PANELES DE PERÍODO POR MÓDULO ====================
@@ -1346,6 +1433,533 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+function canReadCatalogoComercial() {
+    return canManageComercial('examenes', 'read') || canManageComercial('paquetes', 'read');
+}
+
+function canCreateCatalogoComercial() {
+    return canManageComercial('examenes', 'create') || canManageComercial('paquetes', 'create');
+}
+
+function hasAnyComercialPermission(entity) {
+    return ['read', 'create', 'update', 'delete'].some(action => canManageComercial(entity, action));
+}
+
+function hasAnyCatalogoPermission() {
+    return ['read', 'create', 'update', 'delete'].some(action => (
+        canManageComercial('examenes', action) || canManageComercial('paquetes', action)
+    ));
+}
+
+function setComercialElementsVisibility(selector, visible) {
+    document.querySelectorAll(selector).forEach(element => {
+        element.style.display = visible ? '' : 'none';
+    });
+}
+
+function syncComercialPermissionUI() {
+    setComercialElementsVisibility('#comercialNavVendedores', hasAnyComercialPermission('vendedores'));
+    setComercialElementsVisibility('#comercialNavExamenes', hasAnyCatalogoPermission());
+    setComercialElementsVisibility('#comercialNavClientes', hasAnyComercialPermission('clientes'));
+    setComercialElementsVisibility('button[onclick="mostrarAgregarVendedor()"]', canManageComercial('vendedores', 'create'));
+    setComercialElementsVisibility('button[onclick="consultarComercial(\'vendedores\')"]', canManageComercial('vendedores', 'read'));
+    setComercialElementsVisibility('button[onclick="mostrarAgregarItemCatalogoComercial()"]', canCreateCatalogoComercial());
+    setComercialElementsVisibility('button[onclick="consultarComercial(\'examenes\')"]', canReadCatalogoComercial());
+    setComercialElementsVisibility('button[onclick="mostrarAgregarClienteComercial()"]', canManageComercial('clientes', 'create'));
+    setComercialElementsVisibility('button[onclick="consultarComercial(\'clientes\')"]', canManageComercial('clientes', 'read'));
+    setComercialElementsVisibility('#clienteSeguimientoMenuAtenciones', canManageComercial('atenciones', 'create'));
+    setComercialElementsVisibility('#clienteSeguimientoMenuDocumentos', canManageComercial('documentos', 'create'));
+    setComercialElementsVisibility('#clienteSeguimientoMenuPagos', canManageComercial('pagos', 'create'));
+    setComercialElementsVisibility('button[onclick="mostrarAgregarAtencionCliente()"]', canManageComercial('atenciones', 'create'));
+    setComercialElementsVisibility('button[onclick="mostrarAgregarSeguimientoDocumento()"]', canManageComercial('documentos', 'create'));
+    setComercialElementsVisibility('button[onclick="mostrarAgregarSeguimientoPago()"]', canManageComercial('pagos', 'create'));
+
+    if (window._comercialSeccionActual === 'vendedores' && !canManageComercial('vendedores', 'read')) {
+        switchComercialSection('inicio');
+    }
+    if (window._comercialSeccionActual === 'examenes' && !canReadCatalogoComercial()) {
+        switchComercialSection('inicio');
+    }
+    if (window._comercialSeccionActual === 'clientes' && !canManageComercial('clientes', 'read')) {
+        switchComercialSection('inicio');
+    }
+}
+
+const _originalRefreshCurrentUserContext = refreshCurrentUserContext;
+refreshCurrentUserContext = async function () {
+    await _originalRefreshCurrentUserContext();
+    syncComercialPermissionUI();
+};
+
+const _originalMostrarAgregarVendedor = typeof mostrarAgregarVendedor === 'function' ? mostrarAgregarVendedor : null;
+if (_originalMostrarAgregarVendedor) {
+    mostrarAgregarVendedor = function (...args) {
+        if (!canManageComercial('vendedores', 'create')) {
+            showError('No tienes permiso para crear vendedores.');
+            return;
+        }
+        return _originalMostrarAgregarVendedor.apply(this, args);
+    };
+}
+
+const _originalEditarVendedorConfig = typeof editarVendedorConfig === 'function' ? editarVendedorConfig : null;
+if (_originalEditarVendedorConfig) {
+    editarVendedorConfig = function (...args) {
+        if (!canManageComercial('vendedores', 'update')) {
+            showError('Solo el administrador puede modificar vendedores.');
+            return;
+        }
+        return _originalEditarVendedorConfig.apply(this, args);
+    };
+}
+
+const _originalMostrarAgregarClienteComercial = typeof mostrarAgregarClienteComercial === 'function' ? mostrarAgregarClienteComercial : null;
+if (_originalMostrarAgregarClienteComercial) {
+    mostrarAgregarClienteComercial = async function (...args) {
+        if (!canManageComercial('clientes', 'create')) {
+            showError('No tienes permiso para crear clientes comerciales.');
+            return;
+        }
+        return _originalMostrarAgregarClienteComercial.apply(this, args);
+    };
+}
+
+const _originalEditarClienteComercial = typeof editarClienteComercial === 'function' ? editarClienteComercial : null;
+if (_originalEditarClienteComercial) {
+    editarClienteComercial = async function (...args) {
+        if (!canManageComercial('clientes', 'update')) {
+            showError('Solo el administrador puede modificar las condiciones iniciales del cliente.');
+            return;
+        }
+        return _originalEditarClienteComercial.apply(this, args);
+    };
+}
+
+const _originalMostrarAgregarItemCatalogoComercial = typeof mostrarAgregarItemCatalogoComercial === 'function' ? mostrarAgregarItemCatalogoComercial : null;
+if (_originalMostrarAgregarItemCatalogoComercial) {
+    mostrarAgregarItemCatalogoComercial = function (...args) {
+        if (!canCreateCatalogoComercial()) {
+            showError('No tienes permiso para crear examenes o paquetes.');
+            return;
+        }
+        return _originalMostrarAgregarItemCatalogoComercial.apply(this, args);
+    };
+}
+
+const _originalEditarItemCatalogoComercial = typeof editarItemCatalogoComercial === 'function' ? editarItemCatalogoComercial : null;
+if (_originalEditarItemCatalogoComercial) {
+    editarItemCatalogoComercial = async function (id, ...args) {
+        const item = (catalogoComercialData || []).find(entry => Number(entry.id) === Number(id));
+        const entity = getCatalogEntityFromTipoItem(item?.tipo_item);
+        if (!canManageComercial(entity, 'update')) {
+            showError('No tienes permiso para editar este item comercial.');
+            return;
+        }
+        return _originalEditarItemCatalogoComercial.call(this, id, ...args);
+    };
+}
+
+const _originalEditarTarifaCliente = typeof editarTarifaCliente === 'function' ? editarTarifaCliente : null;
+if (_originalEditarTarifaCliente) {
+    editarTarifaCliente = async function (...args) {
+        if (!canManageComercial('tarifas', 'update')) {
+            showError('No tienes permiso para editar tarifas comerciales.');
+            return;
+        }
+        return _originalEditarTarifaCliente.apply(this, args);
+    };
+}
+
+const _originalMostrarAgregarTarifaCliente = typeof mostrarAgregarTarifaCliente === 'function' ? mostrarAgregarTarifaCliente : null;
+if (_originalMostrarAgregarTarifaCliente) {
+    mostrarAgregarTarifaCliente = async function (...args) {
+        if (!canManageComercial('tarifas', 'create')) {
+            showError('No tienes permiso para crear tarifas comerciales.');
+            return;
+        }
+        return _originalMostrarAgregarTarifaCliente.apply(this, args);
+    };
+}
+
+const _originalMostrarAgregarAtencionCliente = typeof mostrarAgregarAtencionCliente === 'function' ? mostrarAgregarAtencionCliente : null;
+if (_originalMostrarAgregarAtencionCliente) {
+    mostrarAgregarAtencionCliente = async function (...args) {
+        if (!canManageComercial('atenciones', 'create')) {
+            showError('No tienes permiso para registrar atenciones.');
+            return;
+        }
+        return _originalMostrarAgregarAtencionCliente.apply(this, args);
+    };
+}
+
+const _originalEditarSeguimientoAtencion = typeof editarSeguimientoAtencion === 'function' ? editarSeguimientoAtencion : null;
+if (_originalEditarSeguimientoAtencion) {
+    editarSeguimientoAtencion = async function (...args) {
+        if (!canManageComercial('atenciones', 'update')) {
+            showError('No tienes permiso para editar atenciones.');
+            return;
+        }
+        return _originalEditarSeguimientoAtencion.apply(this, args);
+    };
+}
+
+const _originalMostrarAgregarSeguimientoDocumento = typeof mostrarAgregarSeguimientoDocumento === 'function' ? mostrarAgregarSeguimientoDocumento : null;
+if (_originalMostrarAgregarSeguimientoDocumento) {
+    mostrarAgregarSeguimientoDocumento = function (...args) {
+        if (!canManageComercial('documentos', 'create')) {
+            showError('No tienes permiso para registrar documentos comerciales.');
+            return;
+        }
+        return _originalMostrarAgregarSeguimientoDocumento.apply(this, args);
+    };
+}
+
+const _originalEditarSeguimientoDocumento = typeof editarSeguimientoDocumento === 'function' ? editarSeguimientoDocumento : null;
+if (_originalEditarSeguimientoDocumento) {
+    editarSeguimientoDocumento = function (...args) {
+        if (!canManageComercial('documentos', 'update')) {
+            showError('No tienes permiso para editar documentos comerciales.');
+            return;
+        }
+        return _originalEditarSeguimientoDocumento.apply(this, args);
+    };
+}
+
+const _originalMostrarAgregarSeguimientoPago = typeof mostrarAgregarSeguimientoPago === 'function' ? mostrarAgregarSeguimientoPago : null;
+if (_originalMostrarAgregarSeguimientoPago) {
+    mostrarAgregarSeguimientoPago = function (...args) {
+        if (!canManageComercial('pagos', 'create')) {
+            showError('No tienes permiso para registrar pagos.');
+            return;
+        }
+        return _originalMostrarAgregarSeguimientoPago.apply(this, args);
+    };
+}
+
+const _originalEditarSeguimientoPago = typeof editarSeguimientoPago === 'function' ? editarSeguimientoPago : null;
+if (_originalEditarSeguimientoPago) {
+    editarSeguimientoPago = function (...args) {
+        if (!canManageComercial('pagos', 'update')) {
+            showError('No tienes permiso para editar pagos.');
+            return;
+        }
+        return _originalEditarSeguimientoPago.apply(this, args);
+    };
+}
+
+async function loadRoles() {
+    const tableBody = document.getElementById('rolesTable');
+    if (!tableBody) return;
+
+    try {
+        const response = await fetch('/api/usuarios/roles', { credentials: 'include' });
+        const roles = await response.json();
+        if (!response.ok) {
+            throw new Error(roles.error || 'No se pudo cargar la lista de roles');
+        }
+
+        rolesData = Array.isArray(roles) ? roles : [];
+        if (rolesData.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="5" class="loading">No hay roles configurados</td></tr>';
+            fillRoleSelect();
+            return;
+        }
+
+        tableBody.innerHTML = rolesData.map(role => {
+            const commercialCount = (role.permissions || []).filter(item => item.category === 'comercial').length;
+            const resumenAcceso = [
+                (role.menu_permissions || []).map(item => item.nombre).join(', ') || 'Sin menu',
+                commercialCount ? `${commercialCount} permisos comerciales` : 'Sin permisos comerciales'
+            ].join(' | ');
+            return `
+                <tr>
+                    <td>${escapeHtml(role.nombre || 'N/A')}</td>
+                    <td>${escapeHtml(role.descripcion || 'Sin descripcion')}</td>
+                    <td>${escapeHtml(resumenAcceso)}</td>
+                    <td>${Number(role.cantidad_usuarios || 0)}</td>
+                    <td>
+                        <button class="action-btn action-btn-edit" onclick="editRole(${role.id})">Editar</button>
+                        ${role.nombre !== 'Administrador' ? `<button class="action-btn action-btn-delete" onclick='deleteRole(${role.id}, ${JSON.stringify(role.nombre || '')})'>Eliminar</button>` : ''}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        fillRoleSelect();
+    } catch (error) {
+        console.error('Error cargando roles:', error);
+        tableBody.innerHTML = `<tr><td colspan="5" class="loading">${escapeHtml(error.message || 'Error al cargar roles')}</td></tr>`;
+    }
+}
+
+function renderRoleMenuPermissions(selectedIds = []) {
+    const container = document.getElementById('rolMenuPermissions');
+    if (!container) return;
+
+    if (!Array.isArray(menuOptionsData) || menuOptionsData.length === 0) {
+        container.innerHTML = '<div class="loading">No fue posible cargar los permisos.</div>';
+        return;
+    }
+
+    const selected = new Set((selectedIds || []).map(id => String(id)));
+    const renderOption = option => `
+        <label class="role-menu-option">
+            <input type="checkbox" value="${option.permiso_id}" ${selected.has(String(option.permiso_id)) ? 'checked' : ''}>
+            <div>
+                <strong>${escapeHtml(option.nombre || option.group || 'Permiso')}</strong>
+                <span>${escapeHtml(option.descripcion || '')}</span>
+            </div>
+        </label>
+    `;
+
+    const menuOptions = menuOptionsData.filter(option => option.category !== 'comercial');
+    const commercialGroups = {};
+    menuOptionsData.filter(option => option.category === 'comercial').forEach(option => {
+        const key = option.group || 'Comercial';
+        commercialGroups[key] = commercialGroups[key] || [];
+        commercialGroups[key].push(option);
+    });
+
+    container.innerHTML = `
+        <div style="grid-column:1 / -1;">
+            <h4 style="margin:0 0 10px 0;">Menu lateral</h4>
+            <div class="role-menu-grid">
+                ${menuOptions.map(renderOption).join('')}
+            </div>
+        </div>
+        <div style="grid-column:1 / -1; margin-top:12px;">
+            <h4 style="margin:0 0 10px 0;">Permisos comerciales</h4>
+            ${Object.entries(commercialGroups).map(([groupName, options]) => `
+                <div style="margin-bottom:14px;">
+                    <div style="font-weight:700; margin-bottom:8px;">${escapeHtml(groupName)}</div>
+                    <div class="role-menu-grid">
+                        ${options.map(renderOption).join('')}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+async function cargarVendedoresConfig() {
+    const tbody = document.getElementById('comercialVendedoresTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/vendedores', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar la lista de vendedores');
+        }
+        const vendedores = await response.json();
+        vendedoresConfigData = Array.isArray(vendedores) ? vendedores : [];
+
+        if (vendedoresConfigData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay vendedores configurados</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = vendedoresConfigData.map(vendedor => `
+            <tr>
+                <td>${escapeHtml(vendedor.nombre || 'N/A')}</td>
+                <td>${escapeHtml(vendedor.documento || 'N/A')}</td>
+                <td>${Number(vendedor.porcentaje_comision_venta || 0).toFixed(2)}%</td>
+                <td>${Number(vendedor.porcentaje_comision_recaudo || 0).toFixed(2)}%</td>
+                <td>${formatCurrency(vendedor.monto_base_comision || 0)}</td>
+                <td>${vendedor.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
+                <td>
+                    ${canManageComercial('vendedores', 'update') ? `<button class="action-btn action-btn-edit" onclick="editarVendedorConfig(${vendedor.id})">Editar</button>` : ''}
+                    ${canManageComercial('vendedores', 'delete') ? `<button class="action-btn action-btn-delete" onclick="eliminarVendedorConfig(${vendedor.id})">Eliminar</button>` : ''}
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando vendedores:', error);
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar vendedores</td></tr>';
+    }
+}
+
+async function cargarTarifasComercialesConfig() {
+    const tbody = document.getElementById('comercialTarifasTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/tarifas', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar la lista de tarifas comerciales');
+        }
+        const tarifas = await response.json();
+        tarifasComercialesData = Array.isArray(tarifas) ? tarifas : [];
+
+        if (tarifasComercialesData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay tarifas diferenciales configuradas</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = tarifasComercialesData.map(tarifa => `
+            <tr>
+                <td>${escapeHtml(tarifa.cliente_nombre || 'N/A')}</td>
+                <td>
+                    <strong>${escapeHtml(tarifa.item_nombre || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(tarifa.tipo_item === 'EXAMEN' ? obtenerResumenClasificacionCatalogo(tarifa) : (tarifa.tipo_item || ''))}</div>
+                </td>
+                <td>${formatCurrency(tarifa.tarifa_base || 0)}</td>
+                <td>${formatCurrency(tarifa.tarifa_negociada || 0)}</td>
+                <td>${escapeHtml([tarifa.vigencia_desde || '', tarifa.vigencia_hasta || ''].filter(Boolean).join(' a ') || 'Abierta')}</td>
+                <td>${tarifa.activo ? '<span class="badge badge-success">Activa</span>' : '<span class="badge badge-danger">Inactiva</span>'}</td>
+                <td>
+                    ${canManageComercial('tarifas', 'update') ? `<button class="action-btn action-btn-edit" onclick="editarTarifaCliente(${tarifa.id})">Editar</button>` : ''}
+                    ${canManageComercial('tarifas', 'delete') ? `<button class="action-btn action-btn-delete" onclick="eliminarTarifaComercialConfig(${tarifa.id})">Eliminar</button>` : ''}
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando tarifas comerciales:', error);
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar tarifas comerciales</td></tr>';
+    }
+}
+
+async function cargarCatalogoComercialConfig() {
+    const tbody = document.getElementById('comercialCatalogoTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/catalogo', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar el catalogo comercial');
+        }
+        const items = await response.json();
+        catalogoComercialData = Array.isArray(items) ? items : [];
+
+        if (catalogoComercialData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay examenes o paquetes configurados</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = catalogoComercialData.map(item => {
+            const entity = getCatalogEntityFromTipoItem(item.tipo_item);
+            return `
+                <tr>
+                    <td>
+                        <strong>${escapeHtml(item.tipo_item || 'N/A')}</strong>
+                        ${item.tipo_item === 'EXAMEN' ? `<div style="color:#666; font-size:0.82rem;">${item.clasificacion_completa ? 'Listo para usar' : 'Pendiente de clasificar'}</div>` : ''}
+                    </td>
+                    <td>
+                        ${item.tipo_item === 'EXAMEN'
+                            ? `<span class="badge ${item.clasificacion_completa ? 'badge-info' : 'badge-warning-soft'}">${escapeHtml(obtenerResumenClasificacionCatalogo(item))}</span>`
+                            : '<span class="badge badge-secondary">No aplica</span>'}
+                    </td>
+                    <td>${escapeHtml(item.codigo || 'N/A')}</td>
+                    <td>
+                        <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
+                        <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.descripcion || '')}</div>
+                        ${item.tipo_item === 'PAQUETE' ? `<div style="color:#0b5ed7; font-size:0.82rem; margin-top:4px;">Incluye ${item.cantidad_componentes || 0} examen(es): ${escapeHtml(item.resumen_componentes || 'Sin examenes definidos')}</div>` : ''}
+                    </td>
+                    <td>${formatCurrency(item.tarifa_base || 0)}</td>
+                    <td>${item.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
+                    <td>
+                        ${canManageComercial(entity, 'update') ? `<button class="action-btn action-btn-edit" onclick="editarItemCatalogoComercial(${item.id})">Editar</button>` : ''}
+                        ${canManageComercial(entity, 'delete') ? `<button class="action-btn action-btn-delete" onclick="eliminarItemCatalogoComercial(${item.id})">Eliminar</button>` : ''}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error cargando catalogo comercial:', error);
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar catalogo comercial</td></tr>';
+    }
+}
+
+async function cargarClientesComercialesConfig() {
+    const tbody = document.getElementById('comercialClientesTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/clientes', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar la lista de clientes comerciales');
+        }
+        const clientes = await response.json();
+        clientesComercialesData = Array.isArray(clientes) ? clientes : [];
+
+        if (clientesComercialesData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="loading">No hay clientes comerciales configurados</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = clientesComercialesData.map(cliente => `
+            <tr>
+                <td>
+                    <strong>${escapeHtml(cliente.razon_social || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.nit || cliente.nombre_comercial || 'Sin NIT')}</div>
+                </td>
+                <td>${escapeHtml(cliente.vendedor_nombre || 'N/A')}</td>
+                <td>${escapeHtml(cliente.condicion_comercial || 'N/A')}</td>
+                <td style="max-width:240px;">${escapeHtml(cliente.resumen_facturacion || 'N/A')}</td>
+                <td>
+                    ${escapeHtml(obtenerContactoPreferidoCliente(cliente) || 'N/A')}
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.email_facturacion || cliente.email_contacto_principal || cliente.email_empresa || 'Sin email')}</div>
+                </td>
+                <td>
+                    <div>Legales: ${cliente.documentos_legales_adjuntos?.length || 0}</div>
+                    <div>Pagare: ${cliente.pagare_adjuntos?.length || 0}</div>
+                </td>
+                <td>${escapeHtml(formatearEstadoCliente(obtenerEstadoCliente(cliente)))}</td>
+                <td>
+                    ${canManageComercial('clientes', 'update') ? `<button class="action-btn action-btn-edit" onclick="editarClienteComercial(${cliente.id})">Editar</button>` : ''}
+                    ${canManageComercial('clientes', 'delete') ? `<button class="action-btn action-btn-delete" onclick="eliminarClienteComercialConfig(${cliente.id})">Eliminar</button>` : ''}
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando clientes comerciales:', error);
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Error al cargar clientes comerciales</td></tr>';
+    }
+}
+
+function renderSeguimientoAtencionesTable() {
+    const tbody = document.getElementById('clienteSeguimientoAtencionesTable');
+    if (!tbody) return;
+
+    const atenciones = clienteSeguimientoContext.atenciones || [];
+    if (!atenciones.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Este cliente aun no tiene atenciones registradas.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = atenciones.map(atencion => {
+        const detalle = atencion.detalle_resumen || atencion.detalle_items_resumen || 'Sin detalle';
+        const acciones = [];
+        if (atencion.documento_id && canManageComercial('pagos', 'create')) {
+            acciones.push(`<button type="button" class="action-btn action-btn-edit" onclick="mostrarAgregarSeguimientoPago(${Number(atencion.documento_id)})">Registrar pago</button>`);
+        }
+        if (canManageComercial('atenciones', 'update')) {
+            acciones.push(`<button type="button" class="action-btn action-btn-edit" onclick="editarSeguimientoAtencion(${Number(atencion.id)})">Editar</button>`);
+        }
+        if (canManageComercial('atenciones', 'delete')) {
+            acciones.push(`<button type="button" class="action-btn action-btn-delete" onclick="eliminarSeguimientoAtencion(${Number(atencion.id)})">Eliminar</button>`);
+        }
+
+        return `
+            <tr>
+                <td>${escapeHtml(atencion.nro_atencion || 'N/A')}</td>
+                <td>${escapeHtml(atencion.fecha_atencion || 'N/A')}</td>
+                <td>${escapeHtml(atencion.pacientes_resumen || atencion.paciente_nombre || 'N/A')}</td>
+                <td style="max-width:320px;">${escapeHtml(detalle)}</td>
+                <td>${formatCurrency(atencion.valor_total || 0)}</td>
+                <td>${formatCurrency(atencion.saldo_pendiente || 0)}</td>
+                <td>${renderSeguimientoEstadoBadge(atencion.estado_cobro)}</td>
+                <td style="display:flex; gap:6px; flex-wrap:wrap;">${acciones.join('') || '<span style="color:#64748b;">Sin acciones</span>'}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+window.setTimeout(syncComercialPermissionUI, 0);
+
 async function fetchHistorial() {
     const d_mes = document.getElementById('desde_mes_hist').value;
     const d_num = document.getElementById('desde_numero_quincena_hist').value;
@@ -1557,7 +2171,15 @@ function setupMenuNavigation() {
     menuItems.forEach(item => {
         item.addEventListener('click', (e) => {
             e.preventDefault();
+            if (item.dataset.action === 'logout') {
+                performLogout();
+                return;
+            }
+
             const module = item.dataset.module;
+            if (!module) {
+                return;
+            }
             switchModule(module);
             
             // Update active state
@@ -1568,6 +2190,13 @@ function setupMenuNavigation() {
 }
 
 function switchModule(moduleName) {
+    const allowedModules = Array.isArray(currentUser?.menu_modules) ? currentUser.menu_modules : [];
+    const isAdminUser = currentUser?.role === 'Administrador';
+    if (!isAdminUser && moduleName !== 'dashboard' && moduleName !== 'appBanner' && !allowedModules.includes(moduleName)) {
+        showError('No tienes acceso a ese módulo con tu rol actual.');
+        return;
+    }
+
     // Hide all views
     const views = document.querySelectorAll('.module-view');
     views.forEach(view => view.classList.remove('active'));
@@ -1590,6 +2219,9 @@ function switchModule(moduleName) {
         if (userMenu) userMenu.style.display = '';
     } else if (moduleName === 'recepcion') {
         displayName = 'Consulta Clientes';
+        if (userMenu) userMenu.style.display = '';
+    } else if (moduleName === 'chat') {
+        displayName = 'Chat Interno';
         if (userMenu) userMenu.style.display = '';
     } else if (moduleName === 'impuestos') {
         displayName = 'Gestión de Impuestos';
@@ -1620,7 +2252,9 @@ function switchModule(moduleName) {
             // Siempre que entremos al módulo Nómina, mostrar vista de inicio
             volverInicioNomina();
         } else if (moduleName === 'usuarios') {
-            loadUsuarios();
+            loadUsuariosManagement();
+        } else if (moduleName === 'chat') {
+            initChatModule();
         } else if (moduleName === 'dashboard') {
             loadDashboardData();
         } else if (moduleName === 'comercial') {
@@ -2366,7 +3000,7 @@ function openModuleFull(moduleName) {
         }
         // load module-specific handlers
         if (moduleName === 'nomina') loadEmpleados();
-        else if (moduleName === 'usuarios') loadUsuarios();
+        else if (moduleName === 'usuarios') loadUsuariosManagement();
         else if (moduleName === 'dashboard') loadDashboardData();
         else if (moduleName === 'comercial') {
             const panelMes = document.getElementById('comercialMesPanel');
@@ -2381,17 +3015,33 @@ function openModuleFull(moduleName) {
     }
 }
 
+async function performLogout() {
+    try {
+        stopChatPolling();
+        await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+        localStorage.removeItem('user');
+        window.location.href = '/';
+    } catch (error) {
+        console.error('Error al cerrar sesión:', error);
+        stopChatPolling();
+        localStorage.removeItem('user');
+        window.location.href = '/';
+    }
+}
+
 function setupLogout() {
-    document.getElementById('logoutBtn').addEventListener('click', async () => {
-        try {
-            await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-            localStorage.removeItem('user');
-            window.location.href = '/';
-        } catch (error) {
-            console.error('Error al cerrar sesión:', error);
-            localStorage.removeItem('user');
-            window.location.href = '/';
+    const logoutButtons = [document.getElementById('logoutBtn')].filter(Boolean);
+
+    logoutButtons.forEach(button => {
+        if (button.dataset.bound === 'true') {
+            return;
         }
+
+        button.addEventListener('click', (event) => {
+            event.preventDefault();
+            performLogout();
+        });
+        button.dataset.bound = 'true';
     });
 }
 
@@ -2639,7 +3289,880 @@ let tarifasComercialesData = [];
 let clienteComercialTarifaContext = null;
 let catalogoComercialComponentesSeleccionados = [];
 let catalogoComercialExamenesDisponibles = [];
+let catalogoComercialComponentesPendientes = [];
 let recepcionClienteActivoId = null;
+let clienteSeguimientoContext = {
+    clienteId: null,
+    cliente: null,
+    convenioItems: [],
+    atenciones: [],
+    documentos: [],
+    pagos: [],
+    draftDetalles: []
+};
+function formatearNombreContactoCliente(nombre, cargo) {
+    const nombreLimpio = (nombre || '').trim();
+    const cargoLimpio = (cargo || '').trim();
+
+    if (nombreLimpio && cargoLimpio) {
+        return `${nombreLimpio} (${cargoLimpio})`;
+    }
+
+    return nombreLimpio || cargoLimpio || '';
+}
+
+function obtenerContactoPreferidoCliente(cliente) {
+    const contactoFacturacion = formatearNombreContactoCliente(cliente?.contacto_facturacion, cliente?.cargo_contacto_facturacion);
+    if (contactoFacturacion) {
+        return contactoFacturacion;
+    }
+
+    return formatearNombreContactoCliente(cliente?.contacto_principal, cliente?.cargo_contacto_principal);
+}
+
+function obtenerAnotacionesRecepcionCliente(cliente) {
+    const puntosRecepcion = (cliente?.puntos_atencion_recepcion || '').trim();
+    const observaciones = (cliente?.observaciones || '').trim();
+
+    if (puntosRecepcion && observaciones && puntosRecepcion !== observaciones) {
+        return `${puntosRecepcion}\n\nNotas comerciales: ${observaciones}`;
+    }
+
+    return puntosRecepcion || observaciones || '';
+}
+
+function obtenerEstadoCliente(cliente) {
+    const estado = String(cliente?.estado_cliente || '').trim().toUpperCase();
+    if (estado) return estado;
+    return cliente?.activo === false ? 'INACTIVO' : 'ACTIVO';
+}
+
+function formatearEstadoCliente(estado) {
+    if (estado === 'BLOQUEO_TEMPORAL') return 'BLOQUEO TEMPORAL';
+    if (estado === 'INACTIVO') return 'INACTIVO';
+    return 'ACTIVO';
+}
+
+function obtenerClaseEstadoCliente(estado) {
+    if (estado === 'BLOQUEO_TEMPORAL') return 'recepcion-estado-bloqueo';
+    if (estado === 'INACTIVO') return 'recepcion-estado-inactivo';
+    return 'recepcion-estado-activo';
+}
+
+function getTodayIsoDate() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function parseMoneyInput(value) {
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : NaN;
+    }
+
+    const normalized = String(value || '')
+        .replace(/\s+/g, '')
+        .replace(/\$/g, '')
+        .replace(/\./g, '')
+        .replace(/,/g, '.');
+
+    const amount = Number(normalized);
+    return Number.isFinite(amount) ? amount : NaN;
+}
+
+function renderSeguimientoEstadoBadge(estado) {
+    const normalized = String(estado || 'PENDIENTE').toUpperCase();
+    let badgeClass = 'badge-secondary';
+    if (normalized === 'PAGADO') badgeClass = 'badge-success';
+    else if (normalized === 'PARCIAL') badgeClass = 'badge-warning';
+    else if (normalized === 'VENCIDO' || normalized === 'ANULADO') badgeClass = 'badge-danger';
+    else if (normalized === 'PENDIENTE') badgeClass = 'badge-info';
+    return `<span class="badge ${badgeClass}">${escapeHtml(normalized)}</span>`;
+}
+
+function getClienteSeguimientoActual() {
+    return clienteSeguimientoContext?.cliente || null;
+}
+
+function getAtencionSeguimientoById(atencionId) {
+    return (clienteSeguimientoContext.atenciones || []).find(atencion => Number(atencion.id) === Number(atencionId)) || null;
+}
+
+function getDocumentoSeguimientoById(documentoId) {
+    return (clienteSeguimientoContext.documentos || []).find(documento => Number(documento.id) === Number(documentoId)) || null;
+}
+
+function getPagoSeguimientoById(pagoId) {
+    return (clienteSeguimientoContext.pagos || []).find(pago => Number(pago.id) === Number(pagoId)) || null;
+}
+
+function getConvenioItemSeguimientoById(itemId) {
+    return (clienteSeguimientoContext.convenioItems || []).find(item => Number(item.id) === Number(itemId)) || null;
+}
+
+function buildComercialDeleteBlockedMessage(defaultMessage, details = {}) {
+    const items = Object.entries(details || {})
+        .filter(([, value]) => Number(value || 0) > 0)
+        .map(([key, value]) => `${key}: ${value}`);
+
+    if (!items.length) {
+        return defaultMessage;
+    }
+
+    return `${defaultMessage} (${items.join(', ')})`;
+}
+
+async function ensureClientesComercialesLoaded() {
+    if (Array.isArray(clientesComercialesData) && clientesComercialesData.length > 0) {
+        return clientesComercialesData;
+    }
+    await cargarClientesComercialesConfig();
+    return clientesComercialesData;
+}
+
+function setSeguimientoPanelVisible(panelName = '') {
+    const panels = {
+        atenciones: document.getElementById('clienteSeguimientoAtencionesPanel'),
+        documentos: document.getElementById('clienteSeguimientoDocumentosPanel'),
+        pagos: document.getElementById('clienteSeguimientoPagosPanel')
+    };
+    const emptyState = document.getElementById('clienteSeguimientoEmptyState');
+
+    Object.entries(panels).forEach(([name, panel]) => {
+        if (panel) {
+            panel.style.display = name === panelName ? 'block' : 'none';
+        }
+    });
+
+    if (emptyState) {
+        emptyState.style.display = panelName ? 'none' : 'block';
+    }
+}
+
+function renderClienteSeguimientoResumen() {
+    const cliente = getClienteSeguimientoActual();
+    const resumenCliente = document.getElementById('clienteSeguimientoResumenCliente');
+    const resumenVendedor = document.getElementById('clienteSeguimientoResumenVendedor');
+    const resumenCondicion = document.getElementById('clienteSeguimientoResumenCondicion');
+    const resumenCantidad = document.getElementById('clienteSeguimientoResumenCantidad');
+    const resumenSaldo = document.getElementById('clienteSeguimientoResumenSaldo');
+
+    if (resumenCliente) {
+        resumenCliente.textContent = cliente?.razon_social || cliente?.nombre_comercial || 'Cliente';
+    }
+    if (resumenVendedor) {
+        resumenVendedor.textContent = cliente?.vendedor_nombre || 'Sin vendedor';
+    }
+    if (resumenCondicion) {
+        resumenCondicion.textContent = formatearFormaPagoCliente(cliente) || 'Sin condición';
+    }
+    if (resumenCantidad) {
+        resumenCantidad.textContent = String((clienteSeguimientoContext.documentos || []).length);
+    }
+    if (resumenSaldo) {
+        const saldo = (clienteSeguimientoContext.documentos || []).reduce((acc, documento) => acc + Number(documento.saldo_actual || 0), 0);
+        resumenSaldo.textContent = formatCurrency(saldo);
+    }
+}
+
+function renderSeguimientoAtencionesTable() {
+    const tbody = document.getElementById('clienteSeguimientoAtencionesTable');
+    if (!tbody) return;
+
+    const atenciones = clienteSeguimientoContext.atenciones || [];
+    if (!atenciones.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Este cliente aún no tiene atenciones registradas.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = atenciones.map(atencion => {
+        const detalle = atencion.detalle_resumen || atencion.detalle_items_resumen || 'Sin detalle';
+        const accion = atencion.documento_id
+            ? `<button type="button" class="action-btn action-btn-edit" onclick="mostrarAgregarSeguimientoPago(${Number(atencion.documento_id)})">Registrar pago</button>`
+            : '<span style="color:#64748b;">Sin acción</span>';
+
+        return `
+            <tr>
+                <td>${escapeHtml(atencion.nro_atencion || 'N/A')}</td>
+                <td>${escapeHtml(atencion.fecha_atencion || 'N/A')}</td>
+                <td>${escapeHtml(atencion.pacientes_resumen || atencion.paciente_nombre || 'N/A')}</td>
+                <td style="max-width:320px;">${escapeHtml(detalle)}</td>
+                <td>${formatCurrency(atencion.valor_total || 0)}</td>
+                <td>${formatCurrency(atencion.saldo_pendiente || 0)}</td>
+                <td>${renderSeguimientoEstadoBadge(atencion.estado_cobro)}</td>
+                <td>${accion}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderSeguimientoDocumentosTable() {
+    const tbody = document.getElementById('clienteSeguimientoDocumentosTable');
+    if (!tbody) return;
+
+    const documentos = clienteSeguimientoContext.documentos || [];
+    if (!documentos.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Este cliente aún no tiene documentos comerciales registrados.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = documentos.map(documento => {
+        const acciones = [];
+        if (canManageComercial('pagos', 'create')) {
+            acciones.push(`<button type="button" class="action-btn action-btn-edit" onclick="mostrarAgregarSeguimientoPago(${Number(documento.id)})">Pago</button>`);
+        }
+        if (!documento.es_atencion) {
+            if (canManageComercial('documentos', 'update')) {
+                acciones.push(`<button type="button" class="action-btn action-btn-edit" onclick="editarSeguimientoDocumento(${Number(documento.id)})">Editar</button>`);
+            }
+            if (canManageComercial('documentos', 'delete')) {
+                acciones.push(`<button type="button" class="action-btn action-btn-delete" onclick="eliminarSeguimientoDocumento(${Number(documento.id)})">Eliminar</button>`);
+            }
+        } else {
+            acciones.push('<span style="color:#64748b;">Generado desde atención</span>');
+        }
+
+        return `
+            <tr>
+                <td>${escapeHtml(documento.tipo_documento || 'N/A')}</td>
+                <td>${escapeHtml(documento.numero_documento || 'N/A')}</td>
+                <td>${escapeHtml(documento.fecha_documento || 'N/A')}</td>
+                <td>${escapeHtml(documento.fecha_vencimiento || 'N/A')}</td>
+                <td>${formatCurrency(documento.valor_documento || 0)}</td>
+                <td>${formatCurrency(documento.saldo_actual || 0)}</td>
+                <td>${documento.genera_cartera ? '<span class="badge badge-warning">Sí</span>' : '<span class="badge badge-secondary">No</span>'}</td>
+                <td>${renderSeguimientoEstadoBadge(documento.estado_documento)}</td>
+                <td>${acciones.join(' ')}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderSeguimientoPagosTable() {
+    const tbody = document.getElementById('clienteSeguimientoPagosTable');
+    if (!tbody) return;
+
+    const pagos = clienteSeguimientoContext.pagos || [];
+    if (!pagos.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="loading">Este cliente aún no tiene pagos o abonos registrados.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = pagos.map(pago => {
+        const comprobante = pago.comprobante_url
+            ? `<a href="${pago.comprobante_url}" target="_blank" rel="noopener noreferrer">Ver</a>`
+            : 'N/A';
+        const paciente = [pago.paciente_nombre, pago.paciente_documento].filter(Boolean).join(' · ') || 'N/A';
+        const fechas = [pago.numero_recibo_caja, pago.fecha_pago, pago.fecha_recibo].filter(Boolean).join(' · ');
+        const acciones = [];
+        if (canManageComercial('pagos', 'update')) {
+            acciones.push(`<button type="button" class="action-btn action-btn-edit" onclick="editarSeguimientoPago(${Number(pago.id)})">Editar</button>`);
+        }
+        if (canManageComercial('pagos', 'delete')) {
+            acciones.push(`<button type="button" class="action-btn action-btn-delete" onclick="eliminarSeguimientoPago(${Number(pago.id)})">Eliminar</button>`);
+        }
+
+        return `
+            <tr>
+                <td>${escapeHtml([pago.documento_tipo, pago.documento_numero].filter(Boolean).join(' · ') || 'N/A')}</td>
+                <td>${escapeHtml(fechas || 'N/A')}</td>
+                <td>${escapeHtml([paciente, pago.fecha_atencion].filter(Boolean).join(' · '))}</td>
+                <td>${formatCurrency(pago.valor_pago || 0)}</td>
+                <td>${escapeHtml(pago.tipo_pago || 'N/A')}</td>
+                <td>${escapeHtml(pago.medio_pago || 'N/A')}</td>
+                <td>${escapeHtml(pago.canal_transferencia || 'N/A')}</td>
+                <td>${comprobante}</td>
+                <td>${acciones.join(' ')}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderSeguimientoDraftDetalles() {
+    const tbody = document.getElementById('seguimientoAtencionDetalleTable');
+    const totalEl = document.getElementById('seguimientoAtencionTotal');
+    if (!tbody || !totalEl) return;
+
+    const detalles = clienteSeguimientoContext.draftDetalles || [];
+    if (!detalles.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="loading">Agrega uno o más pacientes con sus exámenes o paquetes convenidos.</td></tr>';
+        totalEl.textContent = 'Total atención: $0';
+        return;
+    }
+
+    let total = 0;
+    tbody.innerHTML = detalles.map((detalle, index) => {
+        total += Number(detalle.valor_unitario || 0);
+        return `
+            <tr>
+                <td>${escapeHtml([detalle.paciente_nombre, detalle.paciente_documento].filter(Boolean).join(' · '))}</td>
+                <td>${escapeHtml(detalle.nombre || 'N/A')}</td>
+                <td>${escapeHtml(detalle.tipo_item || 'N/A')}</td>
+                <td>${formatCurrency(detalle.valor_unitario || 0)}</td>
+                <td><button type="button" class="action-btn action-btn-delete" onclick="eliminarDetalleAtencionSeguimiento(${index})">Quitar</button></td>
+            </tr>
+        `;
+    }).join('');
+    totalEl.textContent = `Total atención: ${formatCurrency(total)}`;
+}
+
+function renderSeguimientoConvenioItemsSelect(items = []) {
+    const select = document.getElementById('seguimientoAtencionItemSelect');
+    const hint = document.getElementById('seguimientoAtencionItemHint');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Seleccione un item convenido...</option>';
+    items.forEach(item => {
+        const option = document.createElement('option');
+        option.value = String(item.id);
+        option.textContent = `${item.nombre} · ${item.tipo_item} · ${formatCurrency(item.valor_unitario || 0)}`;
+        select.appendChild(option);
+    });
+
+    if (hint) {
+        hint.textContent = items.length
+            ? 'Solo se muestran los items convenidos para este cliente y se usa la tarifa registrada en el convenio.'
+            : 'Este cliente no tiene exámenes o paquetes convenidos vigentes para la fecha seleccionada.';
+    }
+}
+
+function llenarSelectDocumentosSeguimiento(selectedId = '') {
+    const select = document.getElementById('seguimientoPagoDocumentoId');
+    if (!select) return;
+
+    const documentos = clienteSeguimientoContext.documentos || [];
+    select.innerHTML = '<option value="">Seleccione un documento...</option>';
+
+    documentos
+        .filter(documento => Number(documento.saldo_actual || 0) > 0 || String(documento.id) === String(selectedId))
+        .forEach(documento => {
+            const option = document.createElement('option');
+            option.value = String(documento.id);
+            option.textContent = `${documento.tipo_documento || 'DOC'} · ${documento.numero_documento || 'Sin número'} · saldo ${formatCurrency(documento.saldo_actual || 0)}`;
+            select.appendChild(option);
+        });
+
+    if (selectedId) {
+        select.value = String(selectedId);
+    }
+}
+
+function actualizarHintSeguimientoDocumento() {
+    const checkbox = document.getElementById('seguimientoDocumentoGeneraCartera');
+    const hint = document.getElementById('seguimientoDocumentoHint');
+    const vencimiento = document.getElementById('seguimientoDocumentoVencimiento');
+    if (!checkbox || !hint || !vencimiento) return;
+
+    if (checkbox.checked) {
+        hint.textContent = 'Como este documento genera cartera, debe registrar la fecha de vencimiento y el saldo quedará pendiente de cobro.';
+    } else {
+        hint.textContent = 'Si este documento deja saldo pendiente para seguimiento de cobro, marca que genera cartera y registra la fecha de vencimiento.';
+        vencimiento.value = '';
+    }
+}
+
+function actualizarVisibilidadSeguimientoPago() {
+    const medio = document.getElementById('seguimientoPagoMedio')?.value || 'EFECTIVO';
+    const documentoId = document.getElementById('seguimientoPagoDocumentoId')?.value || '';
+    const reciboSection = document.getElementById('seguimientoPagoReciboCajaSection');
+    const comprobanteHint = document.getElementById('seguimientoPagoComprobanteActual');
+    const documento = getDocumentoSeguimientoById(documentoId);
+    const cliente = getClienteSeguimientoActual();
+    const requiereRecibo = Boolean(documento && medio === 'EFECTIVO' && cliente?.requiere_factura === false);
+
+    if (reciboSection) {
+        reciboSection.style.display = requiereRecibo ? 'block' : 'none';
+    }
+    if (comprobanteHint) {
+        comprobanteHint.textContent = medio === 'TRANSFERENCIA'
+            ? 'Obligatorio cuando el pago se registra por transferencia.'
+            : 'Opcional. Solo se usa cuando adjunta soporte del recaudo.';
+    }
+}
+
+async function loadSeguimientoConvenioItems(fechaAtencion = '') {
+    const clienteId = clienteSeguimientoContext.clienteId;
+    if (!clienteId) {
+        clienteSeguimientoContext.convenioItems = [];
+        renderSeguimientoConvenioItemsSelect([]);
+        return [];
+    }
+
+    const params = new URLSearchParams();
+    if (fechaAtencion) {
+        params.set('fecha_atencion', fechaAtencion);
+    }
+
+    const response = await fetch(`/api/comercial/clientes/${clienteId}/convenio-items${params.toString() ? `?${params.toString()}` : ''}`, {
+        credentials: 'include'
+    });
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.error || 'No se pudieron cargar los items convenidos del cliente');
+    }
+
+    clienteSeguimientoContext.convenioItems = Array.isArray(data) ? data : [];
+    renderSeguimientoConvenioItemsSelect(clienteSeguimientoContext.convenioItems);
+    return clienteSeguimientoContext.convenioItems;
+}
+
+async function cargarSeguimientoCliente(clienteId) {
+    const responseSet = await Promise.all([
+        fetch(`/api/comercial/clientes/${clienteId}/atenciones`, { credentials: 'include' }),
+        fetch(`/api/comercial/clientes/${clienteId}/seguimiento-documentos`, { credentials: 'include' }),
+        fetch(`/api/comercial/clientes/${clienteId}/seguimiento-pagos`, { credentials: 'include' })
+    ]);
+
+    const [atencionesResp, documentosResp, pagosResp] = responseSet;
+    const [atencionesData, documentosData, pagosData] = await Promise.all(responseSet.map(response => response.json()));
+
+    if (!atencionesResp.ok) throw new Error(atencionesData.error || 'No se pudieron cargar las atenciones');
+    if (!documentosResp.ok) throw new Error(documentosData.error || 'No se pudieron cargar los documentos');
+    if (!pagosResp.ok) throw new Error(pagosData.error || 'No se pudieron cargar los pagos');
+
+    clienteSeguimientoContext.atenciones = Array.isArray(atencionesData) ? atencionesData : [];
+    clienteSeguimientoContext.documentos = Array.isArray(documentosData) ? documentosData : [];
+    clienteSeguimientoContext.pagos = Array.isArray(pagosData) ? pagosData : [];
+    renderClienteSeguimientoResumen();
+    renderSeguimientoAtencionesTable();
+    renderSeguimientoDocumentosTable();
+    renderSeguimientoPagosTable();
+}
+
+async function abrirSeguimientoClienteDesdeFicha() {
+    const clienteId = document.getElementById('clienteComercialId')?.value || '';
+    if (!clienteId) {
+        showError('Guarda o selecciona primero un cliente para abrir su seguimiento.');
+        return;
+    }
+
+    try {
+        await ensureClientesComercialesLoaded();
+        const cliente = clientesComercialesData.find(item => String(item.id) === String(clienteId));
+        if (!cliente) {
+            throw new Error('No se pudo encontrar el cliente seleccionado.');
+        }
+
+        clienteSeguimientoContext = {
+            clienteId: String(clienteId),
+            cliente,
+            convenioItems: [],
+            atenciones: [],
+            documentos: [],
+            pagos: [],
+            draftDetalles: []
+        };
+
+        document.getElementById('clienteSeguimientoModal')?.classList.add('active');
+        setSeguimientoPanelVisible('atenciones');
+        renderClienteSeguimientoResumen();
+        renderSeguimientoAtencionesTable();
+        renderSeguimientoDocumentosTable();
+        renderSeguimientoPagosTable();
+        await cargarSeguimientoCliente(clienteId);
+    } catch (error) {
+        console.error('Error abriendo seguimiento del cliente:', error);
+        showError(error.message || 'No fue posible abrir el seguimiento del cliente.');
+    }
+}
+
+function closeClienteSeguimientoModal() {
+    document.getElementById('clienteSeguimientoModal')?.classList.remove('active');
+    setSeguimientoPanelVisible('');
+}
+
+function volverClienteDesdeSeguimiento() {
+    closeClienteSeguimientoModal();
+}
+
+function abrirAccionClienteSeguimiento(tipo) {
+    if (tipo === 'atenciones') {
+        setSeguimientoPanelVisible('atenciones');
+        mostrarAgregarAtencionCliente();
+        return;
+    }
+    if (tipo === 'documentos') {
+        setSeguimientoPanelVisible('documentos');
+        mostrarAgregarSeguimientoDocumento();
+        return;
+    }
+    if (tipo === 'pagos') {
+        setSeguimientoPanelVisible('pagos');
+        mostrarAgregarSeguimientoPago();
+    }
+}
+
+async function mostrarAgregarAtencionCliente() {
+    if (!clienteSeguimientoContext.clienteId) {
+        showError('Selecciona primero un cliente comercial.');
+        return;
+    }
+
+    document.getElementById('seguimientoAtencionModalTitle').textContent = 'Nueva Atención';
+    document.getElementById('seguimientoAtencionForm')?.reset();
+    document.getElementById('seguimientoAtencionFecha').value = getTodayIsoDate();
+    clienteSeguimientoContext.draftDetalles = [];
+    renderSeguimientoDraftDetalles();
+    try {
+        await loadSeguimientoConvenioItems(document.getElementById('seguimientoAtencionFecha').value);
+    } catch (error) {
+        console.error('Error cargando convenio para atención:', error);
+        showError(error.message || 'No se pudieron cargar los items convenidos.');
+    }
+    document.getElementById('seguimientoAtencionModal')?.classList.add('active');
+}
+
+function closeSeguimientoAtencionModal() {
+    document.getElementById('seguimientoAtencionModal')?.classList.remove('active');
+    clienteSeguimientoContext.draftDetalles = [];
+    renderSeguimientoDraftDetalles();
+}
+
+function agregarDetalleAtencionSeleccionado() {
+    const itemId = document.getElementById('seguimientoAtencionItemSelect')?.value || '';
+    const pacienteDocumento = document.getElementById('seguimientoAtencionPacienteDocumento')?.value.trim() || '';
+    const pacienteNombre = document.getElementById('seguimientoAtencionPacienteNombre')?.value.trim() || '';
+
+    if (!itemId) {
+        showError('Selecciona primero un examen o paquete convenido.');
+        return;
+    }
+    if (!pacienteDocumento || !pacienteNombre) {
+        showError('Debes registrar documento y nombre del paciente antes de agregar el item.');
+        return;
+    }
+
+    const item = getConvenioItemSeguimientoById(itemId);
+    if (!item) {
+        showError('El item seleccionado ya no está disponible para este cliente.');
+        return;
+    }
+
+    clienteSeguimientoContext.draftDetalles.push({
+        catalogo_item_id: Number(item.id),
+        paciente_documento: pacienteDocumento,
+        paciente_nombre: pacienteNombre,
+        nombre: item.nombre,
+        tipo_item: item.tipo_item,
+        valor_unitario: Number(item.valor_unitario || 0)
+    });
+    renderSeguimientoDraftDetalles();
+    document.getElementById('seguimientoAtencionItemSelect').value = '';
+}
+
+function eliminarDetalleAtencionSeguimiento(index) {
+    clienteSeguimientoContext.draftDetalles.splice(index, 1);
+    renderSeguimientoDraftDetalles();
+}
+
+async function guardarSeguimientoAtencion(event) {
+    event.preventDefault();
+
+    const clienteId = clienteSeguimientoContext.clienteId;
+    if (!clienteId) {
+        showError('No hay cliente activo para registrar la atención.');
+        return;
+    }
+
+    if (!(clienteSeguimientoContext.draftDetalles || []).length) {
+        showError('Agrega al menos un examen o paquete antes de guardar la atención.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/comercial/clientes/${clienteId}/atenciones`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                fecha_atencion: document.getElementById('seguimientoAtencionFecha').value,
+                observaciones: document.getElementById('seguimientoAtencionObservaciones').value.trim(),
+                detalles: clienteSeguimientoContext.draftDetalles.map(detalle => ({
+                    catalogo_item_id: detalle.catalogo_item_id,
+                    paciente_documento: detalle.paciente_documento,
+                    paciente_nombre: detalle.paciente_nombre
+                }))
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            showError(data.error || 'No fue posible registrar la atención.');
+            return;
+        }
+
+        showSuccess('Atención registrada.');
+        closeSeguimientoAtencionModal();
+        await cargarSeguimientoCliente(clienteId);
+        setSeguimientoPanelVisible('atenciones');
+    } catch (error) {
+        console.error('Error guardando atención de seguimiento:', error);
+        showError('Error de conexión al guardar la atención.');
+    }
+}
+
+function mostrarAgregarSeguimientoDocumento() {
+    if (!clienteSeguimientoContext.clienteId) {
+        showError('Selecciona primero un cliente comercial.');
+        return;
+    }
+
+    document.getElementById('seguimientoDocumentoModalTitle').textContent = 'Nuevo Documento Comercial';
+    document.getElementById('seguimientoDocumentoForm')?.reset();
+    document.getElementById('seguimientoDocumentoId').value = '';
+    document.getElementById('seguimientoDocumentoTipo').value = 'FACTURA';
+    document.getElementById('seguimientoDocumentoFecha').value = getTodayIsoDate();
+    document.getElementById('seguimientoDocumentoValor').value = '';
+    document.getElementById('seguimientoDocumentoGeneraCartera').checked = false;
+    actualizarHintSeguimientoDocumento();
+    document.getElementById('seguimientoDocumentoModal')?.classList.add('active');
+}
+
+function closeSeguimientoDocumentoModal() {
+    document.getElementById('seguimientoDocumentoModal')?.classList.remove('active');
+}
+
+function editarSeguimientoDocumento(documentoId) {
+    const documento = getDocumentoSeguimientoById(documentoId);
+    if (!documento) {
+        showError('No se pudo localizar el documento seleccionado.');
+        return;
+    }
+
+    document.getElementById('seguimientoDocumentoModalTitle').textContent = 'Editar Documento Comercial';
+    document.getElementById('seguimientoDocumentoId').value = documento.id;
+    document.getElementById('seguimientoDocumentoTipo').value = documento.tipo_documento || 'FACTURA';
+    document.getElementById('seguimientoDocumentoNumero').value = documento.numero_documento || '';
+    document.getElementById('seguimientoDocumentoFecha').value = documento.fecha_documento || getTodayIsoDate();
+    document.getElementById('seguimientoDocumentoVencimiento').value = documento.fecha_vencimiento || '';
+    document.getElementById('seguimientoDocumentoValor').value = Number(documento.valor_documento || 0);
+    document.getElementById('seguimientoDocumentoGeneraCartera').checked = documento.genera_cartera === true;
+    document.getElementById('seguimientoDocumentoObservaciones').value = documento.observaciones || '';
+    actualizarHintSeguimientoDocumento();
+    document.getElementById('seguimientoDocumentoModal')?.classList.add('active');
+}
+
+async function guardarSeguimientoDocumento(event) {
+    event.preventDefault();
+
+    const clienteId = clienteSeguimientoContext.clienteId;
+    const documentoId = document.getElementById('seguimientoDocumentoId').value || '';
+    const valorDocumento = parseMoneyInput(document.getElementById('seguimientoDocumentoValor').value);
+
+    if (!Number.isFinite(valorDocumento) || valorDocumento <= 0) {
+        showError('El valor del documento debe ser mayor a cero.');
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            documentoId ? `/api/comercial/seguimiento-documentos/${documentoId}` : `/api/comercial/clientes/${clienteId}/seguimiento-documentos`,
+            {
+                method: documentoId ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    tipo_documento: document.getElementById('seguimientoDocumentoTipo').value,
+                    numero_documento: document.getElementById('seguimientoDocumentoNumero').value.trim(),
+                    fecha_documento: document.getElementById('seguimientoDocumentoFecha').value,
+                    fecha_vencimiento: document.getElementById('seguimientoDocumentoGeneraCartera').checked
+                        ? document.getElementById('seguimientoDocumentoVencimiento').value
+                        : '',
+                    valor_documento: valorDocumento,
+                    genera_cartera: document.getElementById('seguimientoDocumentoGeneraCartera').checked,
+                    observaciones: document.getElementById('seguimientoDocumentoObservaciones').value.trim()
+                })
+            }
+        );
+        const data = await response.json();
+        if (!response.ok) {
+            showError(data.error || 'No fue posible guardar el documento.');
+            return;
+        }
+
+        showSuccess(documentoId ? 'Documento actualizado.' : 'Documento registrado.');
+        closeSeguimientoDocumentoModal();
+        await cargarSeguimientoCliente(clienteId);
+        setSeguimientoPanelVisible('documentos');
+    } catch (error) {
+        console.error('Error guardando documento de seguimiento:', error);
+        showError('Error de conexión al guardar el documento.');
+    }
+}
+
+async function eliminarSeguimientoDocumento(documentoId) {
+    if (!confirm('¿Desea eliminar este documento comercial?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/comercial/seguimiento-documentos/${documentoId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            showError(data.error || 'No fue posible eliminar el documento.');
+            return;
+        }
+
+        showSuccess('Documento eliminado.');
+        await cargarSeguimientoCliente(clienteSeguimientoContext.clienteId);
+        setSeguimientoPanelVisible('documentos');
+    } catch (error) {
+        console.error('Error eliminando documento de seguimiento:', error);
+        showError('Error de conexión al eliminar el documento.');
+    }
+}
+
+function mostrarAgregarSeguimientoPago(documentoId = '') {
+    if (!clienteSeguimientoContext.clienteId) {
+        showError('Selecciona primero un cliente comercial.');
+        return;
+    }
+
+    document.getElementById('seguimientoPagoModalTitle').textContent = 'Registrar Pago';
+    document.getElementById('seguimientoPagoForm')?.reset();
+    document.getElementById('seguimientoPagoId').value = '';
+    llenarSelectDocumentosSeguimiento(documentoId || '');
+    document.getElementById('seguimientoPagoFecha').value = getTodayIsoDate();
+    document.getElementById('seguimientoPagoFechaRecibo').value = getTodayIsoDate();
+    document.getElementById('seguimientoPagoNumeroRecibo').value = '';
+    actualizarVisibilidadSeguimientoPago();
+    document.getElementById('seguimientoPagoModal')?.classList.add('active');
+}
+
+function closeSeguimientoPagoModal() {
+    document.getElementById('seguimientoPagoModal')?.classList.remove('active');
+}
+
+function editarSeguimientoPago(pagoId) {
+    const pago = getPagoSeguimientoById(pagoId);
+    if (!pago) {
+        showError('No se pudo localizar el pago seleccionado.');
+        return;
+    }
+
+    document.getElementById('seguimientoPagoModalTitle').textContent = 'Editar Pago';
+    document.getElementById('seguimientoPagoId').value = pago.id;
+    llenarSelectDocumentosSeguimiento(pago.documento_id || '');
+    document.getElementById('seguimientoPagoDocumentoId').value = String(pago.documento_id || '');
+    document.getElementById('seguimientoPagoFecha').value = pago.fecha_pago || getTodayIsoDate();
+    document.getElementById('seguimientoPagoValor').value = Number(pago.valor_pago || 0);
+    document.getElementById('seguimientoPagoTipo').value = pago.tipo_pago || 'ABONO';
+    document.getElementById('seguimientoPagoMedio').value = pago.medio_pago || 'EFECTIVO';
+    document.getElementById('seguimientoPagoCanal').value = pago.canal_transferencia || '';
+    document.getElementById('seguimientoPagoNumeroRecibo').value = pago.numero_recibo_caja || '';
+    document.getElementById('seguimientoPagoFechaRecibo').value = pago.fecha_recibo || getTodayIsoDate();
+    document.getElementById('seguimientoPagoPacienteDocumento').value = pago.paciente_documento || '';
+    document.getElementById('seguimientoPagoPacienteNombre').value = pago.paciente_nombre || '';
+    document.getElementById('seguimientoPagoFechaAtencion').value = pago.fecha_atencion || '';
+    document.getElementById('seguimientoPagoExamenesRealizados').value = pago.examenes_realizados || '';
+    document.getElementById('seguimientoPagoObservaciones').value = pago.observaciones || '';
+    const comprobanteHint = document.getElementById('seguimientoPagoComprobanteActual');
+    if (comprobanteHint) {
+        comprobanteHint.textContent = pago.comprobante_nombre
+            ? `Comprobante actual: ${pago.comprobante_nombre}`
+            : 'Obligatorio cuando el pago se registra por transferencia.';
+    }
+    actualizarVisibilidadSeguimientoPago();
+    document.getElementById('seguimientoPagoModal')?.classList.add('active');
+}
+
+async function guardarSeguimientoPago(event) {
+    event.preventDefault();
+
+    const pagoId = document.getElementById('seguimientoPagoId').value || '';
+    const documentoId = document.getElementById('seguimientoPagoDocumentoId').value || '';
+    if (!documentoId) {
+        showError('Debes seleccionar el documento al que aplica el pago.');
+        return;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('fecha_pago', document.getElementById('seguimientoPagoFecha').value);
+        formData.append('valor_pago', document.getElementById('seguimientoPagoValor').value);
+        formData.append('tipo_pago', document.getElementById('seguimientoPagoTipo').value);
+        formData.append('medio_pago', document.getElementById('seguimientoPagoMedio').value);
+        formData.append('canal_transferencia', document.getElementById('seguimientoPagoCanal').value);
+        formData.append('fecha_recibo', document.getElementById('seguimientoPagoFechaRecibo').value);
+        formData.append('paciente_documento', document.getElementById('seguimientoPagoPacienteDocumento').value.trim());
+        formData.append('paciente_nombre', document.getElementById('seguimientoPagoPacienteNombre').value.trim());
+        formData.append('fecha_atencion', document.getElementById('seguimientoPagoFechaAtencion').value);
+        formData.append('examenes_realizados', document.getElementById('seguimientoPagoExamenesRealizados').value.trim());
+        formData.append('observaciones', document.getElementById('seguimientoPagoObservaciones').value.trim());
+
+        const comprobante = document.getElementById('seguimientoPagoComprobante')?.files?.[0];
+        if (comprobante) {
+            formData.append('comprobante_pago', comprobante);
+        }
+
+        const response = await fetch(
+            pagoId ? `/api/comercial/seguimiento-pagos/${pagoId}` : `/api/comercial/seguimiento-documentos/${documentoId}/pagos`,
+            {
+                method: pagoId ? 'PUT' : 'POST',
+                credentials: 'include',
+                body: formData
+            }
+        );
+        const data = await response.json();
+        if (!response.ok) {
+            showError(data.error || 'No fue posible guardar el pago.');
+            return;
+        }
+
+        showSuccess(pagoId ? 'Pago actualizado.' : 'Pago registrado.');
+        closeSeguimientoPagoModal();
+        await cargarSeguimientoCliente(clienteSeguimientoContext.clienteId);
+        setSeguimientoPanelVisible('pagos');
+    } catch (error) {
+        console.error('Error guardando pago de seguimiento:', error);
+        showError('Error de conexión al guardar el pago.');
+    }
+}
+
+async function eliminarSeguimientoPago(pagoId) {
+    if (!confirm('¿Desea eliminar este pago?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/comercial/seguimiento-pagos/${pagoId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            showError(data.error || 'No fue posible eliminar el pago.');
+            return;
+        }
+
+        showSuccess('Pago eliminado.');
+        await cargarSeguimientoCliente(clienteSeguimientoContext.clienteId);
+        setSeguimientoPanelVisible('pagos');
+    } catch (error) {
+        console.error('Error eliminando pago de seguimiento:', error);
+        showError('Error de conexión al eliminar el pago.');
+    }
+}
+
+function formatearMedioAutorizacion(medio) {
+    const valor = String(medio || '').trim().toUpperCase();
+    if (valor === 'PAGINA_WEB') return 'PAGINA WEB';
+    if (valor === 'EMAIL') return 'EMAIL';
+    if (valor === 'WHATSAPP') return 'WHATSAPP';
+    return valor || 'No registrado';
+}
+
+function formatearFormaPagoCliente(cliente) {
+    const valor = String(cliente?.condicion_comercial || '').trim().toUpperCase();
+    if (valor === 'CREDITO') return 'CREDITO';
+    if (valor === 'MIXTO') return 'MIXTO';
+    return 'EFECTIVO';
+}
+
 const COMERCIAL_SECTION_CONFIG = {
     inicio: {
         panels: [],
@@ -2700,12 +4223,12 @@ const COMERCIAL_SECTION_CONFIG = {
         summaryId: 'comercialClientesResumen',
         prompt: 'Escribe para buscar un cliente.',
         getItems: () => clientesComercialesData,
-        matchFields: item => [item.razon_social, item.nombre_comercial, item.nit, item.vendedor_nombre, item.contacto_principal, item.contacto_facturacion, item.email_empresa],
+        matchFields: item => [item.razon_social, item.nombre_comercial, item.nit, item.vendedor_nombre, item.contacto_principal, item.cargo_contacto_principal, item.contacto_facturacion, item.cargo_contacto_facturacion, item.email_empresa, item.medio_autorizacion, item.estado_cliente],
         renderResult: item => ({
             title: item.razon_social || item.nombre_comercial || 'Cliente sin nombre',
             subtitle: [item.nit || 'Sin NIT', item.vendedor_nombre || 'Sin vendedor'].filter(Boolean).join(' · '),
-            meta: [item.contacto_facturacion || item.contacto_principal || 'Sin contacto', item.email_facturacion || item.email_contacto_principal || item.email_empresa || '', item.condicion_comercial || ''].filter(Boolean).join(' · '),
-            estado: item.activo ? 'Activo' : 'Inactivo'
+            meta: [obtenerContactoPreferidoCliente(item) || 'Sin contacto', formatearMedioAutorizacion(item.medio_autorizacion), formatearFormaPagoCliente(item)].filter(Boolean).join(' · '),
+            estado: formatearEstadoCliente(obtenerEstadoCliente(item))
         }),
         edit: id => editarClienteComercial(id)
     },
@@ -2729,8 +4252,54 @@ function resetConsultaComercial(sectionName) {
 
     if (panel) panel.style.display = 'none';
     if (input) input.value = '';
+    if (input) input.dataset.showAll = 'false';
     if (summary) summary.textContent = config.prompt;
     if (results) results.innerHTML = `<div class="loading">${escapeHtml(config.prompt)}</div>`;
+    actualizarBotonVerTodosConsultaComercial(sectionName);
+}
+
+function actualizarBotonVerTodosConsultaComercial(sectionName) {
+    if (sectionName !== 'examenes') return;
+
+    const input = document.getElementById('comercialCatalogoSearch');
+    if (!input) return;
+
+    let button = document.getElementById('comercialCatalogoToggleAllBtn');
+    if (!button) {
+        const wrapper = document.createElement('div');
+        wrapper.style.display = 'flex';
+        wrapper.style.justifyContent = 'flex-end';
+        wrapper.style.marginTop = '8px';
+
+        button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-secondary';
+        button.id = 'comercialCatalogoToggleAllBtn';
+        button.onclick = () => toggleVerTodosConsultaComercial('examenes');
+
+        const label = document.createElement('span');
+        label.className = 'btn-label';
+        button.appendChild(label);
+        wrapper.appendChild(button);
+        input.insertAdjacentElement('afterend', wrapper);
+    }
+
+    const showAll = input.dataset.showAll === 'true';
+    const label = button.querySelector('.btn-label');
+    if (label) {
+        label.textContent = showAll ? 'Ver menos' : 'Ver todos';
+    }
+}
+
+function toggleVerTodosConsultaComercial(sectionName) {
+    if (sectionName !== 'examenes') return;
+
+    const input = document.getElementById('comercialCatalogoSearch');
+    if (!input) return;
+
+    input.dataset.showAll = input.dataset.showAll === 'true' ? 'false' : 'true';
+    actualizarBotonVerTodosConsultaComercial(sectionName);
+    renderConsultaComercialResults(sectionName, input.value || '');
 }
 
 function renderConsultaComercialResults(sectionName, query = '') {
@@ -2740,6 +4309,9 @@ function renderConsultaComercialResults(sectionName, query = '') {
     if (!results || !summary) return;
 
     const normalizedQuery = String(query || '').trim().toLowerCase();
+    const input = document.getElementById(config.inputId);
+    const showAll = input?.dataset.showAll === 'true';
+    actualizarBotonVerTodosConsultaComercial(sectionName);
     if (!normalizedQuery) {
         summary.textContent = config.prompt;
         results.innerHTML = `<div class="loading">${escapeHtml(config.prompt)}</div>`;
@@ -2755,8 +4327,15 @@ function renderConsultaComercialResults(sectionName, query = '') {
         return;
     }
 
+    const visibleItems = (!showAll && sectionName === 'examenes')
+        ? filtered.slice(0, 30)
+        : filtered;
+
     summary.textContent = `${filtered.length} resultado(s). Selecciona uno para abrir su ficha.`;
-    results.innerHTML = filtered.slice(0, 30).map(item => {
+    const truncatedNotice = (!showAll && sectionName === 'examenes' && filtered.length > visibleItems.length)
+        ? `<div class="comercial-search-meta" style="margin-bottom:8px;">Mostrando ${visibleItems.length} de ${filtered.length} resultados. Usa "Ver todos" para abrir el listado completo.</div>`
+        : '';
+    results.innerHTML = truncatedNotice + visibleItems.map(item => {
         const view = config.renderResult(item);
         const parts = [
             `<strong>${escapeHtml(view.title || 'Registro')}</strong>`,
@@ -2812,6 +4391,9 @@ function resetRecepcionConsulta() {
     const consultaPanel = document.getElementById('recepcionConsultaPanel');
     const input = document.getElementById('recepcionClientesSearch');
     const titulo = document.getElementById('recepcionClienteDetalleTitulo');
+    const estadoBadge = document.getElementById('recepcionClienteEstadoBadge');
+    const medioAutorizacion = document.getElementById('recepcionClienteMedioAutorizacion');
+    const formaPago = document.getElementById('recepcionClienteFormaPago');
     const puntos = document.getElementById('recepcionClientePuntosAtencion');
     const contacto = document.getElementById('recepcionClienteContactoPrincipal');
     const celular = document.getElementById('recepcionClienteCelularPrincipal');
@@ -2821,7 +4403,13 @@ function resetRecepcionConsulta() {
     if (consultaPanel) consultaPanel.style.display = 'block';
     if (input) input.value = '';
     if (titulo) titulo.textContent = 'Cliente';
-    if (puntos) puntos.textContent = 'Sin instrucciones registradas.';
+    if (estadoBadge) {
+        estadoBadge.textContent = 'ACTIVO';
+        estadoBadge.className = 'recepcion-estado-badge recepcion-estado-activo';
+    }
+    if (medioAutorizacion) medioAutorizacion.textContent = 'No registrado.';
+    if (formaPago) formaPago.textContent = 'No registrada.';
+    if (puntos) puntos.textContent = 'Sin anotaciones especiales registradas.';
     if (contacto) contacto.textContent = 'Sin contacto registrado.';
     if (celular) celular.textContent = 'Sin celular registrado.';
     if (items) items.innerHTML = '<div class="loading">Selecciona un cliente para ver su detalle.</div>';
@@ -2831,17 +4419,24 @@ function construirTarjetasRecepcionCliente(cliente, tarifasCliente, catalogoMap)
     if (Array.isArray(tarifasCliente) && tarifasCliente.length > 0) {
         return tarifasCliente.map(tarifa => {
             const itemCatalogo = catalogoMap.get(String(tarifa.catalogo_item_id));
+            const componentesPaquete = Array.isArray(itemCatalogo?.componentes) ? itemCatalogo.componentes : [];
             const descripcion = tarifa.tipo_item === 'PAQUETE'
-                ? (itemCatalogo?.resumen_componentes || 'Paquete sin componentes detallados')
+                ? ''
                 : (tarifa.clasificacion_resumen || tarifa.tipo_item || 'Item convenido');
             const vigencia = [tarifa.vigencia_desde, tarifa.vigencia_hasta].filter(Boolean).join(' a ');
             const valorMostrar = tarifa.tarifa_negociada || tarifa.tarifa_base || 0;
+            const detallePaquete = tarifa.tipo_item === 'PAQUETE'
+                ? (componentesPaquete.length > 0
+                    ? `<ol class="recepcion-paquete-list">${componentesPaquete.map((componente, index) => `<li>${escapeHtml(componente?.nombre || `Examen ${index + 1}`)}</li>`).join('')}</ol>`
+                    : '<div class="recepcion-cliente-item-meta">Paquete sin componentes detallados.</div>')
+                : '';
 
             return `
                 <div class="recepcion-cliente-item">
                     <div>
                         <strong>${escapeHtml(tarifa.item_nombre || 'Item convenido')}</strong>
-                        <div class="recepcion-cliente-item-meta">${escapeHtml(descripcion)}</div>
+                        ${descripcion ? `<div class="recepcion-cliente-item-meta">${escapeHtml(descripcion)}</div>` : ''}
+                        ${detallePaquete}
                         ${vigencia ? `<div class="recepcion-cliente-item-meta">Vigencia: ${escapeHtml(vigencia)}</div>` : ''}
                     </div>
                     <div class="recepcion-cliente-item-price">${formatCurrency(valorMostrar)}</div>
@@ -2896,19 +4491,35 @@ async function abrirClienteRecepcion(id) {
         const detallePanel = document.getElementById('recepcionClienteDetalle');
         const consultaPanel = document.getElementById('recepcionConsultaPanel');
         const titulo = document.getElementById('recepcionClienteDetalleTitulo');
+        const estadoBadge = document.getElementById('recepcionClienteEstadoBadge');
+        const medioAutorizacion = document.getElementById('recepcionClienteMedioAutorizacion');
+        const formaPago = document.getElementById('recepcionClienteFormaPago');
         const puntos = document.getElementById('recepcionClientePuntosAtencion');
         const contacto = document.getElementById('recepcionClienteContactoPrincipal');
         const celular = document.getElementById('recepcionClienteCelularPrincipal');
         const items = document.getElementById('recepcionClienteItems');
+        const estado = obtenerEstadoCliente(cliente);
 
         if (titulo) {
             titulo.textContent = cliente.razon_social || cliente.nombre_comercial || 'Cliente';
         }
+        if (estadoBadge) {
+            estadoBadge.textContent = formatearEstadoCliente(estado);
+            estadoBadge.className = `recepcion-estado-badge ${obtenerClaseEstadoCliente(estado)}`;
+        }
+        if (medioAutorizacion) {
+            medioAutorizacion.textContent = formatearMedioAutorizacion(cliente.medio_autorizacion);
+        }
+        if (formaPago) {
+            formaPago.textContent = formatearFormaPagoCliente(cliente);
+        }
         if (puntos) {
-            puntos.textContent = cliente.puntos_atencion_recepcion || 'Sin instrucciones registradas.';
+            puntos.textContent = obtenerAnotacionesRecepcionCliente(cliente) || 'Sin anotaciones especiales registradas.';
         }
         if (contacto) {
-            contacto.textContent = cliente.contacto_principal || cliente.contacto_facturacion || 'Sin contacto registrado.';
+            contacto.textContent = formatearNombreContactoCliente(cliente.contacto_principal, cliente.cargo_contacto_principal)
+                || formatearNombreContactoCliente(cliente.contacto_facturacion, cliente.cargo_contacto_facturacion)
+                || 'Sin contacto registrado.';
         }
         if (celular) {
             celular.textContent = [
@@ -2922,6 +4533,7 @@ async function abrirClienteRecepcion(id) {
         if (consultaPanel) consultaPanel.style.display = 'none';
         if (detallePanel) detallePanel.style.display = 'block';
         window.setTimeout(() => focusModuleSection('recepcionClienteDetalle'), 120);
+        actualizarResumenPendientesCatalogo();
     } catch (error) {
         console.error('Error abriendo cliente en recepcion:', error);
         showError(error.message || 'No fue posible cargar la guia del cliente.');
@@ -2937,7 +4549,6 @@ function renderRecepcionClientesResults() {
     const query = String(input?.value || '').trim().toLowerCase();
     const clientes = Array.isArray(clientesComercialesData) ? clientesComercialesData : [];
     const base = clientes
-        .filter(cliente => cliente.activo !== false)
         .sort((a, b) => (a.razon_social || a.nombre_comercial || '').localeCompare(b.razon_social || b.nombre_comercial || ''));
 
     const filtered = !query
@@ -2949,26 +4560,28 @@ function renderRecepcionClientesResults() {
             cliente.contacto_principal,
             cliente.contacto_facturacion,
             cliente.email_empresa,
-            cliente.vendedor_nombre
+            cliente.vendedor_nombre,
+            cliente.medio_autorizacion,
+            cliente.estado_cliente
         ].some(value => String(value || '').toLowerCase().includes(query)));
 
     if (filtered.length === 0) {
         summary.textContent = query
             ? 'No encontramos clientes con esa busqueda.'
-            : 'No hay clientes comerciales activos disponibles.';
+            : 'No hay clientes comerciales disponibles.';
         results.innerHTML = '<div class="comercial-search-empty">No hay coincidencias. Prueba con otro nombre, NIT o contacto.</div>';
         return;
     }
 
     summary.textContent = query
         ? `${filtered.length} resultado(s). Selecciona un cliente para ver su guia de recepcion.`
-        : `${base.length} cliente(s) activo(s). Puedes seleccionar uno o escribir para filtrar.`;
+        : `${base.length} cliente(s). Puedes seleccionar uno o escribir para filtrar.`;
 
     results.innerHTML = filtered.map(cliente => `
         <button type="button" class="comercial-search-item" onclick="abrirClienteRecepcion(${Number(cliente.id)})">
             <strong>${escapeHtml(cliente.razon_social || cliente.nombre_comercial || 'Cliente sin nombre')}</strong>
             <div class="comercial-search-subtitle">${escapeHtml([cliente.nit || 'Sin NIT', cliente.nombre_comercial || '', cliente.vendedor_nombre || ''].filter(Boolean).join(' · '))}</div>
-            <div class="comercial-search-meta">${escapeHtml([cliente.contacto_principal || cliente.contacto_facturacion || 'Sin contacto', cliente.celular_contacto_principal || cliente.celular_facturacion || '', cliente.condicion_comercial || ''].filter(Boolean).join(' · '))}</div>
+            <div class="comercial-search-meta">${escapeHtml([formatearEstadoCliente(obtenerEstadoCliente(cliente)), formatearMedioAutorizacion(cliente.medio_autorizacion), formatearFormaPagoCliente(cliente)].filter(Boolean).join(' · '))}</div>
         </button>
     `).join('');
 }
@@ -3138,39 +4751,1296 @@ function showReintegrarEmpleadoDesdeConsulta(id, nombre) {
     showReintegrarEmpleadoModal(id, nombre);
 }
 
+function setupUsuariosModule() {
+    const usuarioForm = document.getElementById('usuarioForm');
+    if (usuarioForm && !usuarioForm.dataset.bound) {
+        usuarioForm.addEventListener('submit', guardarUsuario);
+        usuarioForm.dataset.bound = 'true';
+    }
+
+    const rolForm = document.getElementById('rolForm');
+    if (rolForm && !rolForm.dataset.bound) {
+        rolForm.addEventListener('submit', guardarRol);
+        rolForm.dataset.bound = 'true';
+    }
+}
+
+async function loadUsuariosManagement() {
+    await Promise.all([
+        loadMenuOptions(),
+        loadRoles(),
+        loadUsuarios()
+    ]);
+}
+
 async function loadUsuarios() {
     const tableBody = document.getElementById('usuariosTable');
-    
+    if (!tableBody) return;
+
     try {
         const response = await fetch('/api/usuarios/', {
             credentials: 'include'
         });
         const usuarios = await response.json();
-        
-        if (usuarios.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="5" class="loading">No hay usuarios registrados</td></tr>';
+
+        if (!response.ok) {
+            throw new Error(usuarios.error || 'No se pudo cargar la lista de usuarios');
+        }
+
+        // El usuario EASY no es visible para nadie excepto para sí mismo
+        const visibles = usuarios.filter(u => !u.is_easy || currentUser?.is_easy);
+
+        if (visibles.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="6" class="loading">No hay usuarios registrados</td></tr>';
             return;
         }
-        
-        tableBody.innerHTML = usuarios.map(user => `
+
+        tableBody.innerHTML = visibles.map(user => {
+            const esEasy = Boolean(user.is_easy);
+            const tienePermisosExtra = (user.permisos_extra_ids || []).length > 0;
+            const badgeEasy = esEasy
+                ? '<span class="badge badge-warning" title="Superusuario del sistema">EASY</span> '
+                : '';
+            const badgeExtra = tienePermisosExtra
+                ? `<span class="badge badge-info" title="${(user.permisos_extra_ids || []).length} permiso(s) extra">${(user.permisos_extra_ids || []).length} extra</span> `
+                : '';
+            return `
+                <tr>
+                    <td>${badgeEasy}${escapeHtml(user.usuario || 'N/A')}</td>
+                    <td>${escapeHtml(user.nombre_completo || 'N/A')}</td>
+                    <td>${escapeHtml(user.email || 'N/A')}</td>
+                    <td>${escapeHtml(user.role || 'N/A')}${badgeExtra}</td>
+                    <td>
+                        <span class="badge ${user.activo ? 'badge-success' : 'badge-danger'}">
+                            ${user.activo ? 'Activo' : 'Inactivo'}
+                        </span>
+                    </td>
+                    <td>
+                        ${!esEasy ? `<button class="action-btn action-btn-edit" onclick="editUsuario(${user.id})">Editar</button>` : ''}
+                        ${!esEasy ? `<button class="action-btn" onclick='resetUsuarioPassword(${user.id}, ${JSON.stringify(user.usuario || "")})'>Restablecer clave</button>` : ''}
+                        <button class="action-btn action-btn-edit" onclick="editPermisosExtraUsuario(${user.id}, ${JSON.stringify(user.usuario || '')})">Permisos extra</button>
+                        ${!esEasy && user.usuario !== 'admin' ? `<button class="action-btn action-btn-delete" onclick='deleteUsuario(${user.id}, ${JSON.stringify(user.usuario || '')})'>Desactivar</button>` : ''}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error cargando usuarios:', error);
+        tableBody.innerHTML = `<tr><td colspan="6" class="loading">${escapeHtml(error.message || 'Error al cargar usuarios')}</td></tr>`;
+    }
+}
+
+async function loadRoles() {
+    const tableBody = document.getElementById('rolesTable');
+    if (!tableBody) return;
+
+    try {
+        const response = await fetch('/api/usuarios/roles', {
+            credentials: 'include'
+        });
+        const roles = await response.json();
+
+        if (!response.ok) {
+            throw new Error(roles.error || 'No se pudo cargar la lista de roles');
+        }
+
+        rolesData = Array.isArray(roles) ? roles : [];
+
+        if (rolesData.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="5" class="loading">No hay roles configurados</td></tr>';
+            fillRoleSelect();
+            return;
+        }
+
+        tableBody.innerHTML = rolesData.map(role => `
             <tr>
-                <td>${user.usuario}</td>
-                <td>${user.email || 'N/A'}</td>
-                <td>${user.role || 'N/A'}</td>
+                <td>${escapeHtml(role.nombre || 'N/A')}</td>
+                <td>${escapeHtml(role.descripcion || 'Sin descripción')}</td>
+                <td>${escapeHtml((role.menu_permissions || []).map(item => item.nombre).join(', ') || 'Sin accesos')}</td>
+                <td>${Number(role.cantidad_usuarios || 0)}</td>
                 <td>
-                    <span class="badge ${user.activo ? 'badge-success' : 'badge-danger'}">
-                        ${user.activo ? 'Activo' : 'Inactivo'}
-                    </span>
-                </td>
-                <td>
-                    <button class="action-btn action-btn-edit" onclick="editUsuario(${user.id})">Editar</button>
-                    ${user.usuario !== 'admin' ? `<button class="action-btn action-btn-delete" onclick="deleteUsuario(${user.id}, '${user.usuario}')">Eliminar</button>` : ''}
+                    <button class="action-btn action-btn-edit" onclick="editRole(${role.id})">Editar</button>
+                    ${role.nombre !== 'Administrador' ? `<button class="action-btn action-btn-delete" onclick='deleteRole(${role.id}, ${JSON.stringify(role.nombre || '')})'>Eliminar</button>` : ''}
                 </td>
             </tr>
         `).join('');
+
+        fillRoleSelect();
     } catch (error) {
-        console.error('Error cargando usuarios:', error);
-        tableBody.innerHTML = '<tr><td colspan="5" class="loading">Error al cargar usuarios</td></tr>';
+        console.error('Error cargando roles:', error);
+        tableBody.innerHTML = `<tr><td colspan="5" class="loading">${escapeHtml(error.message || 'Error al cargar roles')}</td></tr>`;
+    }
+}
+
+async function loadMenuOptions() {
+    try {
+        const response = await fetch('/api/usuarios/menu-options', {
+            credentials: 'include'
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'No se pudieron cargar las opciones del menú');
+        }
+
+        menuOptionsData = Array.isArray(data) ? data : [];
+    } catch (error) {
+        console.error('Error cargando opciones del menú para roles:', error);
+        menuOptionsData = [];
+    }
+}
+
+function fillRoleSelect(selectedId = '') {
+    const select = document.getElementById('usuarioRoleId');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Seleccione un rol...</option>';
+    rolesData.forEach(role => {
+        const option = document.createElement('option');
+        option.value = role.id;
+        option.textContent = role.nombre;
+        select.appendChild(option);
+    });
+    if (selectedId) {
+        select.value = String(selectedId);
+    }
+}
+
+function renderRoleMenuPermissions(selectedIds = []) {
+    const container = document.getElementById('rolMenuPermissions');
+    if (!container) return;
+
+    if (!Array.isArray(menuOptionsData) || menuOptionsData.length === 0) {
+        container.innerHTML = '<div class="loading">No fue posible cargar las opciones del menú.</div>';
+        return;
+    }
+
+    const selected = new Set((selectedIds || []).map(id => String(id)));
+    container.innerHTML = menuOptionsData.map(option => `
+        <label class="role-menu-option">
+            <input type="checkbox" value="${option.permiso_id}" ${selected.has(String(option.permiso_id)) ? 'checked' : ''}>
+            <div>
+                <strong>${escapeHtml(option.nombre || option.module || 'Módulo')}</strong>
+                <span>${escapeHtml(option.descripcion || '')}</span>
+            </div>
+        </label>
+    `).join('');
+}
+
+function getSelectedRolePermissionIds() {
+    return Array.from(document.querySelectorAll('#rolMenuPermissions input[type="checkbox"]:checked'))
+        .map(input => Number(input.value))
+        .filter(value => Number.isFinite(value));
+}
+
+async function showNewUserForm() {
+    document.getElementById('usuarioForm').reset();
+    document.getElementById('usuarioId').value = '';
+    document.getElementById('usuarioModalTitle').textContent = 'Nuevo Usuario';
+    document.getElementById('usuarioActivo').checked = true;
+    await loadRoles();
+    fillRoleSelect();
+    document.getElementById('usuarioModal').classList.add('active');
+}
+
+function closeUsuarioModal() {
+    document.getElementById('usuarioModal').classList.remove('active');
+}
+
+async function editUsuario(id) {
+    try {
+        if (!rolesData.length) {
+            await loadRoles();
+        }
+
+        const response = await fetch(`/api/usuarios/${id}`, { credentials: 'include' });
+        const user = await response.json();
+        if (!response.ok) {
+            return showError(user.error || 'No se pudo cargar el usuario');
+        }
+
+        document.getElementById('usuarioId').value = user.id;
+        document.getElementById('usuarioModalTitle').textContent = 'Editar Usuario';
+        document.getElementById('usuarioLogin').value = user.usuario || '';
+        document.getElementById('usuarioNombreCompleto').value = user.nombre_completo || '';
+        document.getElementById('usuarioEmail').value = user.email || '';
+        document.getElementById('usuarioPassword').value = '';
+        document.getElementById('usuarioActivo').checked = user.activo !== false;
+        fillRoleSelect(user.role_id || '');
+        document.getElementById('usuarioModal').classList.add('active');
+    } catch (error) {
+        console.error('Error cargando usuario:', error);
+        showError('No se pudo cargar el usuario.');
+    }
+}
+
+async function guardarUsuario(event) {
+    event.preventDefault();
+    const id = document.getElementById('usuarioId').value;
+    const payload = {
+        usuario: document.getElementById('usuarioLogin').value.trim(),
+        nombre_completo: document.getElementById('usuarioNombreCompleto').value.trim(),
+        email: document.getElementById('usuarioEmail').value.trim(),
+        role_id: document.getElementById('usuarioRoleId').value,
+        activo: document.getElementById('usuarioActivo').checked
+    };
+    const password = document.getElementById('usuarioPassword').value;
+    if (password) {
+        payload.password = password;
+    }
+
+    try {
+        const response = await fetch(id ? `/api/usuarios/${id}` : '/api/usuarios/', {
+            method: id ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            return showError(data.error || 'Error al guardar usuario');
+        }
+
+        showSuccess(id ? 'Usuario actualizado' : 'Usuario creado');
+        closeUsuarioModal();
+        await loadUsuariosManagement();
+        if (currentUser && String(currentUser.usuario_id) === String(id)) {
+            await refreshCurrentUserContext();
+        }
+    } catch (error) {
+        console.error('Error guardando usuario:', error);
+        showError('Error de conexión al guardar usuario');
+    }
+}
+
+async function deleteUsuario(id, username) {
+    if (!confirm(`¿Está seguro de desactivar al usuario ${username}?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/usuarios/${id}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            return showError(data.error || 'Error al desactivar usuario');
+        }
+
+        showSuccess('Usuario desactivado');
+        await loadUsuarios();
+    } catch (error) {
+        console.error('Error desactivando usuario:', error);
+        showError('Error de conexión al desactivar usuario');
+    }
+}
+
+async function resetUsuarioPassword(id, username) {
+    if (!confirm(`Se generara una nueva clave temporal para ${username}. La clave anterior dejara de funcionar. Desea continuar?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/usuarios/${id}/reset-password`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            return showError(data.error || 'Error al restablecer la clave');
+        }
+
+        const passwordTemporal = data.password_temporal || '';
+        let copied = false;
+
+        if (passwordTemporal && navigator.clipboard?.writeText) {
+            try {
+                await navigator.clipboard.writeText(passwordTemporal);
+                copied = true;
+            } catch (error) {
+                console.warn('No se pudo copiar la clave temporal al portapapeles:', error);
+            }
+        }
+
+        if (passwordTemporal) {
+            const promptMessage = copied
+                ? `Clave temporal de ${username}. Ya quedo copiada al portapapeles:`
+                : `Clave temporal de ${username}. Copiela y compartala con el usuario:`;
+            window.prompt(promptMessage, passwordTemporal);
+        }
+
+        showSuccess(copied ? 'Clave temporal generada y copiada.' : 'Clave temporal generada.');
+    } catch (error) {
+        console.error('Error restableciendo clave:', error);
+        showError('Error de conexion al restablecer la clave');
+    }
+}
+
+// ==================== PERMISOS EXTRA POR USUARIO ====================
+
+let _permisosExtraModalUsuarioId = null;
+
+async function editPermisosExtraUsuario(id, username) {
+    _permisosExtraModalUsuarioId = id;
+
+    if (!menuOptionsData.length) {
+        await loadMenuOptions();
+    }
+
+    try {
+        const response = await fetch(`/api/usuarios/${id}/permisos-extra`, { credentials: 'include' });
+        const data = await response.json();
+        if (!response.ok) {
+            return showError(data.error || 'No se pudieron cargar los permisos extra');
+        }
+
+        const selectedIds = new Set((data.permisos_extra || []).map(p => String(p.id)));
+        _renderPermisosExtraModal(username, selectedIds);
+        document.getElementById('permisosExtraModal').classList.add('active');
+    } catch (error) {
+        console.error('Error cargando permisos extra:', error);
+        showError('Error de conexión al cargar permisos extra');
+    }
+}
+
+function _renderPermisosExtraModal(username, selectedIds = new Set()) {
+    const title = document.getElementById('permisosExtraModalTitle');
+    const container = document.getElementById('permisosExtraContainer');
+    if (!title || !container) return;
+
+    title.textContent = `Permisos extra — ${username}`;
+
+    if (!menuOptionsData.length) {
+        container.innerHTML = '<div class="loading">No se pudieron cargar los permisos disponibles.</div>';
+        return;
+    }
+
+    // Agrupar igual que en el modal de roles
+    const menuOptions = menuOptionsData.filter(o => o.category !== 'comercial');
+    const commercialGroups = {};
+    menuOptionsData.filter(o => o.category === 'comercial').forEach(o => {
+        const key = o.group || 'Comercial';
+        commercialGroups[key] = commercialGroups[key] || [];
+        commercialGroups[key].push(o);
+    });
+
+    const renderOption = o => `
+        <label class="role-menu-option">
+            <input type="checkbox" name="permiso_extra" value="${o.permiso_id}"
+                ${selectedIds.has(String(o.permiso_id)) ? 'checked' : ''}>
+            <div>
+                <strong>${escapeHtml(o.nombre || o.group || 'Permiso')}</strong>
+                <span>${escapeHtml(o.descripcion || '')}</span>
+            </div>
+        </label>
+    `;
+
+    container.innerHTML = `
+        <p class="form-help" style="margin-bottom:12px;">
+            Estos permisos se suman a los del rol del usuario. Úselos para dar acceso puntual
+            sin cambiar el rol completo.
+        </p>
+        <div style="margin-bottom:14px;">
+            <h4 style="margin:0 0 8px 0;">Menú lateral</h4>
+            <div class="role-menu-grid">${menuOptions.map(renderOption).join('')}</div>
+        </div>
+        <div>
+            <h4 style="margin:0 0 8px 0;">Permisos comerciales</h4>
+            ${Object.entries(commercialGroups).map(([groupName, options]) => `
+                <div style="margin-bottom:12px;">
+                    <div style="font-weight:700; margin-bottom:6px;">${escapeHtml(groupName)}</div>
+                    <div class="role-menu-grid">${options.map(renderOption).join('')}</div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+async function guardarPermisosExtra() {
+    if (!_permisosExtraModalUsuarioId) return;
+
+    const checkboxes = document.querySelectorAll('#permisosExtraContainer input[name="permiso_extra"]:checked');
+    const permiso_ids = Array.from(checkboxes).map(cb => Number(cb.value));
+
+    try {
+        const response = await fetch(`/api/usuarios/${_permisosExtraModalUsuarioId}/permisos-extra`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ permiso_ids }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            return showError(data.error || 'Error al guardar permisos extra');
+        }
+
+        showSuccess('Permisos extra actualizados');
+        closePermisosExtraModal();
+        await loadUsuarios();
+
+        // Si el usuario editado es el actual, refrescar contexto
+        if (currentUser && String(currentUser.usuario_id) === String(_permisosExtraModalUsuarioId)) {
+            await refreshCurrentUserContext();
+        }
+    } catch (error) {
+        console.error('Error guardando permisos extra:', error);
+        showError('Error de conexión al guardar permisos extra');
+    }
+}
+
+function closePermisosExtraModal() {
+    const modal = document.getElementById('permisosExtraModal');
+    if (modal) modal.classList.remove('active');
+    _permisosExtraModalUsuarioId = null;
+}
+
+async function showNewRoleForm() {
+    document.getElementById('rolForm').reset();
+    document.getElementById('rolId').value = '';
+    document.getElementById('rolModalTitle').textContent = 'Nuevo Rol';
+    if (!menuOptionsData.length) {
+        await loadMenuOptions();
+    }
+    renderRoleMenuPermissions();
+    document.getElementById('rolModal').classList.add('active');
+}
+
+function closeRolModal() {
+    document.getElementById('rolModal').classList.remove('active');
+}
+
+async function editRole(id) {
+    if (!rolesData.length) {
+        await loadRoles();
+    }
+    if (!menuOptionsData.length) {
+        await loadMenuOptions();
+    }
+
+    const role = rolesData.find(item => Number(item.id) === Number(id));
+    if (!role) {
+        return showError('No se pudo localizar el rol seleccionado.');
+    }
+
+    document.getElementById('rolId').value = role.id;
+    document.getElementById('rolModalTitle').textContent = 'Editar Rol';
+    document.getElementById('rolNombre').value = role.nombre || '';
+    document.getElementById('rolDescripcion').value = role.descripcion || '';
+    renderRoleMenuPermissions(role.menu_permission_ids || []);
+    document.getElementById('rolModal').classList.add('active');
+}
+
+async function guardarRol(event) {
+    event.preventDefault();
+    const id = document.getElementById('rolId').value;
+    const payload = {
+        nombre: document.getElementById('rolNombre').value.trim(),
+        descripcion: document.getElementById('rolDescripcion').value.trim(),
+        menu_permission_ids: getSelectedRolePermissionIds()
+    };
+
+    try {
+        const response = await fetch(id ? `/api/usuarios/roles/${id}` : '/api/usuarios/roles', {
+            method: id ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            return showError(data.error || 'Error al guardar rol');
+        }
+
+        showSuccess(id ? 'Rol actualizado' : 'Rol creado');
+        closeRolModal();
+        await Promise.all([loadRoles(), loadUsuarios()]);
+        await refreshCurrentUserContext();
+    } catch (error) {
+        console.error('Error guardando rol:', error);
+        showError('Error de conexión al guardar rol');
+    }
+}
+
+async function deleteRole(id, roleName) {
+    if (!confirm(`¿Está seguro de eliminar el rol ${roleName}?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/usuarios/roles/${id}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            return showError(data.error || 'Error al eliminar rol');
+        }
+
+        showSuccess('Rol eliminado');
+        await Promise.all([loadRoles(), loadUsuarios()]);
+    } catch (error) {
+        console.error('Error eliminando rol:', error);
+        showError('Error de conexión al eliminar rol');
+    }
+}
+
+function setupChatModule() {
+    if (chatState.initialized) {
+        return;
+    }
+
+    const startBtn = document.getElementById('chatStartConversationBtn');
+    const messageForm = document.getElementById('chatMessageForm');
+    const searchInput = document.getElementById('chatConversationSearch');
+    const selectAllBtn = document.getElementById('chatSelectAllBtn');
+    const clearBtn = document.getElementById('chatClearSelectionBtn');
+
+    if (startBtn) {
+        startBtn.addEventListener('click', startChatConversation);
+    }
+
+    if (messageForm) {
+        messageForm.addEventListener('submit', sendChatMessage);
+    }
+
+    if (searchInput) {
+        searchInput.addEventListener('input', renderChatConversationList);
+    }
+
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', () => setChatRecipientSelection(true));
+    }
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => setChatRecipientSelection(false));
+    }
+
+    chatState.initialized = true;
+    bindChatAudioUnlock();
+}
+
+async function initChatModule() {
+    setupChatModule();
+    await Promise.all([
+        loadChatUsers(),
+        loadChatConversations({ preserveSelection: true })
+    ]);
+    startChatPolling();
+}
+
+function hasChatModuleAccess() {
+    const allowedModules = Array.isArray(currentUser?.menu_modules) ? currentUser.menu_modules : [];
+    return currentUser?.role === 'Administrador' || allowedModules.includes('chat');
+}
+
+function isChatViewActive() {
+    const chatView = document.getElementById('chatView');
+    return Boolean(chatView && chatView.classList.contains('active'));
+}
+
+function bindChatAudioUnlock() {
+    if (chatState.audioUnlockBound) {
+        return;
+    }
+
+    const unlock = () => {
+        ensureChatAudioContext();
+        ensureChatDesktopNotifications();
+    };
+
+    document.addEventListener('click', unlock, { passive: true });
+    document.addEventListener('keydown', unlock, { passive: true });
+    chatState.audioUnlockBound = true;
+}
+
+function supportsDesktopNotifications() {
+    return typeof window !== 'undefined' && 'Notification' in window;
+}
+
+function ensureChatDesktopNotifications() {
+    if (!supportsDesktopNotifications()) {
+        return;
+    }
+
+    if (Notification.permission !== 'default') {
+        return;
+    }
+
+    if (chatState.desktopPermissionRequested) {
+        return;
+    }
+
+    chatState.desktopPermissionRequested = true;
+    Notification.requestPermission().catch(error => {
+        console.warn('No se pudo solicitar permiso de notificaciones para chat:', error);
+    });
+}
+
+function ensureChatAudioContext() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+        return null;
+    }
+
+    if (!chatState.audioContext) {
+        try {
+            chatState.audioContext = new AudioContextClass();
+        } catch (error) {
+            console.warn('No se pudo crear el contexto de audio para chat:', error);
+            return null;
+        }
+    }
+
+    if (chatState.audioContext.state === 'suspended') {
+        chatState.audioContext.resume().catch(error => {
+            console.warn('No se pudo reanudar el audio del chat:', error);
+        });
+    }
+
+    return chatState.audioContext;
+}
+
+function playChatAlertTone() {
+    const audioContext = ensureChatAudioContext();
+    if (!audioContext || audioContext.state !== 'running') {
+        return;
+    }
+
+    const notes = [
+        { frequency: 784, duration: 0.18, offset: 0 },
+        { frequency: 1046, duration: 0.2, offset: 0.2 },
+        { frequency: 1318, duration: 0.24, offset: 0.44 },
+    ];
+    const startAt = audioContext.currentTime + 0.02;
+
+    notes.forEach(note => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        const filterNode = audioContext.createBiquadFilter();
+
+        oscillator.type = 'triangle';
+        oscillator.frequency.setValueAtTime(note.frequency, startAt + note.offset);
+        filterNode.type = 'lowpass';
+        filterNode.frequency.setValueAtTime(2200, startAt + note.offset);
+        gainNode.gain.setValueAtTime(0.0001, startAt + note.offset);
+        gainNode.gain.exponentialRampToValueAtTime(0.24, startAt + note.offset + 0.03);
+        gainNode.gain.exponentialRampToValueAtTime(0.16, startAt + note.offset + (note.duration * 0.55));
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + note.offset + note.duration);
+
+        oscillator.connect(filterNode);
+        filterNode.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.start(startAt + note.offset);
+        oscillator.stop(startAt + note.offset + note.duration);
+    });
+}
+
+async function openChatFromNotification(conversationId) {
+    if (typeof window !== 'undefined' && typeof window.focus === 'function') {
+        window.focus();
+    }
+
+    switchModule('chat');
+    await loadChatUsers();
+    await loadChatConversations({ preserveSelection: true, silent: true });
+    await openChatConversation(conversationId, { markRead: true });
+}
+
+function showDesktopChatNotification(conversation) {
+    if (!supportsDesktopNotifications() || Notification.permission !== 'granted') {
+        return;
+    }
+
+    const latestMessage = conversation?.ultimo_mensaje;
+    if (!latestMessage) {
+        return;
+    }
+
+    const remitente = latestMessage.remitente_nombre
+        || latestMessage.remitente_usuario
+        || conversation.display_name
+        || 'Nuevo mensaje';
+    const body = latestMessage.contenido || 'Tienes un mensaje nuevo en el chat interno.';
+    const notification = new Notification(`Chat interno: ${remitente}`, {
+        body,
+        tag: `prevent-chat-${conversation.id}`,
+        renotify: true,
+        requireInteraction: false,
+    });
+
+    notification.onclick = () => {
+        notification.close();
+        openChatFromNotification(conversation.id).catch(error => {
+            console.error('No se pudo abrir la conversacion desde la notificacion:', error);
+        });
+    };
+
+    window.setTimeout(() => notification.close(), 12000);
+}
+
+function notifyIncomingChatMessages(previousConversations, nextConversations) {
+    const previousById = new Map(
+        (previousConversations || []).map(conversation => [Number(conversation.id), conversation])
+    );
+    const incoming = [];
+
+    (nextConversations || []).forEach(conversation => {
+        const latestMessage = conversation?.ultimo_mensaje;
+        if (!latestMessage || latestMessage.remitente_id === currentUser?.usuario_id) {
+            return;
+        }
+
+        const previousConversation = previousById.get(Number(conversation.id));
+        const previousMessageId = Number(previousConversation?.ultimo_mensaje?.id || 0);
+        const latestMessageId = Number(latestMessage.id || 0);
+        const previousUnread = Number(previousConversation?.unread_count || 0);
+        const nextUnread = Number(conversation.unread_count || 0);
+
+        if (latestMessageId > previousMessageId || nextUnread > previousUnread) {
+            incoming.push(conversation);
+        }
+    });
+
+    if (!incoming.length) {
+        return;
+    }
+
+    playChatAlertTone();
+
+    if (incoming.length === 1) {
+        const conversation = incoming[0];
+        showDesktopChatNotification(conversation);
+        const remitente = conversation.ultimo_mensaje?.remitente_nombre
+            || conversation.ultimo_mensaje?.remitente_usuario
+            || conversation.display_name
+            || 'Usuario';
+        showWarning(`Nuevo mensaje de chat de ${remitente}.`);
+        return;
+    }
+
+    incoming.forEach(showDesktopChatNotification);
+    showWarning(`Tienes ${incoming.length} conversaciones con mensajes nuevos.`);
+}
+
+function ensureChatMonitoring() {
+    if (!hasChatModuleAccess()) {
+        stopChatPolling();
+        chatState.notificationPrimed = false;
+        chatState.conversations = [];
+        return;
+    }
+
+    setupChatModule();
+    if (!chatState.pollHandle) {
+        loadChatConversations({ preserveSelection: true, silent: true });
+    }
+    startChatPolling();
+}
+
+function startChatPolling() {
+    stopChatPolling();
+    chatState.pollHandle = window.setInterval(async () => {
+        if (!hasChatModuleAccess()) {
+            stopChatPolling();
+            return;
+        }
+
+        if (!isChatViewActive()) {
+            await loadChatConversations({ preserveSelection: true, silent: true });
+            actualizarResumenPendientesCatalogo();
+            return;
+        }
+
+        await loadChatConversations({ preserveSelection: true, silent: true });
+
+        if (chatState.activeConversationId) {
+            await loadChatMessages(chatState.activeConversationId, { markRead: true, silent: true });
+        }
+    }, 7000);
+}
+
+function stopChatPolling() {
+    if (chatState.pollHandle) {
+        window.clearInterval(chatState.pollHandle);
+        chatState.pollHandle = null;
+    }
+}
+
+function chatEscapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function formatChatDateTime(dateValue) {
+    if (!dateValue) {
+        return '';
+    }
+
+    try {
+        const date = new Date(dateValue);
+        return new Intl.DateTimeFormat('es-CO', {
+            dateStyle: 'short',
+            timeStyle: 'short'
+        }).format(date);
+    } catch (error) {
+        return '';
+    }
+}
+
+function getActiveChatConversation() {
+    return chatState.conversations.find(conversation => conversation.id === chatState.activeConversationId) || null;
+}
+
+async function loadChatUsers() {
+    try {
+        const response = await fetch('/api/chat/usuarios', {
+            credentials: 'include'
+        });
+        const users = await response.json();
+        chatState.users = Array.isArray(users) ? users : [];
+        renderChatUserOptions();
+    } catch (error) {
+        console.error('Error cargando usuarios para chat:', error);
+        chatState.users = [];
+        renderChatUserOptions();
+    }
+}
+
+function renderChatUserOptions() {
+    const container = document.getElementById('chatUserChecklist');
+    if (!container) {
+        return;
+    }
+
+    if (chatState.users.length === 0) {
+        container.innerHTML = '<div class="loading">No hay otros usuarios activos para chatear.</div>';
+        updateChatRecipientSummary();
+        return;
+    }
+
+    const items = [];
+    chatState.users.forEach(user => {
+        items.push(`
+            <label class="chat-user-option">
+                <input type="checkbox" class="chat-user-checkbox" value="${user.id}" onchange="updateChatRecipientSummary()" />
+                <div>
+                    <strong>${chatEscapeHtml(user.nombre_completo || user.usuario)}</strong>
+                    <span>${chatEscapeHtml(user.usuario)}${user.role ? ` · ${chatEscapeHtml(user.role)}` : ''}</span>
+                </div>
+            </label>
+        `);
+    });
+    container.innerHTML = items.join('');
+    updateChatRecipientSummary();
+}
+
+function getSelectedChatRecipientIds() {
+    return Array.from(document.querySelectorAll('.chat-user-checkbox:checked'))
+        .map(input => Number(input.value))
+        .filter(value => Number.isInteger(value) && value > 0);
+}
+
+function setChatRecipientSelection(selectAll) {
+    document.querySelectorAll('.chat-user-checkbox').forEach(input => {
+        input.checked = selectAll;
+    });
+    updateChatRecipientSummary();
+}
+
+function updateChatRecipientSummary() {
+    const summary = document.getElementById('chatRecipientSummary');
+    if (!summary) {
+        return;
+    }
+
+    const selectedCount = getSelectedChatRecipientIds().length;
+    const total = chatState.users.length;
+    if (selectedCount === 0) {
+        summary.textContent = 'Selecciona uno o varios usuarios.';
+    } else if (selectedCount === 1) {
+        summary.textContent = 'Se abrira un chat directo con 1 usuario.';
+    } else if (selectedCount === total && total > 1) {
+        summary.textContent = `Se creara un chat general para los ${total} usuarios disponibles.`;
+    } else {
+        summary.textContent = `Se creara un chat grupal para ${selectedCount} usuarios.`;
+    }
+}
+
+async function loadChatConversations(options = {}) {
+    const {
+        preserveSelection = true,
+        silent = false
+    } = options;
+
+    const list = document.getElementById('chatConversationList');
+    if (list && !silent && chatState.conversations.length === 0) {
+        list.innerHTML = '<div class="loading">Cargando conversaciones...</div>';
+    }
+
+    try {
+        const previousConversations = Array.isArray(chatState.conversations)
+            ? chatState.conversations.map(conversation => ({ ...conversation }))
+            : [];
+        const response = await fetch('/api/chat/conversaciones', {
+            credentials: 'include'
+        });
+        const conversations = await response.json();
+        const nextConversations = Array.isArray(conversations) ? conversations : [];
+
+        if (chatState.notificationPrimed) {
+            notifyIncomingChatMessages(previousConversations, nextConversations);
+        } else {
+            chatState.notificationPrimed = true;
+        }
+
+        chatState.conversations = nextConversations;
+        renderChatConversationList();
+
+        const hasActive = preserveSelection && chatState.conversations.some(
+            conversation => conversation.id === chatState.activeConversationId
+        );
+
+        if (!hasActive) {
+            const firstConversation = chatState.conversations[0] || null;
+            if (firstConversation && isChatViewActive()) {
+                await openChatConversation(firstConversation.id, { markRead: false });
+            } else {
+                if (!firstConversation) {
+                    chatState.activeConversationId = null;
+                }
+                if (isChatViewActive()) {
+                    renderChatEmptyState();
+                }
+            }
+        } else {
+            renderChatConversationHeader(getActiveChatConversation());
+        }
+        actualizarResumenPendientesCatalogo();
+    } catch (error) {
+        console.error('Error cargando conversaciones:', error);
+        if (list && !silent) {
+            list.innerHTML = '<div class="loading">No fue posible cargar las conversaciones.</div>';
+        }
+    }
+}
+
+function renderChatConversationList() {
+    const list = document.getElementById('chatConversationList');
+    const searchInput = document.getElementById('chatConversationSearch');
+    if (!list) {
+        return;
+    }
+
+    const search = (searchInput?.value || '').trim().toLowerCase();
+    const filtered = chatState.conversations.filter(conversation => {
+        if (!search) {
+            return true;
+        }
+
+        const candidate = [
+            conversation.display_name,
+            conversation.subtitle,
+            conversation.ultimo_mensaje?.contenido
+        ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+
+        return candidate.includes(search);
+    });
+
+    if (filtered.length === 0) {
+        list.innerHTML = '<div class="loading">No hay conversaciones para mostrar.</div>';
+        return;
+    }
+
+    list.innerHTML = filtered.map(conversation => {
+        const preview = conversation.ultimo_mensaje
+            ? chatEscapeHtml(conversation.ultimo_mensaje.contenido)
+            : 'Sin mensajes todavia.';
+        const unreadBadge = conversation.unread_count > 0
+            ? `<span class="chat-unread-badge">${conversation.unread_count}</span>`
+            : '';
+        const isActive = conversation.id === chatState.activeConversationId ? ' active' : '';
+
+        return `
+            <button type="button" class="chat-conversation-item${isActive}" onclick="openChatConversation(${conversation.id})">
+                <div class="chat-conversation-top">
+                    <span class="chat-conversation-title">${chatEscapeHtml(conversation.display_name || 'Conversacion interna')}</span>
+                    <span class="chat-conversation-time">${formatChatDateTime(conversation.ultimo_mensaje?.created_at || conversation.updated_at)}</span>
+                </div>
+                <div class="chat-conversation-subtitle">${chatEscapeHtml(conversation.subtitle || 'Chat directo')}</div>
+                <div class="chat-conversation-preview">
+                    <span>${preview}</span>
+                    ${unreadBadge}
+                </div>
+            </button>
+        `;
+    }).join('');
+}
+
+function renderChatEmptyState() {
+    const emptyState = document.getElementById('chatEmptyState');
+    const conversationPanel = document.getElementById('chatConversationPanel');
+    const messages = document.getElementById('chatMessages');
+    const title = document.getElementById('chatConversationTitle');
+    const subtitle = document.getElementById('chatConversationSubtitle');
+    const unread = document.getElementById('chatConversationUnread');
+    const hiddenConversationId = document.getElementById('chatConversationId');
+
+    if (hiddenConversationId) {
+        hiddenConversationId.value = '';
+    }
+    if (title) {
+        title.textContent = 'Conversacion';
+    }
+    if (subtitle) {
+        subtitle.textContent = 'Sin mensajes por ahora.';
+    }
+    if (unread) {
+        unread.style.display = 'none';
+        unread.textContent = '';
+    }
+    if (messages) {
+        messages.innerHTML = '<div class="loading">Selecciona un chat para ver los mensajes.</div>';
+    }
+    if (conversationPanel) {
+        conversationPanel.style.display = 'none';
+    }
+    if (emptyState) {
+        emptyState.style.display = 'flex';
+    }
+}
+
+function renderChatConversationHeader(conversation) {
+    const title = document.getElementById('chatConversationTitle');
+    const subtitle = document.getElementById('chatConversationSubtitle');
+    const unread = document.getElementById('chatConversationUnread');
+    const hiddenConversationId = document.getElementById('chatConversationId');
+    const emptyState = document.getElementById('chatEmptyState');
+    const conversationPanel = document.getElementById('chatConversationPanel');
+
+    if (!conversation) {
+        renderChatEmptyState();
+        return;
+    }
+
+    if (hiddenConversationId) {
+        hiddenConversationId.value = String(conversation.id);
+    }
+    if (title) {
+        title.textContent = conversation.display_name || 'Conversacion interna';
+    }
+    if (subtitle) {
+        subtitle.textContent = conversation.subtitle || 'Chat directo interno';
+    }
+    if (unread) {
+        if (conversation.unread_count > 0) {
+            unread.style.display = 'inline-flex';
+            unread.textContent = `${conversation.unread_count} nuevo(s)`;
+        } else {
+            unread.style.display = 'none';
+            unread.textContent = '';
+        }
+    }
+    if (emptyState) {
+        emptyState.style.display = 'none';
+    }
+    if (conversationPanel) {
+        conversationPanel.style.display = 'flex';
+    }
+}
+
+async function startChatConversation() {
+    const selectedIds = getSelectedChatRecipientIds();
+    const titleInput = document.getElementById('chatGroupTitle');
+    const titulo = titleInput ? titleInput.value.trim() : '';
+    if (selectedIds.length === 0) {
+        showError('Selecciona al menos un usuario para crear el chat.');
+        return;
+    }
+
+    const totalUsers = chatState.users.length;
+    const sendToAll = totalUsers > 1 && selectedIds.length === totalUsers;
+
+    try {
+        const response = await fetch('/api/chat/conversaciones', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                usuarios_ids: selectedIds,
+                send_to_all: sendToAll,
+                titulo
+            })
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            showError(data.error || 'No fue posible abrir la conversacion.');
+            return;
+        }
+
+        if (titleInput) {
+            titleInput.value = '';
+        }
+        setChatRecipientSelection(false);
+        showSuccess(data.creada ? 'Conversacion creada.' : 'Conversacion abierta.');
+        await loadChatConversations({ preserveSelection: false });
+        await openChatConversation(data.conversacion.id);
+    } catch (error) {
+        console.error('Error creando conversacion de chat:', error);
+        showError('Error de conexion al abrir el chat.');
+    }
+}
+
+async function openChatConversation(conversationId, options = {}) {
+    const { markRead = true } = options;
+    chatState.activeConversationId = Number(conversationId);
+    renderChatConversationList();
+    renderChatConversationHeader(getActiveChatConversation());
+    await loadChatMessages(chatState.activeConversationId, { markRead });
+}
+
+async function loadChatMessages(conversationId, options = {}) {
+    const { markRead = true, silent = false } = options;
+    const messagesContainer = document.getElementById('chatMessages');
+    if (!messagesContainer) {
+        return;
+    }
+
+    const activeConversationId = Number(conversationId);
+    if (!silent) {
+        messagesContainer.innerHTML = '<div class="loading">Cargando mensajes...</div>';
+    }
+
+    try {
+        const response = await fetch(`/api/chat/conversaciones/${activeConversationId}/mensajes`, {
+            credentials: 'include'
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            showError(data.error || 'No fue posible cargar la conversacion.');
+            return;
+        }
+
+        if (chatState.activeConversationId !== activeConversationId) {
+            return;
+        }
+
+        const conversation = data.conversacion || getActiveChatConversation();
+        if (conversation) {
+            const index = chatState.conversations.findIndex(item => item.id === conversation.id);
+            if (index >= 0) {
+                chatState.conversations[index] = conversation;
+            }
+            renderChatConversationHeader(conversation);
+            renderChatConversationList();
+        }
+
+        const messages = Array.isArray(data.mensajes) ? data.mensajes : [];
+        if (messages.length === 0) {
+            messagesContainer.innerHTML = '<div class="loading">Todavia no hay mensajes en esta conversacion.</div>';
+        } else {
+            messagesContainer.innerHTML = messages.map(message => `
+                <div class="chat-message ${message.es_mio ? 'mine' : 'other'}">
+                    <div class="chat-message-meta">
+                        ${chatEscapeHtml(message.remitente_nombre || message.remitente_usuario || 'Usuario')}
+                        <span>${formatChatDateTime(message.created_at)}</span>
+                    </div>
+                    <div class="chat-message-bubble">${chatEscapeHtml(message.contenido)}</div>
+                </div>
+            `).join('');
+        }
+
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+        if (markRead && conversation && conversation.unread_count > 0) {
+            await markChatConversationRead(activeConversationId, { silent: true });
+        }
+        actualizarResumenPendientesCatalogo();
+    } catch (error) {
+        console.error('Error cargando mensajes del chat:', error);
+        if (!silent) {
+            messagesContainer.innerHTML = '<div class="loading">Error al cargar mensajes.</div>';
+            showError('Error de conexion al cargar mensajes.');
+        }
+    }
+}
+
+async function markChatConversationRead(conversationId, options = {}) {
+    const { silent = false } = options;
+
+    try {
+        const response = await fetch(`/api/chat/conversaciones/${conversationId}/leer`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            if (!silent) {
+                showError(data.error || 'No fue posible actualizar la lectura del chat.');
+            }
+            return;
+        }
+
+        const targetConversation = chatState.conversations.find(item => item.id === Number(conversationId));
+        if (targetConversation) {
+            targetConversation.unread_count = 0;
+            targetConversation.ultimo_leido_at = data.ultimo_leido_at || null;
+        }
+        renderChatConversationHeader(getActiveChatConversation());
+        renderChatConversationList();
+    } catch (error) {
+        console.error('Error marcando chat como leido:', error);
+        if (!silent) {
+            showError('Error de conexion al actualizar el chat.');
+        }
+    }
+}
+
+async function sendChatMessage(event) {
+    event.preventDefault();
+
+    const conversationId = Number(document.getElementById('chatConversationId')?.value || 0);
+    const input = document.getElementById('chatMessageInput');
+    if (!conversationId || !input) {
+        showError('Selecciona una conversacion antes de enviar mensajes.');
+        return;
+    }
+
+    const contenido = input.value.trim();
+    if (!contenido) {
+        showError('Escribe un mensaje antes de enviarlo.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/chat/conversaciones/${conversationId}/mensajes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ contenido })
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            showError(data.error || 'No fue posible enviar el mensaje.');
+            return;
+        }
+
+        input.value = '';
+        await loadChatConversations({ preserveSelection: true, silent: true });
+        await loadChatMessages(conversationId, { markRead: true, silent: true });
+    } catch (error) {
+        console.error('Error enviando mensaje:', error);
+        showError('Error de conexion al enviar el mensaje.');
     }
 }
 
@@ -3278,20 +6148,6 @@ async function deleteEmpleado(id, nombre) {
     } catch (error) {
         console.error('Error:', error);
         showError('Error de conexión al eliminar empleado');
-    }
-}
-
-function showNewUserForm() {
-    showError('Funcionalidad en desarrollo: Crear nuevo usuario');
-}
-
-function editUsuario(id) {
-    showError('Funcionalidad en desarrollo: Editar usuario #' + id);
-}
-
-function deleteUsuario(id, username) {
-    if (confirm(`¿Está seguro de eliminar al usuario ${username}?`)) {
-        showError('Funcionalidad en desarrollo: Eliminar usuario');
     }
 }
 
@@ -3432,6 +6288,55 @@ function setupEstructuraLaboralForms() {
     if (clienteFactura && !clienteFactura.dataset.bound) {
         clienteFactura.addEventListener('change', actualizarEstadoFacturaClienteComercial);
         clienteFactura.dataset.bound = 'true';
+    }
+
+    const seguimientoAtencionForm = document.getElementById('seguimientoAtencionForm');
+    if (seguimientoAtencionForm && !seguimientoAtencionForm.dataset.bound) {
+        seguimientoAtencionForm.addEventListener('submit', guardarSeguimientoAtencion);
+        seguimientoAtencionForm.dataset.bound = 'true';
+    }
+
+    const seguimientoDocumentoForm = document.getElementById('seguimientoDocumentoForm');
+    if (seguimientoDocumentoForm && !seguimientoDocumentoForm.dataset.bound) {
+        seguimientoDocumentoForm.addEventListener('submit', guardarSeguimientoDocumento);
+        seguimientoDocumentoForm.dataset.bound = 'true';
+    }
+
+    const seguimientoPagoForm = document.getElementById('seguimientoPagoForm');
+    if (seguimientoPagoForm && !seguimientoPagoForm.dataset.bound) {
+        seguimientoPagoForm.addEventListener('submit', guardarSeguimientoPago);
+        seguimientoPagoForm.dataset.bound = 'true';
+    }
+
+    const seguimientoDocumentoGeneraCartera = document.getElementById('seguimientoDocumentoGeneraCartera');
+    if (seguimientoDocumentoGeneraCartera && !seguimientoDocumentoGeneraCartera.dataset.bound) {
+        seguimientoDocumentoGeneraCartera.addEventListener('change', actualizarHintSeguimientoDocumento);
+        seguimientoDocumentoGeneraCartera.dataset.bound = 'true';
+    }
+
+    const seguimientoPagoDocumentoId = document.getElementById('seguimientoPagoDocumentoId');
+    if (seguimientoPagoDocumentoId && !seguimientoPagoDocumentoId.dataset.bound) {
+        seguimientoPagoDocumentoId.addEventListener('change', actualizarVisibilidadSeguimientoPago);
+        seguimientoPagoDocumentoId.dataset.bound = 'true';
+    }
+
+    const seguimientoPagoMedio = document.getElementById('seguimientoPagoMedio');
+    if (seguimientoPagoMedio && !seguimientoPagoMedio.dataset.bound) {
+        seguimientoPagoMedio.addEventListener('change', actualizarVisibilidadSeguimientoPago);
+        seguimientoPagoMedio.dataset.bound = 'true';
+    }
+
+    const seguimientoAtencionFecha = document.getElementById('seguimientoAtencionFecha');
+    if (seguimientoAtencionFecha && !seguimientoAtencionFecha.dataset.bound) {
+        seguimientoAtencionFecha.addEventListener('change', async () => {
+            try {
+                await loadSeguimientoConvenioItems(seguimientoAtencionFecha.value);
+            } catch (error) {
+                console.error('Error recargando items convenidos para atención:', error);
+                showError(error.message || 'No se pudieron cargar los items convenidos.');
+            }
+        });
+        seguimientoAtencionFecha.dataset.bound = 'true';
     }
 }
 
@@ -3736,19 +6641,16 @@ function renderClienteComercialAdjuntos(containerId, adjuntos) {
 
 async function renderTarifasClienteComercial(clienteId = '') {
     const button = document.getElementById('clienteComercialAsignarTarifaBtn');
-    const hint = document.getElementById('clienteComercialTarifaHint');
     const container = document.getElementById('clienteComercialTarifasResumen');
-    if (!button || !hint || !container) return;
+    if (!container) return;
 
     if (!clienteId) {
-        button.disabled = true;
-        hint.textContent = 'Guarda primero el cliente para poder asignarle tarifas negociadas por examen o paquete.';
-        container.innerHTML = 'Sin tarifas configuradas.';
+        if (button) button.disabled = true;
+        container.innerHTML = 'Sin exámenes ni paquetes asignados.';
         return;
     }
 
-    button.disabled = false;
-    hint.textContent = 'Asigna aqui las tarifas negociadas del cliente. Puedes crear varias y luego seguir editando su ficha.';
+    if (button) button.disabled = false;
 
     try {
         const tarifas = await asegurarTarifasComerciales();
@@ -3757,7 +6659,7 @@ async function renderTarifasClienteComercial(clienteId = '') {
             .sort((a, b) => (a.item_nombre || '').localeCompare(b.item_nombre || ''));
 
         if (tarifasCliente.length === 0) {
-            container.innerHTML = 'Este cliente aun no tiene tarifas negociadas.';
+            container.innerHTML = '<span style="color:#6b7280;">Sin exámenes ni paquetes asignados.</span>';
             return;
         }
 
@@ -3780,7 +6682,142 @@ async function renderTarifasClienteComercial(clienteId = '') {
     }
 }
 
-async function abrirTarifaDesdeCliente() {
+function actualizarBotonVerTodosConveniosCliente(tipoItem) {
+    if (tipoItem !== 'EXAMEN') return;
+
+    const input = document.getElementById('clienteComercialExamenesSearch');
+    const button = document.getElementById('clienteComercialExamenesToggleAllBtn');
+    if (!input || !button) return;
+
+    const showAll = input.dataset.showAll === 'true';
+    const label = button.querySelector('.btn-label');
+    if (label) {
+        label.textContent = showAll ? 'Ver menos' : 'Ver todos';
+    }
+}
+
+function toggleVerTodosConveniosClienteComercial(tipoItem) {
+    const isExamen = tipoItem === 'EXAMEN';
+    const input = document.getElementById(isExamen ? 'clienteComercialExamenesSearch' : 'clienteComercialServiciosSearch');
+    if (!input) return;
+
+    input.dataset.showAll = input.dataset.showAll === 'true' ? 'false' : 'true';
+    actualizarBotonVerTodosConveniosCliente(tipoItem);
+    renderConveniosClienteComercialCatalogo(tipoItem);
+}
+
+async function renderConveniosClienteComercialCatalogo(tipoItem) {
+    const clienteId = document.getElementById('clienteComercialId')?.value || '';
+    const isExamen = tipoItem === 'EXAMEN';
+    const input = document.getElementById(isExamen ? 'clienteComercialExamenesSearch' : 'clienteComercialServiciosSearch');
+    const container = document.getElementById(isExamen ? 'clienteComercialExamenesList' : 'clienteComercialServiciosList');
+    if (!input || !container) return;
+
+    const query = String(input.value || '').trim().toLowerCase();
+    const showAll = input.dataset.showAll === 'true';
+    actualizarBotonVerTodosConveniosCliente(tipoItem);
+
+    try {
+        const [catalogo, tarifas] = await Promise.all([
+            asegurarCatalogoComercial(),
+            asegurarTarifasComerciales()
+        ]);
+        const tarifasCliente = new Map(
+            (tarifas || [])
+                .filter(tarifa => String(tarifa.cliente_id) === String(clienteId) && tarifa.activo !== false)
+                .map(tarifa => [String(tarifa.catalogo_item_id), tarifa])
+        );
+
+        const filteredItems = (catalogo || [])
+            .filter(item => item.activo !== false)
+            .filter(item => item.tipo_item === tipoItem)
+            .filter(item => item.tipo_item !== 'EXAMEN' || item.clasificacion_completa === true)
+            .filter(item => {
+                if (!query) return true;
+                return [
+                    item.nombre,
+                    item.codigo,
+                    item.clasificacion_resumen,
+                    item.resumen_componentes,
+                    item.descripcion
+                ].filter(Boolean).some(value => String(value).toLowerCase().includes(query));
+            })
+            .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+        const items = (!showAll && !query && isExamen)
+            ? filteredItems.slice(0, 12)
+            : filteredItems;
+
+        if (items.length === 0) {
+            container.innerHTML = query
+                ? '<div class="cliente-convenio-meta">No hay coincidencias en el catálogo.</div>'
+                : '<div class="cliente-convenio-meta">Escribe para buscar en el catálogo.</div>';
+            return;
+        }
+
+        const truncatedNotice = (!showAll && !query && isExamen && filteredItems.length > items.length)
+            ? `<div class="cliente-convenio-meta" style="margin-bottom:8px;">Mostrando ${items.length} de ${filteredItems.length} examenes. Usa "Ver todos" para abrir el listado completo.</div>`
+            : '';
+
+        container.innerHTML = truncatedNotice + items.map(item => {
+            const tarifaExistente = tarifasCliente.get(String(item.id));
+            const meta = item.tipo_item === 'PAQUETE'
+                ? (item.resumen_componentes || 'Paquete comercial')
+                : obtenerResumenClasificacionCatalogo(item);
+            const accion = tarifaExistente
+                ? `editarTarifaCliente(${tarifaExistente.id})`
+                : `abrirTarifaDesdeCliente(${item.id})`;
+            return `
+                <div class="cliente-convenio-search-item cliente-convenio-search-clickable" onclick="${accion}">
+                    <div>
+                        <strong>${escapeHtml(item.nombre || 'Item')}</strong>
+                        <div class="cliente-convenio-meta">${escapeHtml([item.codigo || 'Sin código', meta].filter(Boolean).join(' · '))}</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div class="cliente-convenio-meta">${escapeHtml(tarifaExistente ? 'Editar tarifa' : 'Asignar')}</div>
+                        ${tarifaExistente ? `<span>${formatCurrency(tarifaExistente.tarifa_negociada || 0)}</span>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error cargando buscador de convenios del cliente:', error);
+        container.innerHTML = '<div class="cliente-convenio-meta">No fue posible cargar el catálogo.</div>';
+    }
+}
+
+async function toggleAsignacionConveniosClienteComercial() {
+    const panel = document.getElementById('clienteComercialConveniosHelp');
+    const button = document.getElementById('clienteComercialToggleAsignacionBtn');
+    if (!panel || !button) return;
+
+    const visible = panel.style.display !== 'none';
+    panel.style.display = visible ? 'none' : 'block';
+    button.querySelector('.btn-label').textContent = visible ? 'Buscar en el catálogo' : 'Ocultar buscador';
+
+    if (!visible) {
+        await Promise.all([
+            renderConveniosClienteComercialCatalogo('EXAMEN'),
+            renderConveniosClienteComercialCatalogo('PAQUETE')
+        ]);
+    }
+}
+
+async function abrirPanelConveniosClienteComercial() {
+    const panel = document.getElementById('clienteComercialConveniosHelp');
+    const button = document.getElementById('clienteComercialToggleAsignacionBtn');
+    if (!panel || !button) return;
+
+    panel.style.display = 'block';
+    const label = button.querySelector('.btn-label');
+    if (label) label.textContent = 'Ocultar buscador';
+
+    await Promise.all([
+        renderConveniosClienteComercialCatalogo('EXAMEN'),
+        renderConveniosClienteComercialCatalogo('PAQUETE')
+    ]);
+}
+
+async function abrirTarifaDesdeCliente(preselectedItemId = '') {
     const clienteId = document.getElementById('clienteComercialId')?.value;
     if (!clienteId) {
         return showError('Guarda primero el cliente antes de asignarle tarifas.');
@@ -3788,7 +6825,184 @@ async function abrirTarifaDesdeCliente() {
 
     clienteComercialTarifaContext = String(clienteId);
     closeClienteComercialModal(true);
-    await mostrarAgregarTarifaCliente(clienteId);
+    await mostrarAgregarTarifaCliente(clienteId, preselectedItemId);
+}
+
+// ==================== GESTIÓN TARIFAS CLIENTE (nuevo modal unificado) ====================
+
+let _gestionTarifasVerTodos = false;
+
+async function abrirGestionTarifasCliente() {
+    const clienteId = document.getElementById('clienteComercialId')?.value;
+    if (!clienteId) {
+        return showError('Guarda primero el cliente antes de gestionar sus tarifas.');
+    }
+
+    const modal = document.getElementById('gestionTarifasClienteModal');
+    const title = document.getElementById('gestionTarifasClienteTitle');
+    if (!modal) return;
+
+    // Título con nombre del cliente
+    const clienteNombre = document.getElementById('clienteComercialRazonSocial')?.value || 'Cliente';
+    if (title) title.textContent = `Exámenes y Paquetes — ${clienteNombre}`;
+
+    _gestionTarifasVerTodos = false;
+    document.getElementById('gestionTarifasSearch').value = '';
+    document.getElementById('gestionTarifasFiltroTipo').value = '';
+    document.getElementById('gestionTarifasVerTodosLabel').textContent = 'Ver todos';
+
+    modal.classList.add('active');
+    await renderGestionTarifasAsignadas();
+    await renderGestionTarifasCatalogo();
+}
+
+function cerrarGestionTarifasCliente() {
+    const modal = document.getElementById('gestionTarifasClienteModal');
+    if (modal) modal.classList.remove('active');
+}
+
+async function renderGestionTarifasAsignadas() {
+    const clienteId = document.getElementById('clienteComercialId')?.value;
+    const container = document.getElementById('gestionTarifasClienteLista');
+    if (!container || !clienteId) return;
+
+    try {
+        const tarifas = await asegurarTarifasComerciales(true);
+        const tarifasCliente = tarifas
+            .filter(t => String(t.cliente_id) === String(clienteId))
+            .sort((a, b) => (a.item_nombre || '').localeCompare(b.item_nombre || ''));
+
+        if (tarifasCliente.length === 0) {
+            container.innerHTML = '<div style="color:#6b7280; padding:8px 0;">Este cliente no tiene exámenes ni paquetes asignados aún.</div>';
+            return;
+        }
+
+        container.innerHTML = tarifasCliente.map(t => `
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 4px; border-bottom:1px solid #f1f5f9;">
+                <div style="flex:1; min-width:0;">
+                    <strong>${escapeHtml(t.item_nombre || 'Item')}</strong>
+                    <span style="margin-left:8px; color:#6b7280; font-size:0.82rem;">${escapeHtml(obtenerResumenClasificacionCatalogo(t))}</span>
+                    ${t.vigencia_desde || t.vigencia_hasta
+                        ? `<div style="color:#6b7280; font-size:0.82rem;">${escapeHtml(t.vigencia_desde || '')}${t.vigencia_hasta ? ` → ${escapeHtml(t.vigencia_hasta)}` : ' (sin vencimiento)'}</div>`
+                        : ''}
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; white-space:nowrap;">
+                    <strong>${formatCurrency(t.tarifa_negociada || 0)}</strong>
+                    ${canManageComercial('tarifas', 'update') ? `<button class="action-btn action-btn-edit" onclick="editarTarifaDesdeGestion(${t.id})">Editar</button>` : ''}
+                    ${canManageComercial('tarifas', 'delete') ? `<button class="action-btn action-btn-delete" onclick="eliminarTarifaDesdeGestion(${t.id})">Eliminar</button>` : ''}
+                </div>
+            </div>
+        `).join('');
+    } catch (error) {
+        container.innerHTML = '<div style="color:#ef4444;">No fue posible cargar las tarifas.</div>';
+    }
+}
+
+async function renderGestionTarifasCatalogo() {
+    const clienteId = document.getElementById('clienteComercialId')?.value;
+    const container = document.getElementById('gestionTarifasCatalogoLista');
+    if (!container || !clienteId) return;
+
+    const query = String(document.getElementById('gestionTarifasSearch')?.value || '').trim().toLowerCase();
+    const filtroTipo = document.getElementById('gestionTarifasFiltroTipo')?.value || '';
+
+    if (!query && !filtroTipo && !_gestionTarifasVerTodos) {
+        container.innerHTML = '<div style="color:#6b7280; padding:8px;">Escribe un nombre, código o selecciona un tipo para buscar.</div>';
+        return;
+    }
+
+    try {
+        const [catalogo, tarifas] = await Promise.all([
+            asegurarCatalogoComercial(),
+            asegurarTarifasComerciales()
+        ]);
+
+        const tarifasClienteMap = new Map(
+            tarifas
+                .filter(t => String(t.cliente_id) === String(clienteId) && t.activo !== false)
+                .map(t => [String(t.catalogo_item_id), t])
+        );
+
+        let items = (catalogo || [])
+            .filter(item => item.activo !== false)
+            .filter(item => item.tipo_item !== 'EXAMEN' || item.clasificacion_completa === true)
+            .filter(item => !filtroTipo || item.tipo_item === filtroTipo)
+            .filter(item => {
+                if (!query) return true;
+                return [item.nombre, item.codigo, item.clasificacion_resumen, item.resumen_componentes]
+                    .filter(Boolean)
+                    .some(v => String(v).toLowerCase().includes(query));
+            })
+            .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+
+        if (items.length === 0) {
+            container.innerHTML = '<div style="color:#6b7280; padding:8px;">No hay coincidencias en el catálogo.</div>';
+            return;
+        }
+
+        container.innerHTML = items.map(item => {
+            const tarifaExistente = tarifasClienteMap.get(String(item.id));
+            const meta = item.tipo_item === 'PAQUETE'
+                ? (item.resumen_componentes || 'Paquete')
+                : obtenerResumenClasificacionCatalogo(item);
+            const tipoBadge = item.tipo_item === 'PAQUETE'
+                ? '<span style="background:#dbeafe; color:#1d4ed8; border-radius:4px; padding:1px 6px; font-size:0.78rem; margin-left:6px;">PAQUETE</span>'
+                : '';
+            return `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:7px 6px; border-bottom:1px solid #f1f5f9; cursor:pointer;"
+                     onclick="${tarifaExistente ? `editarTarifaDesdeGestion(${tarifaExistente.id})` : `nuevaTarifaDesdeGestionConItem(${item.id})`}">
+                    <div style="flex:1; min-width:0;">
+                        <span>${escapeHtml(item.nombre || 'Item')}</span>${tipoBadge}
+                        <div style="color:#6b7280; font-size:0.82rem;">${escapeHtml([item.codigo || 'Sin código', meta].filter(Boolean).join(' · '))}</div>
+                    </div>
+                    <div style="white-space:nowrap; font-size:0.88rem;">
+                        ${tarifaExistente
+                            ? `<span style="color:#059669; font-weight:600;">${formatCurrency(tarifaExistente.tarifa_negociada || 0)}</span>
+                               <span style="color:#6b7280; margin-left:6px;">✏ Editar</span>`
+                            : '<span style="color:#2563eb;">+ Asignar</span>'}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        container.innerHTML = '<div style="color:#ef4444; padding:8px;">No fue posible cargar el catálogo.</div>';
+    }
+}
+
+function toggleVerTodosGestionTarifas() {
+    _gestionTarifasVerTodos = !_gestionTarifasVerTodos;
+    document.getElementById('gestionTarifasVerTodosLabel').textContent = _gestionTarifasVerTodos ? 'Ver menos' : 'Ver todos';
+    renderGestionTarifasCatalogo();
+}
+
+async function nuevaTarifaDesdeGestion() {
+    const clienteId = document.getElementById('clienteComercialId')?.value;
+    if (!clienteId) return;
+    clienteComercialTarifaContext = String(clienteId);
+    cerrarGestionTarifasCliente();
+    await mostrarAgregarTarifaCliente(clienteId, '');
+}
+
+async function nuevaTarifaDesdeGestionConItem(itemId) {
+    const clienteId = document.getElementById('clienteComercialId')?.value;
+    if (!clienteId) return;
+    clienteComercialTarifaContext = String(clienteId);
+    cerrarGestionTarifasCliente();
+    await mostrarAgregarTarifaCliente(clienteId, itemId);
+}
+
+async function editarTarifaDesdeGestion(tarifaId) {
+    cerrarGestionTarifasCliente();
+    await editarTarifaCliente(tarifaId);
+}
+
+async function eliminarTarifaDesdeGestion(tarifaId) {
+    await eliminarTarifaComercialConfig(tarifaId);
+    await renderGestionTarifasAsignadas();
+    await renderGestionTarifasCatalogo();
+    // Refrescar también el resumen en la ficha del cliente
+    const clienteId = document.getElementById('clienteComercialId')?.value;
+    if (clienteId) await renderTarifasClienteComercial(clienteId);
 }
 
 function actualizarEstadoFacturaClienteComercial() {
@@ -3855,8 +7069,60 @@ async function asegurarClientesComerciales() {
     return clientesComercialesData;
 }
 
-async function asegurarCatalogoComercial() {
-    if (Array.isArray(catalogoComercialData) && catalogoComercialData.length > 0) {
+function actualizarOpcionesSubtipoCatalogo(preferredValue = '') {
+    const tipoExamenSelect = document.getElementById('catalogoComercialTipoExamen');
+    const subtipoSelect = document.getElementById('catalogoComercialSubtipoLaboratorio');
+    const subtipoLabel = document.getElementById('catalogoComercialSubtipoLaboratorioLabel');
+    if (!tipoExamenSelect || !subtipoSelect || !subtipoLabel) return;
+
+    const tipoExamen = tipoExamenSelect.value;
+    const currentValue = preferredValue || subtipoSelect.value || '';
+    let label = 'Subtipo del examen';
+    let options = [{ value: '', text: 'Pendiente de definir' }];
+
+    if (tipoExamen === 'LABORATORIO') {
+        label = 'Subtipo de laboratorio';
+        options = options.concat([
+            { value: 'REMITIDO', text: 'REMITIDO' },
+            { value: 'REALIZADO', text: 'REALIZADO EN LABORATORIO' }
+        ]);
+    } else if (tipoExamen === 'CURSOS') {
+        label = 'Condición del curso';
+        options = options.concat([
+            { value: 'REMITIDO', text: 'REMITIDO' },
+            { value: 'NO_REMITIDO', text: 'NO REMITIDO' }
+        ]);
+    }
+
+    subtipoLabel.textContent = label;
+    subtipoSelect.innerHTML = options
+        .map(option => `<option value="${option.value}">${option.text}</option>`)
+        .join('');
+    subtipoSelect.value = options.some(option => option.value === currentValue) ? currentValue : '';
+}
+
+async function refrescarAyudasComercialesVisibles() {
+    const clienteId = document.getElementById('clienteComercialId')?.value || '';
+    const conveniosPanel = document.getElementById('clienteComercialConveniosHelp');
+
+    if (clienteId) {
+        await renderTarifasClienteComercial(clienteId);
+    }
+
+    if (conveniosPanel && conveniosPanel.style.display !== 'none') {
+        await Promise.all([
+            renderConveniosClienteComercialCatalogo('EXAMEN'),
+            renderConveniosClienteComercialCatalogo('PAQUETE')
+        ]);
+    }
+
+    if (recepcionClienteActivoId) {
+        await abrirClienteRecepcion(recepcionClienteActivoId);
+    }
+}
+
+async function asegurarCatalogoComercial(forceRefresh = false) {
+    if (!forceRefresh && Array.isArray(catalogoComercialData) && catalogoComercialData.length > 0) {
         return catalogoComercialData;
     }
 
@@ -3941,16 +7207,20 @@ function obtenerResumenClasificacionCatalogo(item) {
     if (item.clasificacion_resumen) return item.clasificacion_resumen;
     if (item.tipo_item !== 'EXAMEN') return item.tipo_item || 'ITEM';
     if (!item.tipo_examen) return 'PENDIENTE DE CLASIFICAR';
-    if (item.tipo_examen !== 'LABORATORIO') return item.tipo_examen;
-    if (item.subtipo_laboratorio === 'REMITIDO') return 'LABORATORIO / REMITIDO';
+    if (item.tipo_examen !== 'LABORATORIO' && item.tipo_examen !== 'CURSOS') return item.tipo_examen;
+    if (item.subtipo_laboratorio === 'REMITIDO') return `${item.tipo_examen} / REMITIDO`;
     if (item.subtipo_laboratorio === 'REALIZADO') return 'LABORATORIO / REALIZADO EN LABORATORIO';
-    return 'LABORATORIO / SUBTIPO PENDIENTE';
+    if (item.subtipo_laboratorio === 'NO_REMITIDO') return 'CURSOS / NO REMITIDO';
+    return `${item.tipo_examen} / SUBTIPO PENDIENTE`;
 }
 
 function obtenerGruposCatalogoParaPaquete(items) {
     const grupos = [
         { title: 'Consultas', items: [] },
         { title: 'Paraclinicos', items: [] },
+        { title: 'EcoBaby', items: [] },
+        { title: 'Cursos remitidos', items: [] },
+        { title: 'Cursos no remitidos', items: [] },
         { title: 'Laboratorio remitidos', items: [] },
         { title: 'Laboratorio realizados en laboratorio', items: [] }
     ];
@@ -3960,10 +7230,16 @@ function obtenerGruposCatalogoParaPaquete(items) {
             grupos[0].items.push(item);
         } else if (item.tipo_examen === 'PARACLINICO') {
             grupos[1].items.push(item);
-        } else if (item.tipo_examen === 'LABORATORIO' && item.subtipo_laboratorio === 'REMITIDO') {
+        } else if (item.tipo_examen === 'ECOBABY') {
             grupos[2].items.push(item);
-        } else if (item.tipo_examen === 'LABORATORIO' && item.subtipo_laboratorio === 'REALIZADO') {
+        } else if (item.tipo_examen === 'CURSOS' && item.subtipo_laboratorio === 'REMITIDO') {
             grupos[3].items.push(item);
+        } else if (item.tipo_examen === 'CURSOS' && item.subtipo_laboratorio === 'NO_REMITIDO') {
+            grupos[4].items.push(item);
+        } else if (item.tipo_examen === 'LABORATORIO' && item.subtipo_laboratorio === 'REMITIDO') {
+            grupos[5].items.push(item);
+        } else if (item.tipo_examen === 'LABORATORIO' && item.subtipo_laboratorio === 'REALIZADO') {
+            grupos[6].items.push(item);
         }
     });
 
@@ -3977,12 +7253,15 @@ async function renderCatalogoComercialComponentesLegacy(selectedIds = []) {
     try {
         const items = await asegurarCatalogoComercial();
         const examenes = items
-            .filter(item => item.tipo_item === 'EXAMEN' && item.clasificacion_completa === true)
+            .filter(item => item.tipo_item === 'EXAMEN')
             .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+        const examenesDisponibles = examenes.filter(
+            item => item.activo !== false && item.clasificacion_completa === true
+        );
         const selectedSet = new Set((selectedIds || []).map(id => String(id)));
         const pendientes = items.filter(item => item.tipo_item === 'EXAMEN' && item.clasificacion_completa !== true);
 
-        if (examenes.length === 0) {
+        if (examenesDisponibles.length === 0) {
             container.innerHTML = '<div class="catalogo-componentes-empty">Todavia no hay examenes completamente clasificados para armar paquetes.</div>';
             return;
         }
@@ -4064,14 +7343,14 @@ async function cargarClientesComercialesConfig() {
                 <td>${escapeHtml(cliente.condicion_comercial || 'N/A')}</td>
                 <td style="max-width:240px;">${escapeHtml(cliente.resumen_facturacion || 'N/A')}</td>
                 <td>
-                    ${escapeHtml(cliente.contacto_facturacion || cliente.contacto_principal || 'N/A')}
+                    ${escapeHtml(obtenerContactoPreferidoCliente(cliente) || 'N/A')}
                     <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.email_facturacion || cliente.email_contacto_principal || cliente.email_empresa || 'Sin email')}</div>
                 </td>
                 <td>
                     <div>Legales: ${cliente.documentos_legales_adjuntos?.length || 0}</div>
                     <div>Pagaré: ${cliente.pagare_adjuntos?.length || 0}</div>
                 </td>
-                <td>${cliente.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
+                <td>${escapeHtml(formatearEstadoCliente(obtenerEstadoCliente(cliente)))}</td>
                 <td><button class="action-btn action-btn-edit" onclick="editarClienteComercial(${cliente.id})">Editar</button></td>
             </tr>
         `).join('');
@@ -4089,12 +7368,21 @@ async function mostrarAgregarClienteComercial() {
     clienteComercialTarifaContext = null;
     document.getElementById('clienteComercialId').value = '';
     document.getElementById('clienteComercialModalTitle').textContent = 'Nuevo Cliente Comercial';
-    document.getElementById('clienteComercialActivo').checked = true;
+    document.getElementById('clienteComercialEstado').value = 'ACTIVO';
+    document.getElementById('clienteComercialMedioAutorizacion').value = 'WHATSAPP';
     document.getElementById('clienteComercialRequiereFactura').checked = false;
     document.getElementById('clienteComercialDocumentosCompletos').checked = false;
     document.getElementById('clienteComercialPagareFirmado').checked = false;
+    document.getElementById('clienteComercialExamenesSearch').value = '';
+    document.getElementById('clienteComercialExamenesSearch').dataset.showAll = 'false';
+    document.getElementById('clienteComercialServiciosSearch').value = '';
+    actualizarBotonVerTodosConveniosCliente('EXAMEN');
     renderClienteComercialAdjuntos('clienteComercialDocumentosExistentes', []);
     renderClienteComercialAdjuntos('clienteComercialPagareExistentes', []);
+    const seguimientoBtn = document.getElementById('clienteComercialSeguimientoBtn');
+    if (seguimientoBtn) {
+        seguimientoBtn.disabled = true;
+    }
     await renderTarifasClienteComercial('');
     await llenarSelectVendedorComercial();
     actualizarEstadoFacturaClienteComercial();
@@ -4124,16 +7412,20 @@ async function editarClienteComercial(id) {
     document.getElementById('clienteComercialTelefonoEmpresa').value = cliente.telefono_empresa || '';
     document.getElementById('clienteComercialEmailEmpresa').value = cliente.email_empresa || '';
     document.getElementById('clienteComercialContactoPrincipal').value = cliente.contacto_principal || '';
+    document.getElementById('clienteComercialCargoPrincipal').value = cliente.cargo_contacto_principal || '';
     document.getElementById('clienteComercialCelularPrincipal').value = cliente.celular_contacto_principal || '';
     document.getElementById('clienteComercialEmailPrincipal').value = cliente.email_contacto_principal || '';
     document.getElementById('clienteComercialContactoFacturacion').value = cliente.contacto_facturacion || '';
+    document.getElementById('clienteComercialCargoFacturacion').value = cliente.cargo_contacto_facturacion || '';
     document.getElementById('clienteComercialCelularFacturacion').value = cliente.celular_facturacion || '';
     document.getElementById('clienteComercialEmailFacturacion').value = cliente.email_facturacion || '';
+    document.getElementById('clienteComercialMedioAutorizacion').value = cliente.medio_autorizacion || 'WHATSAPP';
     document.getElementById('clienteComercialCondicion').value = cliente.condicion_comercial || 'EFECTIVO';
-    document.getElementById('clienteComercialActivo').checked = cliente.activo !== false;
+    document.getElementById('clienteComercialEstado').value = obtenerEstadoCliente(cliente);
     document.getElementById('clienteComercialRequiereFactura').checked = cliente.requiere_factura === true;
     document.getElementById('clienteComercialFechasFacturacion').value = cliente.fechas_facturacion || '';
     document.getElementById('clienteComercialFechaSolicitudFactura').value = cliente.fecha_solicitud_factura || '';
+    document.getElementById('clienteComercialPuntosAtencionRecepcion').value = cliente.puntos_atencion_recepcion || '';
     document.getElementById('clienteComercialExamenes').value = cliente.examenes_convenidos || '';
     document.getElementById('clienteComercialServicios').value = cliente.servicios_convenidos || '';
     document.getElementById('clienteComercialTarifas').value = cliente.tarifas_convenidas || '';
@@ -4142,8 +7434,16 @@ async function editarClienteComercial(id) {
     document.getElementById('clienteComercialPagareFirmado').checked = cliente.pagare_firmado === true;
     document.getElementById('clienteComercialPagareDetalle').value = cliente.pagare_detalle || '';
     document.getElementById('clienteComercialObservaciones').value = cliente.observaciones || '';
+    document.getElementById('clienteComercialExamenesSearch').value = '';
+    document.getElementById('clienteComercialExamenesSearch').dataset.showAll = 'false';
+    document.getElementById('clienteComercialServiciosSearch').value = '';
+    actualizarBotonVerTodosConveniosCliente('EXAMEN');
     renderClienteComercialAdjuntos('clienteComercialDocumentosExistentes', cliente.documentos_legales_adjuntos || []);
     renderClienteComercialAdjuntos('clienteComercialPagareExistentes', cliente.pagare_adjuntos || []);
+    const seguimientoBtn = document.getElementById('clienteComercialSeguimientoBtn');
+    if (seguimientoBtn) {
+        seguimientoBtn.disabled = false;
+    }
     await renderTarifasClienteComercial(cliente.id);
     actualizarEstadoFacturaClienteComercial();
     document.getElementById('clienteComercialModal').classList.add('active');
@@ -4189,7 +7489,7 @@ async function editarItemCatalogoComercialLegacy(id) {
     document.getElementById('catalogoComercialModal').classList.add('active');
 }
 
-async function mostrarAgregarTarifaCliente(preselectedClienteId = '') {
+async function mostrarAgregarTarifaCliente(preselectedClienteId = '', preselectedItemId = '') {
     const form = document.getElementById('tarifaClienteForm');
     if (!form) return;
 
@@ -4199,7 +7499,7 @@ async function mostrarAgregarTarifaCliente(preselectedClienteId = '') {
     document.getElementById('tarifaClienteTarifaNegociada').value = '0';
     document.getElementById('tarifaClienteActivo').checked = true;
     await llenarSelectClientesComerciales(preselectedClienteId || '');
-    await llenarSelectCatalogoComercial();
+    await llenarSelectCatalogoComercial(preselectedItemId || '');
     document.getElementById('tarifaClienteModal').classList.add('active');
 }
 
@@ -4496,15 +7796,20 @@ async function guardarClienteComercialConfig(event) {
     formData.append('telefono_empresa', document.getElementById('clienteComercialTelefonoEmpresa').value.trim());
     formData.append('email_empresa', document.getElementById('clienteComercialEmailEmpresa').value.trim());
     formData.append('contacto_principal', document.getElementById('clienteComercialContactoPrincipal').value.trim());
+    formData.append('cargo_contacto_principal', document.getElementById('clienteComercialCargoPrincipal').value.trim());
     formData.append('celular_contacto_principal', document.getElementById('clienteComercialCelularPrincipal').value.trim());
     formData.append('email_contacto_principal', document.getElementById('clienteComercialEmailPrincipal').value.trim());
     formData.append('contacto_facturacion', document.getElementById('clienteComercialContactoFacturacion').value.trim());
+    formData.append('cargo_contacto_facturacion', document.getElementById('clienteComercialCargoFacturacion').value.trim());
     formData.append('celular_facturacion', document.getElementById('clienteComercialCelularFacturacion').value.trim());
     formData.append('email_facturacion', document.getElementById('clienteComercialEmailFacturacion').value.trim());
+    formData.append('medio_autorizacion', document.getElementById('clienteComercialMedioAutorizacion').value);
+    formData.append('estado_cliente', document.getElementById('clienteComercialEstado').value);
     formData.append('condicion_comercial', document.getElementById('clienteComercialCondicion').value);
     formData.append('requiere_factura', document.getElementById('clienteComercialRequiereFactura').checked ? 'true' : 'false');
     formData.append('fechas_facturacion', document.getElementById('clienteComercialFechasFacturacion').value.trim());
     formData.append('fecha_solicitud_factura', document.getElementById('clienteComercialFechaSolicitudFactura').value);
+    formData.append('puntos_atencion_recepcion', document.getElementById('clienteComercialPuntosAtencionRecepcion').value.trim());
     formData.append('examenes_convenidos', document.getElementById('clienteComercialExamenes').value.trim());
     formData.append('servicios_convenidos', document.getElementById('clienteComercialServicios').value.trim());
     formData.append('tarifas_convenidas', document.getElementById('clienteComercialTarifas').value.trim());
@@ -4513,7 +7818,6 @@ async function guardarClienteComercialConfig(event) {
     formData.append('pagare_firmado', document.getElementById('clienteComercialPagareFirmado').checked ? 'true' : 'false');
     formData.append('pagare_detalle', document.getElementById('clienteComercialPagareDetalle').value.trim());
     formData.append('observaciones', document.getElementById('clienteComercialObservaciones').value.trim());
-    formData.append('activo', document.getElementById('clienteComercialActivo').checked ? 'true' : 'false');
 
     Array.from(document.getElementById('clienteComercialDocumentosAdjuntos').files || []).forEach(file => {
         formData.append('documentos_legales_adjuntos', file);
@@ -4541,6 +7845,7 @@ async function guardarClienteComercialConfig(event) {
             return;
         }
         showSuccess('Cliente comercial actualizado');
+        await refrescarAyudasComercialesVisibles();
         closeClienteComercialModal();
     } catch (error) {
         console.error('Error guardando cliente comercial:', error);
@@ -4565,7 +7870,7 @@ async function guardarCatalogoComercialConfigLegacy(event) {
     }
 
     if (tipoItem === 'EXAMEN' && !tipoExamen) {
-        return showError('Selecciona el tipo de examen: CONSULTA, LABORATORIO o PARACLINICO.');
+        return showError('Selecciona el tipo de examen: CONSULTA, LABORATORIO, PARACLINICO, ECOBABY o CURSOS.');
     }
 
     try {
@@ -4645,31 +7950,195 @@ async function cargarCatalogoComercialConfig() {
     }
 }
 
-async function renderCatalogoComercialComponentes(selectedIds = []) {
+function actualizarResumenPendientesCatalogo() {
+    const summary = document.getElementById('catalogoComercialComponentesPendientesResumen');
+    const button = document.querySelector('.catalogo-componentes-bulk-add');
+    const total = catalogoComercialComponentesPendientes.length;
+    const visibles = obtenerExamenesDisponiblesFiltrados(
+        document.getElementById('catalogoComercialComponentesSearch')?.value || ''
+    ).length;
+
+    if (summary) {
+        summary.textContent = total > 0
+            ? `${total} examen(es) marcados para agregar. ${visibles} visible(s) con el filtro actual.`
+            : `${visibles} examen(es) visibles con el filtro actual.`;
+    }
+
+    if (button) {
+        button.disabled = total === 0;
+    }
+}
+
+function togglePendienteComponenteCatalogo(id, checked) {
+    const normalizedId = Number(id);
+    if (Number.isNaN(normalizedId)) return;
+
+    if (checked) {
+        if (!catalogoComercialComponentesPendientes.includes(normalizedId)) {
+            catalogoComercialComponentesPendientes.push(normalizedId);
+        }
+    } else {
+        catalogoComercialComponentesPendientes = catalogoComercialComponentesPendientes.filter(itemId => Number(itemId) !== normalizedId);
+    }
+
+    actualizarResumenPendientesCatalogo();
+}
+
+function agregarComponentesCatalogoSeleccionados() {
+    const nuevosIds = catalogoComercialComponentesPendientes.filter(
+        id => !catalogoComercialComponentesSeleccionados.includes(Number(id))
+    );
+
+    if (nuevosIds.length === 0) {
+        showError('Marca uno o varios examenes para agregarlos al paquete.');
+        return;
+    }
+
+    catalogoComercialComponentesSeleccionados.push(...nuevosIds.map(id => Number(id)));
+    catalogoComercialComponentesPendientes = [];
+    filtrarCatalogoComponentesDisponibles();
+}
+
+function asegurarControlesComponentesCatalogo() {
+    const searchInput = document.getElementById('catalogoComercialComponentesSearch');
+    if (searchInput && !document.getElementById('catalogoComercialComponentesFiltroTipo')) {
+        const select = document.createElement('select');
+        select.id = 'catalogoComercialComponentesFiltroTipo';
+        select.style.marginTop = '10px';
+        select.onchange = () => filtrarCatalogoComponentesDisponibles();
+        select.innerHTML = [
+            '<option value="">Todas las clasificaciones</option>',
+            '<option value="CONSULTA">CONSULTA</option>',
+            '<option value="PARACLINICO">PARACLINICO</option>',
+            '<option value="ECOBABY">ECOBABY</option>',
+            '<option value="CURSOS">CURSOS (todos)</option>',
+            '<option value="CURSOS|REMITIDO">CURSOS - Remitidos</option>',
+            '<option value="CURSOS|NO_REMITIDO">CURSOS - No remitidos</option>',
+            '<option value="LABORATORIO">LABORATORIO (todos)</option>',
+            '<option value="LABORATORIO|REMITIDO">LABORATORIO - Remitidos</option>',
+            '<option value="LABORATORIO|REALIZADO">LABORATORIO - Realizados en laboratorio</option>'
+        ].join('');
+        searchInput.insertAdjacentElement('afterend', select);
+    }
+
+    const addButton = document.querySelector('.catalogo-componentes-bulk-add');
+    if (addButton && !document.querySelector('.catalogo-componentes-toolbar-actions')) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'catalogo-componentes-toolbar-actions';
+
+        const markVisibleButton = document.createElement('button');
+        markVisibleButton.type = 'button';
+        markVisibleButton.className = 'catalogo-componentes-secondary';
+        markVisibleButton.textContent = 'Marcar visibles';
+        markVisibleButton.onclick = () => marcarTodosComponentesFiltrados();
+
+        const clearPendingButton = document.createElement('button');
+        clearPendingButton.type = 'button';
+        clearPendingButton.className = 'catalogo-componentes-secondary';
+        clearPendingButton.textContent = 'Limpiar marcados';
+        clearPendingButton.onclick = () => limpiarPendientesComponentesCatalogo();
+
+        addButton.insertAdjacentElement('beforebegin', wrapper);
+        wrapper.appendChild(markVisibleButton);
+        wrapper.appendChild(clearPendingButton);
+        wrapper.appendChild(addButton);
+    }
+}
+
+function obtenerExamenesDisponiblesFiltrados(query = '') {
+    const normalizedQuery = String(query || '').trim().toLowerCase();
+    const filtroRaw = String(document.getElementById('catalogoComercialComponentesFiltroTipo')?.value || '').trim().toUpperCase();
+    const selectedSet = new Set(catalogoComercialComponentesSeleccionados.map(id => Number(id)));
+
+    // El filtro puede ser "TIPO" o "TIPO|SUBTIPO"
+    const filtroParts = filtroRaw ? filtroRaw.split('|') : [];
+    const filtroTipo = filtroParts[0] || '';
+    const filtroSubtipo = filtroParts[1] || '';
+
+    const disponibles = catalogoComercialExamenesDisponibles.filter(
+        item => item.activo !== false && item.clasificacion_completa === true && !selectedSet.has(Number(item.id))
+    );
+
+    return disponibles.filter(item => {
+        if (filtroTipo) {
+            // Filtrar por tipo principal
+            if (item.tipo_examen !== filtroTipo) {
+                return false;
+            }
+            // Si además se especificó subtipo, filtrar por subtipo
+            if (filtroSubtipo && (item.subtipo_laboratorio || '') !== filtroSubtipo) {
+                return false;
+            }
+        }
+
+        if (!normalizedQuery) {
+            return true;
+        }
+
+        return [
+            item.nombre,
+            item.codigo,
+            item.clasificacion_resumen,
+            item.tipo_examen,
+            item.subtipo_laboratorio
+        ].some(value => String(value || '').toLowerCase().includes(normalizedQuery));
+    });
+}
+
+function marcarTodosComponentesFiltrados() {
+    const query = document.getElementById('catalogoComercialComponentesSearch')?.value || '';
+    const visibles = obtenerExamenesDisponiblesFiltrados(query);
+    if (visibles.length === 0) {
+        showError('No hay examenes visibles para marcar.');
+        return;
+    }
+
+    const pendientesSet = new Set(catalogoComercialComponentesPendientes.map(id => Number(id)));
+    visibles.forEach(item => pendientesSet.add(Number(item.id)));
+    catalogoComercialComponentesPendientes = Array.from(pendientesSet);
+    filtrarCatalogoComponentesDisponibles();
+}
+
+function limpiarPendientesComponentesCatalogo() {
+    catalogoComercialComponentesPendientes = [];
+    actualizarResumenPendientesCatalogo();
+    filtrarCatalogoComponentesDisponibles();
+}
+
+async function renderCatalogoComercialComponentes(selectedIds = [], options = {}) {
     const currentContainer = document.getElementById('catalogoComercialComponentesActuales');
     const availableContainer = document.getElementById('catalogoComercialComponentesList');
     const searchInput = document.getElementById('catalogoComercialComponentesSearch');
+    const { forceRefresh = false } = options;
     if (!currentContainer || !availableContainer) return;
 
     try {
-        const items = await asegurarCatalogoComercial();
+        asegurarControlesComponentesCatalogo();
+        const items = await asegurarCatalogoComercial(forceRefresh);
         const examenes = items
-            .filter(item => item.tipo_item === 'EXAMEN' && item.clasificacion_completa === true)
+            .filter(item => item.tipo_item === 'EXAMEN')
             .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+        const examenesDisponibles = examenes.filter(
+            item => item.activo !== false && item.clasificacion_completa === true
+        );
         const selectedOrder = (selectedIds || []).map(id => Number(id)).filter(id => !Number.isNaN(id));
         const examenesById = new Map(examenes.map(item => [Number(item.id), item]));
-        const pendientes = items.filter(item => item.tipo_item === 'EXAMEN' && item.clasificacion_completa !== true);
+        const pendientes = items.filter(
+            item => item.tipo_item === 'EXAMEN' && (item.clasificacion_completa !== true || item.activo === false)
+        );
 
         catalogoComercialExamenesDisponibles = examenes;
         catalogoComercialComponentesSeleccionados = selectedOrder.filter(id => examenesById.has(id));
+        catalogoComercialComponentesPendientes = [];
 
         if (searchInput) {
             searchInput.value = '';
         }
 
-        if (examenes.length === 0) {
+        if (examenesDisponibles.length === 0) {
             currentContainer.innerHTML = '<div class="catalogo-componentes-empty">Todavía no hay exámenes completamente clasificados para armar paquetes.</div>';
             availableContainer.innerHTML = '<div class="catalogo-componentes-empty">Todavía no hay exámenes disponibles para agregar.</div>';
+            actualizarResumenPendientesCatalogo();
             return;
         }
 
@@ -4685,6 +8154,8 @@ async function renderCatalogoComercialComponentes(selectedIds = []) {
         console.error('Error cargando componentes del paquete:', error);
         currentContainer.innerHTML = '<div class="catalogo-componentes-empty">No fue posible cargar la composición actual del paquete.</div>';
         availableContainer.innerHTML = '<div class="catalogo-componentes-empty">No fue posible cargar los exámenes del catálogo.</div>';
+        catalogoComercialComponentesPendientes = [];
+        actualizarResumenPendientesCatalogo();
     }
 }
 
@@ -4709,36 +8180,30 @@ function renderCatalogoComercialComponentesActuales() {
         <div class="catalogo-componentes-current">
             <div>
                 <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
+                <div class="catalogo-componentes-current-meta">${escapeHtml([obtenerResumenClasificacionCatalogo(item), item.codigo || 'Sin codigo'].filter(Boolean).join(' · '))}</div>
             </div>
             <button type="button" class="catalogo-componentes-action" onclick="quitarComponenteCatalogo(${Number(item.id)})">Quitar</button>
         </div>
     `).join('');
 
-    resumen.textContent = `Este paquete tiene ${seleccionados.length} examen(es): ${seleccionados.map(item => item.nombre || 'N/A').join(', ')}.`;
+    resumen.textContent = `Este paquete tiene ${seleccionados.length} examen(es) seleccionados. Puedes seguir agregando, quitar uno puntual o ajustar la busqueda para completar el paquete.`;
 }
 
 function renderCatalogoComercialComponentesDisponibles(query = '') {
     const container = document.getElementById('catalogoComercialComponentesList');
     if (!container) return;
 
+    asegurarControlesComponentesCatalogo();
     const normalizedQuery = String(query || '').trim().toLowerCase();
-    const selectedSet = new Set(catalogoComercialComponentesSeleccionados.map(id => Number(id)));
-    const disponibles = catalogoComercialExamenesDisponibles.filter(item => !selectedSet.has(Number(item.id)));
-    const filtrados = !normalizedQuery
-        ? disponibles
-        : disponibles.filter(item => [
-            item.nombre,
-            item.codigo,
-            item.clasificacion_resumen,
-            item.tipo_examen,
-            item.subtipo_laboratorio
-        ].some(value => String(value || '').toLowerCase().includes(normalizedQuery)));
+    const pendientesSet = new Set(catalogoComercialComponentesPendientes.map(id => Number(id)));
+    const filtrados = obtenerExamenesDisponiblesFiltrados(query);
 
     if (filtrados.length === 0) {
         container.innerHTML = normalizedQuery
             ? '<div class="catalogo-componentes-empty">No encontramos exámenes con esa búsqueda.</div>'
             : '<div class="catalogo-componentes-empty">Todos los exámenes disponibles ya están dentro del paquete.</div>';
         renderCatalogoComercialComponentesActuales();
+        actualizarResumenPendientesCatalogo();
         return;
     }
 
@@ -4747,10 +8212,15 @@ function renderCatalogoComercialComponentesDisponibles(query = '') {
         <div style="margin-bottom:14px;">
             <div style="font-weight:700; color:#0f172a; margin-bottom:8px;">${escapeHtml(grupo.title)}</div>
             ${grupo.items.map(item => `
-                <div class="catalogo-componentes-item">
-                    <span>
-                        <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
-                        <small>${escapeHtml(obtenerResumenClasificacionCatalogo(item))}</small>
+                <label class="catalogo-componentes-item">
+                    <input
+                        type="checkbox"
+                        class="catalogo-componente-checkbox"
+                        ${pendientesSet.has(Number(item.id)) ? 'checked' : ''}
+                        onchange="togglePendienteComponenteCatalogo(${Number(item.id)}, this.checked)"
+                    >
+                    <span class="catalogo-componentes-item-name">
+                        ${escapeHtml(item.nombre || 'N/A')}
                         <small>${escapeHtml(item.codigo || 'Sin código')}</small>
                     </span>
                     <button type="button" class="catalogo-componentes-add" onclick="agregarComponenteCatalogo(${Number(item.id)})">Agregar</button>
@@ -4760,6 +8230,7 @@ function renderCatalogoComercialComponentesDisponibles(query = '') {
     `).join('');
 
     renderCatalogoComercialComponentesActuales();
+    actualizarResumenPendientesCatalogo();
 }
 
 function filtrarCatalogoComponentesDisponibles() {
@@ -4772,6 +8243,8 @@ function agregarComponenteCatalogo(id) {
     if (!catalogoComercialComponentesSeleccionados.includes(normalizedId)) {
         catalogoComercialComponentesSeleccionados.push(normalizedId);
     }
+    catalogoComercialComponentesPendientes = catalogoComercialComponentesPendientes.filter(itemId => Number(itemId) !== normalizedId);
+    actualizarResumenPendientesCatalogo();
     filtrarCatalogoComponentesDisponibles();
 }
 
@@ -4793,10 +8266,12 @@ function actualizarVisibilidadComponentesCatalogo() {
 
     const esExamen = tipoSelect.value === 'EXAMEN';
     const esPaquete = tipoSelect.value === 'PAQUETE';
-    const esLaboratorio = esExamen && tipoExamenSelect.value === 'LABORATORIO';
+    const requiereSubtipo = esExamen && ['LABORATORIO', 'CURSOS'].includes(tipoExamenSelect.value);
+
+    actualizarOpcionesSubtipoCatalogo();
 
     tipoExamenRow.style.display = esExamen ? 'grid' : 'none';
-    subtipoRow.style.display = esLaboratorio ? 'grid' : 'none';
+    subtipoRow.style.display = requiereSubtipo ? 'grid' : 'none';
     row.style.display = esPaquete ? 'block' : 'none';
 
     if (!esExamen) {
@@ -4804,17 +8279,23 @@ function actualizarVisibilidadComponentesCatalogo() {
         subtipoSelect.value = '';
     }
 
-    if (!esLaboratorio) {
+    if (!requiereSubtipo) {
         subtipoSelect.value = '';
     }
 
     if (!esPaquete) {
         catalogoComercialComponentesSeleccionados = [];
+        catalogoComercialComponentesPendientes = [];
         if (searchInput) {
             searchInput.value = '';
         }
+        const filterSelect = document.getElementById('catalogoComercialComponentesFiltroTipo');
+        if (filterSelect) {
+            filterSelect.value = '';
+        }
         renderCatalogoComercialComponentesActuales();
         renderCatalogoComercialComponentesDisponibles('');
+        actualizarResumenPendientesCatalogo();
     }
 }
 
@@ -4823,29 +8304,32 @@ function mostrarAgregarItemCatalogoComercial() {
     if (!form) return;
 
     form.reset();
-    renderCatalogoComercialComponentes();
     document.getElementById('catalogoComercialId').value = '';
     document.getElementById('catalogoComercialModalTitle').textContent = 'Nuevo Examen o Paquete';
     document.getElementById('catalogoComercialTipo').value = 'EXAMEN';
     document.getElementById('catalogoComercialTipoExamen').value = '';
+    actualizarOpcionesSubtipoCatalogo();
     document.getElementById('catalogoComercialSubtipoLaboratorio').value = '';
     document.getElementById('catalogoComercialTarifaBase').value = '0';
     document.getElementById('catalogoComercialActivo').checked = true;
+    renderCatalogoComercialComponentes([], { forceRefresh: true });
     actualizarVisibilidadComponentesCatalogo();
     document.getElementById('catalogoComercialModal').classList.add('active');
 }
 
 async function editarItemCatalogoComercial(id) {
+    await asegurarCatalogoComercial(true);
     const item = catalogoComercialData.find(entry => entry.id === id);
     if (!item) return;
 
-    await renderCatalogoComercialComponentes(item.componentes_ids || []);
+    await renderCatalogoComercialComponentes(item.componentes_ids || [], { forceRefresh: true });
     document.getElementById('catalogoComercialId').value = item.id;
     document.getElementById('catalogoComercialModalTitle').textContent = item.tipo_item === 'PAQUETE'
         ? 'Editar Paquete'
         : (item.tipo_item === 'SERVICIO' ? 'Editar Registro Legado' : 'Editar Examen');
     document.getElementById('catalogoComercialTipo').value = item.tipo_item || 'EXAMEN';
     document.getElementById('catalogoComercialTipoExamen').value = item.tipo_examen || '';
+    actualizarOpcionesSubtipoCatalogo(item.subtipo_laboratorio || '');
     document.getElementById('catalogoComercialSubtipoLaboratorio').value = item.subtipo_laboratorio || '';
     document.getElementById('catalogoComercialCodigo').value = item.codigo || '';
     document.getElementById('catalogoComercialNombre').value = item.nombre || '';
@@ -4898,6 +8382,7 @@ async function guardarCatalogoComercialConfig(event) {
             cargarCatalogoComercialConfig(),
             cargarTarifasComercialesConfig()
         ]);
+        await refrescarAyudasComercialesVisibles();
     } catch (error) {
         console.error('Error guardando item comercial:', error);
         showError('Error de conexion al guardar item comercial');
@@ -4935,10 +8420,472 @@ async function guardarTarifaClienteConfig(event) {
             cargarTarifasComercialesConfig(),
             cargarClientesComercialesConfig()
         ]);
+        await refrescarAyudasComercialesVisibles();
         closeTarifaClienteModal();
     } catch (error) {
         console.error('Error guardando tarifa comercial:', error);
         showError('Error de conexión al guardar tarifa comercial');
+    }
+}
+
+function renderSeguimientoAtencionesTable() {
+    const tbody = document.getElementById('clienteSeguimientoAtencionesTable');
+    if (!tbody) return;
+
+    const atenciones = clienteSeguimientoContext.atenciones || [];
+    if (!atenciones.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Este cliente aÃºn no tiene atenciones registradas.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = atenciones.map(atencion => {
+        const detalle = atencion.detalle_resumen || atencion.detalle_items_resumen || 'Sin detalle';
+        const acciones = [];
+        if (atencion.documento_id) {
+            acciones.push(`<button type="button" class="action-btn action-btn-edit" onclick="mostrarAgregarSeguimientoPago(${Number(atencion.documento_id)})">Registrar pago</button>`);
+        }
+        acciones.push(`<button type="button" class="action-btn action-btn-edit" onclick="editarSeguimientoAtencion(${Number(atencion.id)})">Editar</button>`);
+        acciones.push(`<button type="button" class="action-btn action-btn-delete" onclick="eliminarSeguimientoAtencion(${Number(atencion.id)})">Eliminar</button>`);
+
+        return `
+            <tr>
+                <td>${escapeHtml(atencion.nro_atencion || 'N/A')}</td>
+                <td>${escapeHtml(atencion.fecha_atencion || 'N/A')}</td>
+                <td>${escapeHtml(atencion.pacientes_resumen || atencion.paciente_nombre || 'N/A')}</td>
+                <td style="max-width:320px;">${escapeHtml(detalle)}</td>
+                <td>${formatCurrency(atencion.valor_total || 0)}</td>
+                <td>${formatCurrency(atencion.saldo_pendiente || 0)}</td>
+                <td>${renderSeguimientoEstadoBadge(atencion.estado_cobro)}</td>
+                <td style="display:flex; gap:6px; flex-wrap:wrap;">${acciones.join('')}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function mostrarAgregarAtencionCliente() {
+    if (!clienteSeguimientoContext.clienteId) {
+        showError('Selecciona primero un cliente comercial.');
+        return;
+    }
+
+    const form = document.getElementById('seguimientoAtencionForm');
+    document.getElementById('seguimientoAtencionModalTitle').textContent = 'Nueva AtenciÃ³n';
+    form?.reset();
+    if (form) {
+        form.dataset.atencionId = '';
+    }
+    document.getElementById('seguimientoAtencionFecha').value = getTodayIsoDate();
+    clienteSeguimientoContext.draftDetalles = [];
+    renderSeguimientoDraftDetalles();
+    try {
+        await loadSeguimientoConvenioItems(document.getElementById('seguimientoAtencionFecha').value);
+    } catch (error) {
+        console.error('Error cargando convenio para atenciÃ³n:', error);
+        showError(error.message || 'No se pudieron cargar los items convenidos.');
+    }
+    document.getElementById('seguimientoAtencionModal')?.classList.add('active');
+}
+
+async function editarSeguimientoAtencion(atencionId) {
+    const atencion = getAtencionSeguimientoById(atencionId);
+    if (!atencion) {
+        showError('No se pudo localizar la atenciÃ³n seleccionada.');
+        return;
+    }
+
+    const form = document.getElementById('seguimientoAtencionForm');
+    form?.reset();
+    if (form) {
+        form.dataset.atencionId = String(atencion.id);
+    }
+    document.getElementById('seguimientoAtencionModalTitle').textContent = 'Editar AtenciÃ³n';
+    document.getElementById('seguimientoAtencionFecha').value = atencion.fecha_atencion || getTodayIsoDate();
+    document.getElementById('seguimientoAtencionObservaciones').value = atencion.observaciones || '';
+
+    try {
+        await loadSeguimientoConvenioItems(document.getElementById('seguimientoAtencionFecha').value);
+    } catch (error) {
+        console.error('Error cargando convenio para editar atenciÃ³n:', error);
+        showError(error.message || 'No se pudieron cargar los items convenidos.');
+        return;
+    }
+
+    clienteSeguimientoContext.draftDetalles = (atencion.detalles || []).map(detalle => ({
+        catalogo_item_id: Number(detalle.catalogo_item_id),
+        paciente_documento: detalle.paciente_documento || '',
+        paciente_nombre: detalle.paciente_nombre || '',
+        nombre: detalle.nombre_item || 'Item',
+        tipo_item: detalle.tipo_item || 'EXAMEN',
+        valor_unitario: Number(detalle.valor_item || 0)
+    }));
+    renderSeguimientoDraftDetalles();
+    document.getElementById('seguimientoAtencionModal')?.classList.add('active');
+}
+
+async function guardarSeguimientoAtencion(event) {
+    event.preventDefault();
+
+    const clienteId = clienteSeguimientoContext.clienteId;
+    const form = document.getElementById('seguimientoAtencionForm');
+    const atencionId = form?.dataset.atencionId || '';
+    if (!clienteId) {
+        showError('No hay cliente activo para registrar la atenciÃ³n.');
+        return;
+    }
+
+    if (!(clienteSeguimientoContext.draftDetalles || []).length) {
+        showError('Agrega al menos un examen o paquete antes de guardar la atenciÃ³n.');
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            atencionId ? `/api/comercial/atenciones/${atencionId}` : `/api/comercial/clientes/${clienteId}/atenciones`,
+            {
+                method: atencionId ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    fecha_atencion: document.getElementById('seguimientoAtencionFecha').value,
+                    observaciones: document.getElementById('seguimientoAtencionObservaciones').value.trim(),
+                    detalles: clienteSeguimientoContext.draftDetalles.map(detalle => ({
+                        catalogo_item_id: detalle.catalogo_item_id,
+                        paciente_documento: detalle.paciente_documento,
+                        paciente_nombre: detalle.paciente_nombre
+                    }))
+                })
+            }
+        );
+        const data = await response.json();
+        if (!response.ok) {
+            showError(buildComercialDeleteBlockedMessage(data.error || 'No fue posible guardar la atenciÃ³n.', data.details));
+            return;
+        }
+
+        showSuccess(atencionId ? 'AtenciÃ³n actualizada.' : 'AtenciÃ³n registrada.');
+        closeSeguimientoAtencionModal();
+        await cargarSeguimientoCliente(clienteId);
+        setSeguimientoPanelVisible('atenciones');
+    } catch (error) {
+        console.error('Error guardando atenciÃ³n de seguimiento:', error);
+        showError('Error de conexiÃ³n al guardar la atenciÃ³n.');
+    }
+}
+
+async function eliminarSeguimientoAtencion(atencionId) {
+    if (!confirm('Â¿Desea eliminar esta atenciÃ³n comercial?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/comercial/atenciones/${atencionId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            showError(buildComercialDeleteBlockedMessage(data.error || 'No fue posible eliminar la atenciÃ³n.', data.details));
+            return;
+        }
+
+        showSuccess('AtenciÃ³n eliminada.');
+        await cargarSeguimientoCliente(clienteSeguimientoContext.clienteId);
+        setSeguimientoPanelVisible('atenciones');
+    } catch (error) {
+        console.error('Error eliminando atenciÃ³n de seguimiento:', error);
+        showError('Error de conexiÃ³n al eliminar la atenciÃ³n.');
+    }
+}
+
+async function eliminarVendedorConfig(vendedorId) {
+    if (!confirm('Â¿Desea eliminar este vendedor?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/comercial/vendedores/${vendedorId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            showError(buildComercialDeleteBlockedMessage(data.error || 'No fue posible eliminar el vendedor.', data.details));
+            return;
+        }
+
+        showSuccess('Vendedor eliminado.');
+        await Promise.all([
+            cargarVendedoresConfig(),
+            cargarClientesComercialesConfig(),
+            loadComercialDashboard()
+        ]);
+    } catch (error) {
+        console.error('Error eliminando vendedor:', error);
+        showError('Error de conexiÃ³n al eliminar el vendedor.');
+    }
+}
+
+async function eliminarItemCatalogoComercial(itemId) {
+    if (!confirm('Â¿Desea eliminar este examen o paquete?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/comercial/catalogo/${itemId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            showError(buildComercialDeleteBlockedMessage(data.error || 'No fue posible eliminar el item comercial.', data.details));
+            return;
+        }
+
+        showSuccess('Item comercial eliminado.');
+        await Promise.all([
+            cargarCatalogoComercialConfig(),
+            cargarTarifasComercialesConfig()
+        ]);
+        await refrescarAyudasComercialesVisibles();
+    } catch (error) {
+        console.error('Error eliminando item comercial:', error);
+        showError('Error de conexiÃ³n al eliminar el item comercial.');
+    }
+}
+
+async function eliminarTarifaComercialConfig(tarifaId) {
+    if (!confirm('Â¿Desea eliminar esta tarifa comercial?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/comercial/tarifas/${tarifaId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            showError(data.error || 'No fue posible eliminar la tarifa comercial.');
+            return;
+        }
+
+        showSuccess('Tarifa comercial eliminada.');
+        await Promise.all([
+            cargarTarifasComercialesConfig(),
+            cargarClientesComercialesConfig()
+        ]);
+        await refrescarAyudasComercialesVisibles();
+    } catch (error) {
+        console.error('Error eliminando tarifa comercial:', error);
+        showError('Error de conexiÃ³n al eliminar la tarifa comercial.');
+    }
+}
+
+async function eliminarClienteComercialConfig(clienteId) {
+    if (!confirm('Â¿Desea eliminar este cliente comercial?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/comercial/clientes/${clienteId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            showError(buildComercialDeleteBlockedMessage(data.error || 'No fue posible eliminar el cliente comercial.', data.details));
+            return;
+        }
+
+        showSuccess('Cliente comercial eliminado.');
+        await Promise.all([
+            cargarClientesComercialesConfig(),
+            cargarTarifasComercialesConfig(),
+            loadComercialDashboard()
+        ]);
+    } catch (error) {
+        console.error('Error eliminando cliente comercial:', error);
+        showError('Error de conexiÃ³n al eliminar el cliente comercial.');
+    }
+}
+
+async function cargarVendedoresConfig() {
+    const tbody = document.getElementById('comercialVendedoresTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/vendedores', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar la lista de vendedores');
+        }
+
+        const vendedores = await response.json();
+        vendedoresConfigData = Array.isArray(vendedores) ? vendedores : [];
+
+        if (vendedoresConfigData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay vendedores configurados</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = vendedoresConfigData.map(vendedor => `
+            <tr>
+                <td>${escapeHtml(vendedor.nombre || 'N/A')}</td>
+                <td>${escapeHtml(vendedor.documento || 'N/A')}</td>
+                <td>${Number(vendedor.porcentaje_comision_venta || 0).toFixed(2)}%</td>
+                <td>${Number(vendedor.porcentaje_comision_recaudo || 0).toFixed(2)}%</td>
+                <td>${formatCurrency(vendedor.monto_base_comision || 0)}</td>
+                <td>${vendedor.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
+                <td style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="action-btn action-btn-edit" onclick="editarVendedorConfig(${vendedor.id})">Editar</button>
+                    <button class="action-btn action-btn-delete" onclick="eliminarVendedorConfig(${vendedor.id})">Eliminar</button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando vendedores:', error);
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar vendedores</td></tr>';
+    }
+}
+
+async function cargarTarifasComercialesConfig() {
+    const tbody = document.getElementById('comercialTarifasTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/tarifas', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar la lista de tarifas comerciales');
+        }
+
+        const tarifas = await response.json();
+        tarifasComercialesData = Array.isArray(tarifas) ? tarifas : [];
+
+        if (tarifasComercialesData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay tarifas diferenciales configuradas</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = tarifasComercialesData.map(tarifa => `
+            <tr>
+                <td>${escapeHtml(tarifa.cliente_nombre || 'N/A')}</td>
+                <td>
+                    <strong>${escapeHtml(tarifa.item_nombre || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(tarifa.tipo_item === 'EXAMEN' ? obtenerResumenClasificacionCatalogo(tarifa) : (tarifa.tipo_item || ''))}</div>
+                </td>
+                <td>${formatCurrency(tarifa.tarifa_base || 0)}</td>
+                <td>${formatCurrency(tarifa.tarifa_negociada || 0)}</td>
+                <td>${escapeHtml([tarifa.vigencia_desde || '', tarifa.vigencia_hasta || ''].filter(Boolean).join(' a ') || 'Abierta')}</td>
+                <td>${tarifa.activo ? '<span class="badge badge-success">Activa</span>' : '<span class="badge badge-danger">Inactiva</span>'}</td>
+                <td style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="action-btn action-btn-edit" onclick="editarTarifaCliente(${tarifa.id})">Editar</button>
+                    <button class="action-btn action-btn-delete" onclick="eliminarTarifaComercialConfig(${tarifa.id})">Eliminar</button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando tarifas comerciales:', error);
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar tarifas comerciales</td></tr>';
+    }
+}
+
+async function cargarCatalogoComercialConfig() {
+    const tbody = document.getElementById('comercialCatalogoTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/catalogo', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar el catalogo comercial');
+        }
+
+        const items = await response.json();
+        catalogoComercialData = Array.isArray(items) ? items : [];
+
+        if (catalogoComercialData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay examenes o paquetes configurados</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = catalogoComercialData.map(item => `
+            <tr>
+                <td>
+                    <strong>${escapeHtml(item.tipo_item || 'N/A')}</strong>
+                    ${item.tipo_item === 'EXAMEN' ? `<div style="color:#666; font-size:0.82rem;">${item.clasificacion_completa ? 'Listo para usar' : 'Pendiente de clasificar'}</div>` : ''}
+                </td>
+                <td>
+                    ${item.tipo_item === 'EXAMEN'
+                        ? `<span class="badge ${item.clasificacion_completa ? 'badge-info' : 'badge-warning-soft'}">${escapeHtml(obtenerResumenClasificacionCatalogo(item))}</span>`
+                        : '<span class="badge badge-secondary">No aplica</span>'}
+                </td>
+                <td>${escapeHtml(item.codigo || 'N/A')}</td>
+                <td>
+                    <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.descripcion || '')}</div>
+                    ${item.tipo_item === 'PAQUETE' ? `<div style="color:#0b5ed7; font-size:0.82rem; margin-top:4px;">Incluye ${item.cantidad_componentes || 0} examen(es): ${escapeHtml(item.resumen_componentes || 'Sin examenes definidos')}</div>` : ''}
+                </td>
+                <td>${formatCurrency(item.tarifa_base || 0)}</td>
+                <td>${item.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
+                <td style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="action-btn action-btn-edit" onclick="editarItemCatalogoComercial(${item.id})">Editar</button>
+                    <button class="action-btn action-btn-delete" onclick="eliminarItemCatalogoComercial(${item.id})">Eliminar</button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando catalogo comercial:', error);
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar catalogo comercial</td></tr>';
+    }
+}
+
+async function cargarClientesComercialesConfig() {
+    const tbody = document.getElementById('comercialClientesTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/clientes', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar la lista de clientes comerciales');
+        }
+
+        const clientes = await response.json();
+        clientesComercialesData = Array.isArray(clientes) ? clientes : [];
+
+        if (clientesComercialesData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="loading">No hay clientes comerciales configurados</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = clientesComercialesData.map(cliente => `
+            <tr>
+                <td>
+                    <strong>${escapeHtml(cliente.razon_social || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.nit || cliente.nombre_comercial || 'Sin NIT')}</div>
+                </td>
+                <td>${escapeHtml(cliente.vendedor_nombre || 'N/A')}</td>
+                <td>${escapeHtml(cliente.condicion_comercial || 'N/A')}</td>
+                <td style="max-width:240px;">${escapeHtml(cliente.resumen_facturacion || 'N/A')}</td>
+                <td>
+                    ${escapeHtml(obtenerContactoPreferidoCliente(cliente) || 'N/A')}
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.email_facturacion || cliente.email_contacto_principal || cliente.email_empresa || 'Sin email')}</div>
+                </td>
+                <td>
+                    <div>Legales: ${cliente.documentos_legales_adjuntos?.length || 0}</div>
+                    <div>PagarÃ©: ${cliente.pagare_adjuntos?.length || 0}</div>
+                </td>
+                <td>${escapeHtml(formatearEstadoCliente(obtenerEstadoCliente(cliente)))}</td>
+                <td style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="action-btn action-btn-edit" onclick="editarClienteComercial(${cliente.id})">Editar</button>
+                    <button class="action-btn action-btn-delete" onclick="eliminarClienteComercialConfig(${cliente.id})">Eliminar</button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando clientes comerciales:', error);
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Error al cargar clientes comerciales</td></tr>';
     }
 }
 
@@ -7304,3 +11251,316 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+async function loadRoles() {
+    const tableBody = document.getElementById('rolesTable');
+    if (!tableBody) return;
+
+    try {
+        const response = await fetch('/api/usuarios/roles', { credentials: 'include' });
+        const roles = await response.json();
+        if (!response.ok) {
+            throw new Error(roles.error || 'No se pudo cargar la lista de roles');
+        }
+
+        rolesData = Array.isArray(roles) ? roles : [];
+        if (rolesData.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="5" class="loading">No hay roles configurados</td></tr>';
+            fillRoleSelect();
+            return;
+        }
+
+        tableBody.innerHTML = rolesData.map(role => {
+            const commercialCount = (role.permissions || []).filter(item => item.category === 'comercial').length;
+            const resumenAcceso = [
+                (role.menu_permissions || []).map(item => item.nombre).join(', ') || 'Sin menu',
+                commercialCount ? `${commercialCount} permisos comerciales` : 'Sin permisos comerciales'
+            ].join(' | ');
+            return `
+                <tr>
+                    <td>${escapeHtml(role.nombre || 'N/A')}</td>
+                    <td>${escapeHtml(role.descripcion || 'Sin descripcion')}</td>
+                    <td>${escapeHtml(resumenAcceso)}</td>
+                    <td>${Number(role.cantidad_usuarios || 0)}</td>
+                    <td>
+                        <button class="action-btn action-btn-edit" onclick="editRole(${role.id})">Editar</button>
+                        ${role.nombre !== 'Administrador' ? `<button class="action-btn action-btn-delete" onclick='deleteRole(${role.id}, ${JSON.stringify(role.nombre || '')})'>Eliminar</button>` : ''}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        fillRoleSelect();
+    } catch (error) {
+        console.error('Error cargando roles:', error);
+        tableBody.innerHTML = `<tr><td colspan="5" class="loading">${escapeHtml(error.message || 'Error al cargar roles')}</td></tr>`;
+    }
+}
+
+function renderRoleMenuPermissions(selectedIds = []) {
+    const container = document.getElementById('rolMenuPermissions');
+    if (!container) return;
+
+    if (!Array.isArray(menuOptionsData) || menuOptionsData.length === 0) {
+        container.innerHTML = '<div class="loading">No fue posible cargar los permisos.</div>';
+        return;
+    }
+
+    const selected = new Set((selectedIds || []).map(id => String(id)));
+    const renderOption = option => `
+        <label class="role-menu-option">
+            <input type="checkbox" value="${option.permiso_id}" ${selected.has(String(option.permiso_id)) ? 'checked' : ''}>
+            <div>
+                <strong>${escapeHtml(option.nombre || option.group || 'Permiso')}</strong>
+                <span>${escapeHtml(option.descripcion || '')}</span>
+            </div>
+        </label>
+    `;
+
+    const menuOptions = menuOptionsData.filter(option => option.category !== 'comercial');
+    const commercialGroups = {};
+    menuOptionsData.filter(option => option.category === 'comercial').forEach(option => {
+        const key = option.group || 'Comercial';
+        commercialGroups[key] = commercialGroups[key] || [];
+        commercialGroups[key].push(option);
+    });
+
+    container.innerHTML = `
+        <div style="grid-column:1 / -1;">
+            <h4 style="margin:0 0 10px 0;">Menu lateral</h4>
+            <div class="role-menu-grid">
+                ${menuOptions.map(renderOption).join('')}
+            </div>
+        </div>
+        <div style="grid-column:1 / -1; margin-top:12px;">
+            <h4 style="margin:0 0 10px 0;">Permisos comerciales</h4>
+            ${Object.entries(commercialGroups).map(([groupName, options]) => `
+                <div style="margin-bottom:14px;">
+                    <div style="font-weight:700; margin-bottom:8px;">${escapeHtml(groupName)}</div>
+                    <div class="role-menu-grid">
+                        ${options.map(renderOption).join('')}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+async function cargarVendedoresConfig() {
+    const tbody = document.getElementById('comercialVendedoresTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/vendedores', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar la lista de vendedores');
+        }
+        const vendedores = await response.json();
+        vendedoresConfigData = Array.isArray(vendedores) ? vendedores : [];
+
+        if (vendedoresConfigData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay vendedores configurados</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = vendedoresConfigData.map(vendedor => `
+            <tr>
+                <td>${escapeHtml(vendedor.nombre || 'N/A')}</td>
+                <td>${escapeHtml(vendedor.documento || 'N/A')}</td>
+                <td>${Number(vendedor.porcentaje_comision_venta || 0).toFixed(2)}%</td>
+                <td>${Number(vendedor.porcentaje_comision_recaudo || 0).toFixed(2)}%</td>
+                <td>${formatCurrency(vendedor.monto_base_comision || 0)}</td>
+                <td>${vendedor.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
+                <td>
+                    ${canManageComercial('vendedores', 'update') ? `<button class="action-btn action-btn-edit" onclick="editarVendedorConfig(${vendedor.id})">Editar</button>` : ''}
+                    ${canManageComercial('vendedores', 'delete') ? `<button class="action-btn action-btn-delete" onclick="eliminarVendedorConfig(${vendedor.id})">Eliminar</button>` : ''}
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando vendedores:', error);
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar vendedores</td></tr>';
+    }
+}
+
+async function cargarTarifasComercialesConfig() {
+    const tbody = document.getElementById('comercialTarifasTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/tarifas', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar la lista de tarifas comerciales');
+        }
+        const tarifas = await response.json();
+        tarifasComercialesData = Array.isArray(tarifas) ? tarifas : [];
+
+        if (tarifasComercialesData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay tarifas diferenciales configuradas</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = tarifasComercialesData.map(tarifa => `
+            <tr>
+                <td>${escapeHtml(tarifa.cliente_nombre || 'N/A')}</td>
+                <td>
+                    <strong>${escapeHtml(tarifa.item_nombre || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(tarifa.tipo_item === 'EXAMEN' ? obtenerResumenClasificacionCatalogo(tarifa) : (tarifa.tipo_item || ''))}</div>
+                </td>
+                <td>${formatCurrency(tarifa.tarifa_base || 0)}</td>
+                <td>${formatCurrency(tarifa.tarifa_negociada || 0)}</td>
+                <td>${escapeHtml([tarifa.vigencia_desde || '', tarifa.vigencia_hasta || ''].filter(Boolean).join(' a ') || 'Abierta')}</td>
+                <td>${tarifa.activo ? '<span class="badge badge-success">Activa</span>' : '<span class="badge badge-danger">Inactiva</span>'}</td>
+                <td>
+                    ${canManageComercial('tarifas', 'update') ? `<button class="action-btn action-btn-edit" onclick="editarTarifaCliente(${tarifa.id})">Editar</button>` : ''}
+                    ${canManageComercial('tarifas', 'delete') ? `<button class="action-btn action-btn-delete" onclick="eliminarTarifaComercialConfig(${tarifa.id})">Eliminar</button>` : ''}
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando tarifas comerciales:', error);
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar tarifas comerciales</td></tr>';
+    }
+}
+
+async function cargarCatalogoComercialConfig() {
+    const tbody = document.getElementById('comercialCatalogoTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/catalogo', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar el catalogo comercial');
+        }
+        const items = await response.json();
+        catalogoComercialData = Array.isArray(items) ? items : [];
+
+        if (catalogoComercialData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay examenes o paquetes configurados</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = catalogoComercialData.map(item => {
+            const entity = getCatalogEntityFromTipoItem(item.tipo_item);
+            return `
+                <tr>
+                    <td>
+                        <strong>${escapeHtml(item.tipo_item || 'N/A')}</strong>
+                        ${item.tipo_item === 'EXAMEN' ? `<div style="color:#666; font-size:0.82rem;">${item.clasificacion_completa ? 'Listo para usar' : 'Pendiente de clasificar'}</div>` : ''}
+                    </td>
+                    <td>
+                        ${item.tipo_item === 'EXAMEN'
+                            ? `<span class="badge ${item.clasificacion_completa ? 'badge-info' : 'badge-warning-soft'}">${escapeHtml(obtenerResumenClasificacionCatalogo(item))}</span>`
+                            : '<span class="badge badge-secondary">No aplica</span>'}
+                    </td>
+                    <td>${escapeHtml(item.codigo || 'N/A')}</td>
+                    <td>
+                        <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
+                        <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.descripcion || '')}</div>
+                        ${item.tipo_item === 'PAQUETE' ? `<div style="color:#0b5ed7; font-size:0.82rem; margin-top:4px;">Incluye ${item.cantidad_componentes || 0} examen(es): ${escapeHtml(item.resumen_componentes || 'Sin examenes definidos')}</div>` : ''}
+                    </td>
+                    <td>${formatCurrency(item.tarifa_base || 0)}</td>
+                    <td>${item.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
+                    <td>
+                        ${canManageComercial(entity, 'update') ? `<button class="action-btn action-btn-edit" onclick="editarItemCatalogoComercial(${item.id})">Editar</button>` : ''}
+                        ${canManageComercial(entity, 'delete') ? `<button class="action-btn action-btn-delete" onclick="eliminarItemCatalogoComercial(${item.id})">Eliminar</button>` : ''}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error cargando catalogo comercial:', error);
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar catalogo comercial</td></tr>';
+    }
+}
+
+async function cargarClientesComercialesConfig() {
+    const tbody = document.getElementById('comercialClientesTable');
+    if (!tbody) return;
+
+    try {
+        const response = await fetch('/api/comercial/clientes', { credentials: 'include' });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'No se pudo cargar la lista de clientes comerciales');
+        }
+        const clientes = await response.json();
+        clientesComercialesData = Array.isArray(clientes) ? clientes : [];
+
+        if (clientesComercialesData.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="loading">No hay clientes comerciales configurados</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = clientesComercialesData.map(cliente => `
+            <tr>
+                <td>
+                    <strong>${escapeHtml(cliente.razon_social || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.nit || cliente.nombre_comercial || 'Sin NIT')}</div>
+                </td>
+                <td>${escapeHtml(cliente.vendedor_nombre || 'N/A')}</td>
+                <td>${escapeHtml(cliente.condicion_comercial || 'N/A')}</td>
+                <td style="max-width:240px;">${escapeHtml(cliente.resumen_facturacion || 'N/A')}</td>
+                <td>
+                    ${escapeHtml(obtenerContactoPreferidoCliente(cliente) || 'N/A')}
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.email_facturacion || cliente.email_contacto_principal || cliente.email_empresa || 'Sin email')}</div>
+                </td>
+                <td>
+                    <div>Legales: ${cliente.documentos_legales_adjuntos?.length || 0}</div>
+                    <div>Pagare: ${cliente.pagare_adjuntos?.length || 0}</div>
+                </td>
+                <td>${escapeHtml(formatearEstadoCliente(obtenerEstadoCliente(cliente)))}</td>
+                <td>
+                    ${canManageComercial('clientes', 'update') ? `<button class="action-btn action-btn-edit" onclick="editarClienteComercial(${cliente.id})">Editar</button>` : ''}
+                    ${canManageComercial('clientes', 'delete') ? `<button class="action-btn action-btn-delete" onclick="eliminarClienteComercialConfig(${cliente.id})">Eliminar</button>` : ''}
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error cargando clientes comerciales:', error);
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Error al cargar clientes comerciales</td></tr>';
+    }
+}
+
+function renderSeguimientoAtencionesTable() {
+    const tbody = document.getElementById('clienteSeguimientoAtencionesTable');
+    if (!tbody) return;
+
+    const atenciones = clienteSeguimientoContext.atenciones || [];
+    if (!atenciones.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="loading">Este cliente aun no tiene atenciones registradas.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = atenciones.map(atencion => {
+        const detalle = atencion.detalle_resumen || atencion.detalle_items_resumen || 'Sin detalle';
+        const acciones = [];
+        if (atencion.documento_id && canManageComercial('pagos', 'create')) {
+            acciones.push(`<button type="button" class="action-btn action-btn-edit" onclick="mostrarAgregarSeguimientoPago(${Number(atencion.documento_id)})">Registrar pago</button>`);
+        }
+        if (canManageComercial('atenciones', 'update')) {
+            acciones.push(`<button type="button" class="action-btn action-btn-edit" onclick="editarSeguimientoAtencion(${Number(atencion.id)})">Editar</button>`);
+        }
+        if (canManageComercial('atenciones', 'delete')) {
+            acciones.push(`<button type="button" class="action-btn action-btn-delete" onclick="eliminarSeguimientoAtencion(${Number(atencion.id)})">Eliminar</button>`);
+        }
+
+        return `
+            <tr>
+                <td>${escapeHtml(atencion.nro_atencion || 'N/A')}</td>
+                <td>${escapeHtml(atencion.fecha_atencion || 'N/A')}</td>
+                <td>${escapeHtml(atencion.pacientes_resumen || atencion.paciente_nombre || 'N/A')}</td>
+                <td style="max-width:320px;">${escapeHtml(detalle)}</td>
+                <td>${formatCurrency(atencion.valor_total || 0)}</td>
+                <td>${formatCurrency(atencion.saldo_pendiente || 0)}</td>
+                <td>${renderSeguimientoEstadoBadge(atencion.estado_cobro)}</td>
+                <td style="display:flex; gap:6px; flex-wrap:wrap;">${acciones.join('') || '<span style="color:#64748b;">Sin acciones</span>'}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+window.setTimeout(syncComercialPermissionUI, 0);

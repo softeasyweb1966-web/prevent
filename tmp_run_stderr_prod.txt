@@ -1,0 +1,12 @@
+2026-05-05 13:09:30,306 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-05-05 13:09:30,462 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-05-05 13:09:30,497 - app - INFO - [DB] Dialecto activo: postgresql
+2026-05-05 13:09:30,497 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-05-05 13:09:30,524 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://192.168.0.243:8080
+2026-05-05 13:09:30,524 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-05-05 13:09:34,600 - app.routes.auth - INFO - Usuario logueado: admin
+2026-05-05 13:09:34,619 - werkzeug - INFO - 127.0.0.1 - - [05/May/2026 13:09:34] "POST /api/auth/login HTTP/1.1" 200 -
+2026-05-05 13:09:34,706 - werkzeug - INFO - 127.0.0.1 - - [05/May/2026 13:09:34] "[31m[1mGET /api/auth/me HTTP/1.1[0m" 401 -

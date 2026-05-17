@@ -3,11 +3,12 @@ from decimal import Decimal, InvalidOperation
 import json
 import logging
 import os
+import shutil
 import unicodedata
 import uuid
 
 from flask import current_app, jsonify, request, send_file
-from flask_login import login_required
+from flask_login import current_user, login_required
 from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
 
@@ -25,19 +26,72 @@ from app.models import (
     db,
 )
 from app.routes import comercial_bp
+from app.security import get_permission_names_for_role
 
 
 logger = logging.getLogger(__name__)
 
 CONDICIONES_COMERCIALES = {'EFECTIVO', 'CREDITO', 'MIXTO'}
+ESTADOS_CLIENTE = {'ACTIVO', 'INACTIVO', 'BLOQUEO_TEMPORAL'}
+MEDIOS_AUTORIZACION = {'WHATSAPP', 'EMAIL', 'PAGINA_WEB'}
 TIPOS_CATALOGO_COMERCIAL = {'EXAMEN', 'PAQUETE', 'SERVICIO'}
-TIPOS_EXAMEN_COMERCIAL = {'CONSULTA', 'LABORATORIO', 'PARACLINICO'}
-TIPOS_SUBTIPO_LABORATORIO = {'REMITIDO', 'REALIZADO'}
+TIPOS_EXAMEN_COMERCIAL = {'CONSULTA', 'LABORATORIO', 'PARACLINICO', 'ECOBABY', 'CURSOS'}
+TIPOS_SUBTIPO_LABORATORIO = {'REMITIDO', 'REALIZADO', 'NO_REMITIDO'}
 TIPOS_SEGUIMIENTO_DOCUMENTO = {'FACTURA', 'CUENTA_COBRO', 'VENTA_DIRECTA', 'INGRESO_SIN_FACTURA'}
 ESTADOS_SEGUIMIENTO_DOCUMENTO = {'PENDIENTE', 'PARCIAL', 'PAGADO', 'VENCIDO', 'ANULADO'}
 TIPOS_SEGUIMIENTO_PAGO = {'ABONO', 'PAGO_TOTAL'}
 MEDIOS_SEGUIMIENTO_PAGO = {'EFECTIVO', 'TRANSFERENCIA'}
 CANALES_TRANSFERENCIA = {'NEQUI', 'DAVIPLATA', 'BANCO'}
+COMMERCIAL_PERMISSIONS = {
+    'vendedores': {
+        'read': 'comercial_vendedores_read',
+        'create': 'comercial_vendedores_create',
+        'update': 'comercial_vendedores_update',
+        'delete': 'comercial_vendedores_delete',
+    },
+    'clientes': {
+        'read': 'comercial_clientes_read',
+        'create': 'comercial_clientes_create',
+        'update': 'comercial_clientes_update',
+        'delete': 'comercial_clientes_delete',
+    },
+    'examenes': {
+        'read': 'comercial_examenes_read',
+        'create': 'comercial_examenes_create',
+        'update': 'comercial_examenes_update',
+        'delete': 'comercial_examenes_delete',
+    },
+    'paquetes': {
+        'read': 'comercial_paquetes_read',
+        'create': 'comercial_paquetes_create',
+        'update': 'comercial_paquetes_update',
+        'delete': 'comercial_paquetes_delete',
+    },
+    'tarifas': {
+        'read': 'comercial_tarifas_read',
+        'create': 'comercial_tarifas_create',
+        'update': 'comercial_tarifas_update',
+        'delete': 'comercial_tarifas_delete',
+    },
+    'atenciones': {
+        'read': 'comercial_atenciones_read',
+        'create': 'comercial_atenciones_create',
+        'update': 'comercial_atenciones_update',
+        'delete': 'comercial_atenciones_delete',
+    },
+    'documentos': {
+        'read': 'comercial_documentos_read',
+        'create': 'comercial_documentos_create',
+        'update': 'comercial_documentos_update',
+        'delete': 'comercial_documentos_delete',
+    },
+    'pagos': {
+        'read': 'comercial_pagos_read',
+        'create': 'comercial_pagos_create',
+        'update': 'comercial_pagos_update',
+        'delete': 'comercial_pagos_delete',
+    },
+}
 
 
 def _normalize_optional_text(value):
@@ -129,6 +183,46 @@ def _parse_int_list_field(data, field_name):
     return parsed
 
 
+def _is_admin_user():
+    return getattr(getattr(current_user, 'role', None), 'nombre', None) == 'Administrador'
+
+
+def _get_current_permission_names():
+    if _is_admin_user():
+        permission_names = set()
+        for entity_actions in COMMERCIAL_PERMISSIONS.values():
+            permission_names.update(entity_actions.values())
+        return permission_names
+    return get_permission_names_for_role(getattr(current_user, 'role', None))
+
+
+def _has_commercial_permission(entity, action):
+    if _is_admin_user():
+        return True
+    permission_name = COMMERCIAL_PERMISSIONS.get(entity, {}).get(action)
+    if not permission_name:
+        return False
+    return permission_name in _get_current_permission_names()
+
+
+def _require_commercial_permission(entity, action):
+    if not _has_commercial_permission(entity, action):
+        raise PermissionError(f'No tienes permiso para {action} en {entity}')
+
+
+def _get_catalog_permission_entity(tipo_item):
+    normalized = str(tipo_item or '').strip().upper()
+    if normalized == 'EXAMEN':
+        return 'examenes'
+    return 'paquetes'
+
+
+def _can_read_catalog_item(item):
+    if item is None:
+        return False
+    return _has_commercial_permission(_get_catalog_permission_entity(getattr(item, 'tipo_item', None)), 'read')
+
+
 def _normalize_choice(value):
     normalized = _normalize_optional_text(value)
     if normalized is None:
@@ -160,16 +254,19 @@ def _build_clasificacion_examen(tipo_item, tipo_examen, subtipo_laboratorio):
     subtipo_laboratorio = _normalize_choice(subtipo_laboratorio)
 
     if tipo_examen is not None and tipo_examen not in TIPOS_EXAMEN_COMERCIAL:
-        raise ValueError('El tipo de examen debe ser CONSULTA, LABORATORIO o PARACLINICO')
+        raise ValueError('El tipo de examen debe ser CONSULTA, LABORATORIO, PARACLINICO, ECOBABY o CURSOS')
 
-    if tipo_examen != 'LABORATORIO':
+    if tipo_examen not in {'LABORATORIO', 'CURSOS'}:
         subtipo_laboratorio = None
 
     if subtipo_laboratorio is not None and subtipo_laboratorio not in TIPOS_SUBTIPO_LABORATORIO:
-        raise ValueError('El subtipo de laboratorio debe ser REMITIDO o REALIZADO')
+        raise ValueError('El subtipo del examen debe ser REMITIDO, REALIZADO o NO REMITIDO')
+
+    if tipo_examen == 'CURSOS' and subtipo_laboratorio == 'REALIZADO':
+        raise ValueError('Para CURSOS el subtipo debe ser REMITIDO o NO REMITIDO')
 
     clasificacion_completa = bool(tipo_examen) and (
-        tipo_examen != 'LABORATORIO' or bool(subtipo_laboratorio)
+        tipo_examen not in {'LABORATORIO', 'CURSOS'} or bool(subtipo_laboratorio)
     )
 
     return tipo_examen, subtipo_laboratorio, clasificacion_completa
@@ -180,6 +277,8 @@ def _format_subtipo_laboratorio(subtipo_laboratorio):
         return 'REMITIDO'
     if subtipo_laboratorio == 'REALIZADO':
         return 'REALIZADO EN LABORATORIO'
+    if subtipo_laboratorio == 'NO_REMITIDO':
+        return 'NO REMITIDO'
     return None
 
 
@@ -190,13 +289,13 @@ def _format_clasificacion_catalogo(item):
     if not item.tipo_examen:
         return 'PENDIENTE DE CLASIFICAR'
 
-    if item.tipo_examen != 'LABORATORIO':
+    if item.tipo_examen not in {'LABORATORIO', 'CURSOS'}:
         return item.tipo_examen
 
     subtipo = _format_subtipo_laboratorio(item.subtipo_laboratorio)
     if subtipo:
-        return f'LABORATORIO / {subtipo}'
-    return 'LABORATORIO / SUBTIPO PENDIENTE'
+        return f'{item.tipo_examen} / {subtipo}'
+    return f'{item.tipo_examen} / SUBTIPO PENDIENTE'
 
 
 def _build_vendedor_payload(data):
@@ -261,6 +360,14 @@ def _build_cliente_payload(data):
     if not celular_contacto_principal:
         raise ValueError('El celular principal es obligatorio')
 
+    estado_cliente = str(data.get('estado_cliente') or 'ACTIVO').strip().upper()
+    if estado_cliente not in ESTADOS_CLIENTE:
+        raise ValueError('El estado del cliente debe ser ACTIVO, INACTIVO o BLOQUEO_TEMPORAL')
+
+    medio_autorizacion = str(data.get('medio_autorizacion') or 'WHATSAPP').strip().upper()
+    if medio_autorizacion not in MEDIOS_AUTORIZACION:
+        raise ValueError('El medio de autorización debe ser WHATSAPP, EMAIL o PAGINA_WEB')
+
     condicion = str(data.get('condicion_comercial') or 'EFECTIVO').strip().upper()
     if condicion not in CONDICIONES_COMERCIALES:
         raise ValueError('La condición comercial debe ser EFECTIVO, CREDITO o MIXTO')
@@ -287,12 +394,16 @@ def _build_cliente_payload(data):
         'telefono_empresa': telefono_empresa,
         'email_empresa': email_empresa,
         'contacto_principal': contacto_principal,
+        'cargo_contacto_principal': _normalize_optional_text(data.get('cargo_contacto_principal')),
         'celular_contacto_principal': celular_contacto_principal,
         'email_contacto_principal': _normalize_optional_text(data.get('email_contacto_principal')),
         'contacto_facturacion': _normalize_optional_text(data.get('contacto_facturacion')),
+        'cargo_contacto_facturacion': _normalize_optional_text(data.get('cargo_contacto_facturacion')),
         'celular_facturacion': _normalize_optional_text(data.get('celular_facturacion')),
         'email_facturacion': _normalize_optional_text(data.get('email_facturacion')),
+        'medio_autorizacion': medio_autorizacion,
         'puntos_atencion_recepcion': _normalize_optional_text(data.get('puntos_atencion_recepcion')),
+        'estado_cliente': estado_cliente,
         'condicion_comercial': condicion,
         'requiere_factura': requiere_factura,
         'fechas_facturacion': fechas_facturacion,
@@ -305,7 +416,7 @@ def _build_cliente_payload(data):
         'pagare_firmado': _parse_bool(data.get('pagare_firmado'), False),
         'pagare_detalle': _normalize_optional_text(data.get('pagare_detalle')),
         'observaciones': _normalize_optional_text(data.get('observaciones')),
-        'activo': _parse_bool(data.get('activo'), True),
+        'activo': estado_cliente != 'INACTIVO',
     }
 
 
@@ -384,7 +495,7 @@ def _build_paquete_componentes_payload(data, *, item_id=None, tipo_item=None):
     if examenes_invalidos:
         raise ValueError(
             'Los componentes del paquete deben ser examenes completamente clasificados '
-            'como CONSULTA, PARACLINICO o LABORATORIO con subtipo definido'
+            'como CONSULTA, PARACLINICO, ECOBABY, CURSOS o LABORATORIO con subtipo definido'
         )
 
     return componentes_ids
@@ -925,7 +1036,14 @@ def _serialize_tarifa_cliente(tarifa):
 
 
 def _guardar_componentes_paquete(item, componentes_ids):
-    item.paquete_componentes.clear()
+    # Eliminar explícitamente los componentes existentes en la BD
+    # antes de insertar los nuevos, para evitar violación de unicidad
+    # cuando SQLAlchemy intenta hacer INSERT antes del DELETE en la misma transacción.
+    if item.id:
+        ComercialPaqueteDetalle.query.filter_by(paquete_id=item.id).delete()
+        db.session.flush()
+
+    item.paquete_componentes = []
 
     if item.tipo_item != 'PAQUETE':
         return
@@ -1043,12 +1161,16 @@ def _serialize_cliente(cliente):
         'telefono_empresa': cliente.telefono_empresa,
         'email_empresa': cliente.email_empresa,
         'contacto_principal': cliente.contacto_principal,
+        'cargo_contacto_principal': cliente.cargo_contacto_principal,
         'celular_contacto_principal': cliente.celular_contacto_principal,
         'email_contacto_principal': cliente.email_contacto_principal,
         'contacto_facturacion': cliente.contacto_facturacion,
+        'cargo_contacto_facturacion': cliente.cargo_contacto_facturacion,
         'celular_facturacion': cliente.celular_facturacion,
         'email_facturacion': cliente.email_facturacion,
+        'medio_autorizacion': cliente.medio_autorizacion,
         'puntos_atencion_recepcion': cliente.puntos_atencion_recepcion,
+        'estado_cliente': cliente.estado_cliente or ('ACTIVO' if cliente.activo else 'INACTIVO'),
         'condicion_comercial': cliente.condicion_comercial,
         'requiere_factura': cliente.requiere_factura,
         'fechas_facturacion': cliente.fechas_facturacion,
@@ -1153,6 +1275,29 @@ def _get_pago_comprobante_path(pago):
     return ruta
 
 
+def _eliminar_adjunto_cliente(adjunto):
+    if not adjunto.ruta_relativa:
+        return
+
+    upload_root = os.path.abspath(current_app.config['UPLOAD_FOLDER'])
+    ruta = os.path.abspath(os.path.join(upload_root, adjunto.ruta_relativa))
+    if ruta.startswith(upload_root) and os.path.exists(ruta):
+        try:
+            os.remove(ruta)
+        except OSError:
+            logger.warning('No se pudo eliminar el adjunto comercial %s', ruta)
+
+
+def _eliminar_directorio_cliente(cliente_id):
+    upload_root = os.path.abspath(current_app.config['UPLOAD_FOLDER'])
+    cliente_dir = os.path.abspath(os.path.join(upload_root, 'comercial', 'clientes', str(cliente_id)))
+    if cliente_dir.startswith(upload_root) and os.path.isdir(cliente_dir):
+        try:
+            shutil.rmtree(cliente_dir)
+        except OSError:
+            logger.warning('No se pudo eliminar el directorio comercial del cliente %s', cliente_dir)
+
+
 def _documento_requiere_recibo_caja(documento, medio_pago):
     if documento is None:
         return False
@@ -1198,8 +1343,11 @@ def _get_adjunto_path(adjunto):
 @login_required
 def get_vendedores():
     try:
+        _require_commercial_permission('vendedores', 'read')
         vendedores = Vendedor.query.order_by(Vendedor.activo.desc(), Vendedor.nombre.asc()).all()
         return jsonify([_serialize_vendedor(vendedor) for vendedor in vendedores]), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except Exception as exc:
         logger.error("Error obteniendo vendedores comerciales: %s", exc)
         return jsonify({'error': 'Error al obtener vendedores'}), 500
@@ -1211,6 +1359,7 @@ def crear_vendedor():
     data = _get_payload()
 
     try:
+        _require_commercial_permission('vendedores', 'create')
         payload = _build_vendedor_payload(data)
         documento = payload['documento']
 
@@ -1223,6 +1372,8 @@ def crear_vendedor():
         return jsonify({'mensaje': 'Vendedor creado', 'id': vendedor.id}), 201
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except Exception as exc:
         db.session.rollback()
         logger.error("Error creando vendedor comercial: %s", exc)
@@ -1235,6 +1386,7 @@ def actualizar_vendedor(vendedor_id):
     data = _get_payload()
 
     try:
+        _require_commercial_permission('vendedores', 'update')
         vendedor = Vendedor.query.get_or_404(vendedor_id)
         payload = _build_vendedor_payload(data)
         documento = payload['documento']
@@ -1261,22 +1413,66 @@ def actualizar_vendedor(vendedor_id):
         return jsonify({'mensaje': 'Vendedor actualizado'}), 200
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except Exception as exc:
         db.session.rollback()
         logger.error("Error actualizando vendedor comercial: %s", exc)
         return jsonify({'error': 'Error al actualizar vendedor'}), 500
 
 
+@comercial_bp.route('/vendedores/<int:vendedor_id>', methods=['DELETE'])
+@login_required
+def eliminar_vendedor(vendedor_id):
+    try:
+        _require_commercial_permission('vendedores', 'delete')
+        vendedor = Vendedor.query.get_or_404(vendedor_id)
+        clientes_count = vendedor.clientes_comerciales.count()
+        atenciones_count = ClienteAtencion.query.filter_by(vendedor_id=vendedor.id).count()
+        documentos_count = ClienteSeguimientoDocumento.query.filter_by(vendedor_id=vendedor.id).count()
+        pagos_count = ClienteSeguimientoPago.query.filter_by(vendedor_id=vendedor.id).count()
+
+        if any([clientes_count, atenciones_count, documentos_count, pagos_count]):
+            return jsonify({
+                'error': 'No se puede eliminar el vendedor porque tiene movimientos o clientes asociados.',
+                'details': {
+                    'clientes': clientes_count,
+                    'atenciones': atenciones_count,
+                    'documentos': documentos_count,
+                    'pagos': pagos_count,
+                }
+            }), 409
+
+        db.session.delete(vendedor)
+        db.session.commit()
+        return jsonify({'mensaje': 'Vendedor eliminado'}), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error eliminando vendedor comercial %s: %s", vendedor_id, exc)
+        return jsonify({'error': 'Error al eliminar vendedor'}), 500
+
+
 @comercial_bp.route('/catalogo', methods=['GET'])
 @login_required
 def get_catalogo_comercial():
     try:
+        can_read_examenes = _has_commercial_permission('examenes', 'read')
+        can_read_paquetes = _has_commercial_permission('paquetes', 'read')
+        if not can_read_examenes and not can_read_paquetes:
+            raise PermissionError('No tienes permiso para consultar examenes o paquetes')
         items = ComercialCatalogoItem.query.order_by(
             ComercialCatalogoItem.activo.desc(),
             ComercialCatalogoItem.tipo_item.asc(),
             ComercialCatalogoItem.nombre.asc()
         ).all()
-        return jsonify([_serialize_catalogo_item(item) for item in items]), 200
+        visibles = [item for item in items if _can_read_catalog_item(item)]
+        return jsonify([_serialize_catalogo_item(item) for item in visibles]), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except Exception as exc:
         logger.error("Error obteniendo catalogo comercial: %s", exc)
         return jsonify({'error': 'Error al obtener catálogo comercial'}), 500
@@ -1289,6 +1485,7 @@ def crear_catalogo_comercial():
 
     try:
         payload = _build_catalogo_item_payload(data)
+        _require_commercial_permission(_get_catalog_permission_entity(payload.get('tipo_item')), 'create')
         componentes_ids = _build_paquete_componentes_payload(data, tipo_item=payload['tipo_item'])
         codigo = payload['codigo']
         if codigo and ComercialCatalogoItem.query.filter_by(codigo=codigo).first():
@@ -1302,6 +1499,8 @@ def crear_catalogo_comercial():
         return jsonify({'mensaje': 'Item comercial creado', 'id': item.id}), 201
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except Exception as exc:
         db.session.rollback()
         logger.error("Error creando item comercial: %s", exc)
@@ -1315,6 +1514,7 @@ def actualizar_catalogo_comercial(item_id):
 
     try:
         item = ComercialCatalogoItem.query.get_or_404(item_id)
+        _require_commercial_permission(_get_catalog_permission_entity(item.tipo_item), 'update')
         payload = _build_catalogo_item_payload(data)
         componentes_ids = _build_paquete_componentes_payload(
             data,
@@ -1338,21 +1538,59 @@ def actualizar_catalogo_comercial(item_id):
         return jsonify({'mensaje': 'Item comercial actualizado'}), 200
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except Exception as exc:
         db.session.rollback()
         logger.error("Error actualizando item comercial: %s", exc)
         return jsonify({'error': 'Error al actualizar item comercial'}), 500
 
 
+@comercial_bp.route('/catalogo/<int:item_id>', methods=['DELETE'])
+@login_required
+def eliminar_catalogo_comercial(item_id):
+    try:
+        item = ComercialCatalogoItem.query.get_or_404(item_id)
+        _require_commercial_permission(_get_catalog_permission_entity(item.tipo_item), 'delete')
+        tarifas_count = item.tarifas_cliente.count()
+        atenciones_count = item.atenciones_detalle.count()
+        usado_en_paquetes_count = item.examen_en_paquetes.count()
+
+        if any([tarifas_count, atenciones_count, usado_en_paquetes_count]):
+            return jsonify({
+                'error': 'No se puede eliminar el item porque ya tiene uso comercial registrado.',
+                'details': {
+                    'tarifas': tarifas_count,
+                    'atenciones': atenciones_count,
+                    'paquetes': usado_en_paquetes_count,
+                }
+            }), 409
+
+        db.session.delete(item)
+        db.session.commit()
+        return jsonify({'mensaje': 'Item comercial eliminado'}), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error eliminando item comercial %s: %s", item_id, exc)
+        return jsonify({'error': 'Error al eliminar item comercial'}), 500
+
+
 @comercial_bp.route('/tarifas', methods=['GET'])
 @login_required
 def get_tarifas_comerciales():
     try:
+        _require_commercial_permission('tarifas', 'read')
         tarifas = ClienteComercialTarifa.query.order_by(
             ClienteComercialTarifa.activo.desc(),
             ClienteComercialTarifa.id.desc()
         ).all()
         return jsonify([_serialize_tarifa_cliente(tarifa) for tarifa in tarifas]), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except Exception as exc:
         logger.error("Error obteniendo tarifas comerciales: %s", exc)
         return jsonify({'error': 'Error al obtener tarifas comerciales'}), 500
@@ -1364,6 +1602,7 @@ def crear_tarifa_comercial():
     data = _get_payload()
 
     try:
+        _require_commercial_permission('tarifas', 'create')
         payload = _build_tarifa_cliente_payload(data)
         existente = ClienteComercialTarifa.query.filter_by(
             cliente_id=payload['cliente_id'],
@@ -1378,6 +1617,8 @@ def crear_tarifa_comercial():
         return jsonify({'mensaje': 'Tarifa comercial creada', 'id': tarifa.id}), 201
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except Exception as exc:
         db.session.rollback()
         logger.error("Error creando tarifa comercial: %s", exc)
@@ -1390,6 +1631,7 @@ def actualizar_tarifa_comercial(tarifa_id):
     data = _get_payload()
 
     try:
+        _require_commercial_permission('tarifas', 'update')
         tarifa = ClienteComercialTarifa.query.get_or_404(tarifa_id)
         payload = _build_tarifa_cliente_payload(data)
         existente = ClienteComercialTarifa.query.filter(
@@ -1407,6 +1649,8 @@ def actualizar_tarifa_comercial(tarifa_id):
         return jsonify({'mensaje': 'Tarifa comercial actualizada'}), 200
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except Exception as exc:
         db.session.rollback()
         logger.error("Error actualizando tarifa comercial: %s", exc)
@@ -1417,10 +1661,13 @@ def actualizar_tarifa_comercial(tarifa_id):
 @login_required
 def eliminar_tarifa_comercial(tarifa_id):
     try:
+        _require_commercial_permission('tarifas', 'delete')
         tarifa = ClienteComercialTarifa.query.get_or_404(tarifa_id)
         db.session.delete(tarifa)
         db.session.commit()
         return jsonify({'mensaje': 'Tarifa comercial eliminada'}), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except Exception as exc:
         db.session.rollback()
         logger.error("Error eliminando tarifa comercial: %s", exc)
@@ -1431,11 +1678,14 @@ def eliminar_tarifa_comercial(tarifa_id):
 @login_required
 def get_clientes():
     try:
+        _require_commercial_permission('clientes', 'read')
         clientes = ClienteComercial.query.order_by(
             ClienteComercial.activo.desc(),
             ClienteComercial.razon_social.asc()
         ).all()
         return jsonify([_serialize_cliente(cliente) for cliente in clientes]), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except Exception as exc:
         logger.error("Error obteniendo clientes comerciales: %s", exc)
         return jsonify({'error': 'Error al obtener clientes comerciales'}), 500
@@ -1447,6 +1697,7 @@ def crear_cliente():
     data = _get_payload()
 
     try:
+        _require_commercial_permission('clientes', 'create')
         payload = _build_cliente_payload(data)
         nit = payload['nit']
         if nit and ClienteComercial.query.filter_by(nit=nit).first():
@@ -1466,6 +1717,9 @@ def crear_cliente():
     except ValueError as exc:
         db.session.rollback()
         return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 403
     except Exception as exc:
         db.session.rollback()
         logger.error("Error creando cliente comercial: %s", exc)
@@ -1478,6 +1732,7 @@ def actualizar_cliente(cliente_id):
     data = _get_payload()
 
     try:
+        _require_commercial_permission('clientes', 'update')
         cliente = ClienteComercial.query.get_or_404(cliente_id)
         payload = _build_cliente_payload(data)
         nit = payload['nit']
@@ -1502,16 +1757,58 @@ def actualizar_cliente(cliente_id):
     except ValueError as exc:
         db.session.rollback()
         return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 403
     except Exception as exc:
         db.session.rollback()
         logger.error("Error actualizando cliente comercial: %s", exc)
         return jsonify({'error': 'Error al actualizar cliente comercial'}), 500
 
 
+@comercial_bp.route('/clientes/<int:cliente_id>', methods=['DELETE'])
+@login_required
+def eliminar_cliente(cliente_id):
+    try:
+        _require_commercial_permission('clientes', 'delete')
+        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        atenciones_count = cliente.atenciones.count()
+        documentos_count = cliente.seguimiento_documentos.count()
+        pagos_count = cliente.seguimiento_pagos.count()
+
+        if any([atenciones_count, documentos_count, pagos_count]):
+            return jsonify({
+                'error': 'No se puede eliminar el cliente porque ya tiene movimiento comercial registrado.',
+                'details': {
+                    'atenciones': atenciones_count,
+                    'documentos': documentos_count,
+                    'pagos': pagos_count,
+                }
+            }), 409
+
+        for adjunto in cliente.adjuntos.all():
+            _eliminar_adjunto_cliente(adjunto)
+
+        cliente_id_value = cliente.id
+        db.session.delete(cliente)
+        db.session.commit()
+        _eliminar_directorio_cliente(cliente_id_value)
+        return jsonify({'mensaje': 'Cliente comercial eliminado'}), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error eliminando cliente comercial %s: %s", cliente_id, exc)
+        return jsonify({'error': 'Error al eliminar cliente comercial'}), 500
+
+
 @comercial_bp.route('/clientes/<int:cliente_id>/convenio-items', methods=['GET'])
 @login_required
 def get_cliente_convenio_items(cliente_id):
     try:
+        _require_commercial_permission('clientes', 'read')
         cliente = ClienteComercial.query.get_or_404(cliente_id)
         fecha_atencion = None
         raw_fecha = request.args.get('fecha_atencion')
@@ -1520,8 +1817,17 @@ def get_cliente_convenio_items(cliente_id):
                 fecha_atencion = datetime.strptime(str(raw_fecha), '%Y-%m-%d')
             except ValueError:
                 return jsonify({'error': 'La fecha de atencion debe tener formato YYYY-MM-DD'}), 400
-
-        return jsonify(_build_cliente_convenio_items(cliente, fecha_atencion)), 200
+        items = _build_cliente_convenio_items(cliente, fecha_atencion)
+        visibles = [
+            item for item in items
+            if (
+                (item.get('tipo_item') == 'EXAMEN' and _has_commercial_permission('examenes', 'read'))
+                or (item.get('tipo_item') != 'EXAMEN' and _has_commercial_permission('paquetes', 'read'))
+            )
+        ]
+        return jsonify(visibles), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except HTTPException:
         raise
     except Exception as exc:
@@ -1533,12 +1839,15 @@ def get_cliente_convenio_items(cliente_id):
 @login_required
 def get_atenciones_cliente(cliente_id):
     try:
+        _require_commercial_permission('atenciones', 'read')
         cliente = ClienteComercial.query.get_or_404(cliente_id)
         atenciones = ClienteAtencion.query.filter_by(cliente_id=cliente.id).order_by(
             ClienteAtencion.fecha_atencion.desc(),
             ClienteAtencion.id.desc(),
         ).all()
         return jsonify([_serialize_atencion(atencion) for atencion in atenciones]), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except HTTPException:
         raise
     except Exception as exc:
@@ -1552,6 +1861,7 @@ def crear_atencion_cliente(cliente_id):
     data = _get_payload()
 
     try:
+        _require_commercial_permission('atenciones', 'create')
         cliente = ClienteComercial.query.get_or_404(cliente_id)
         payload = _build_atencion_payload(data, cliente)
         detalles_payload = payload.pop('detalles')
@@ -1593,6 +1903,9 @@ def crear_atencion_cliente(cliente_id):
     except ValueError as exc:
         db.session.rollback()
         return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 403
     except HTTPException:
         raise
     except Exception as exc:
@@ -1601,16 +1914,112 @@ def crear_atencion_cliente(cliente_id):
         return jsonify({'error': 'Error al registrar la atencion'}), 500
 
 
+@comercial_bp.route('/atenciones/<int:atencion_id>', methods=['PUT'])
+@login_required
+def actualizar_atencion_cliente(atencion_id):
+    data = _get_payload()
+
+    try:
+        _require_commercial_permission('atenciones', 'update')
+        atencion = ClienteAtencion.query.get_or_404(atencion_id)
+        documento = atencion.documento_cobro
+        pagos_count = documento.pagos.count() if documento is not None else 0
+        if pagos_count:
+            return jsonify({
+                'error': 'No se puede editar la atencion porque ya tiene pagos registrados.',
+                'details': {'pagos': pagos_count}
+            }), 409
+
+        cliente = atencion.cliente
+        payload = _build_atencion_payload(data, cliente)
+        detalles_payload = payload.pop('detalles')
+
+        for field, value in payload.items():
+            setattr(atencion, field, value)
+
+        atencion.detalles.clear()
+        for detalle_payload in detalles_payload:
+            atencion.detalles.append(ClienteAtencionDetalle(**detalle_payload))
+
+        genera_cartera = cliente.condicion_comercial in {'CREDITO', 'MIXTO'} or cliente.requiere_factura is True
+        if documento is None:
+            documento = ClienteSeguimientoDocumento(
+                cliente_id=cliente.id,
+                atencion_id=atencion.id,
+            )
+            db.session.add(documento)
+
+        documento.vendedor_id = cliente.vendedor_id
+        documento.tipo_documento = 'INGRESO_SIN_FACTURA'
+        documento.numero_documento = atencion.nro_atencion
+        documento.fecha_documento = atencion.fecha_atencion
+        documento.fecha_vencimiento = atencion.fecha_atencion if genera_cartera else None
+        documento.valor_documento = atencion.valor_total
+        documento.saldo_actual = atencion.saldo_pendiente
+        documento.genera_cartera = genera_cartera
+        documento.estado_documento = 'PENDIENTE'
+        documento.observaciones = atencion.observaciones
+
+        _sincronizar_atencion_desde_documento(documento)
+        db.session.commit()
+        return jsonify({'mensaje': 'Atencion actualizada'}), 200
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error actualizando atencion %s: %s", atencion_id, exc)
+        return jsonify({'error': 'Error al actualizar la atencion'}), 500
+
+
+@comercial_bp.route('/atenciones/<int:atencion_id>', methods=['DELETE'])
+@login_required
+def eliminar_atencion_cliente(atencion_id):
+    try:
+        _require_commercial_permission('atenciones', 'delete')
+        atencion = ClienteAtencion.query.get_or_404(atencion_id)
+        documento = atencion.documento_cobro
+        pagos_count = documento.pagos.count() if documento is not None else 0
+
+        if pagos_count:
+            return jsonify({
+                'error': 'No se puede eliminar la atencion porque ya tiene pagos registrados.',
+                'details': {'pagos': pagos_count}
+            }), 409
+
+        if documento is not None:
+            db.session.delete(documento)
+        db.session.delete(atencion)
+        db.session.commit()
+        return jsonify({'mensaje': 'Atencion eliminada'}), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error eliminando atencion %s: %s", atencion_id, exc)
+        return jsonify({'error': 'Error al eliminar la atencion'}), 500
+
+
 @comercial_bp.route('/clientes/<int:cliente_id>/seguimiento-documentos', methods=['GET'])
 @login_required
 def get_seguimiento_documentos_cliente(cliente_id):
     try:
+        _require_commercial_permission('documentos', 'read')
         cliente = ClienteComercial.query.get_or_404(cliente_id)
         documentos = ClienteSeguimientoDocumento.query.filter_by(cliente_id=cliente.id).order_by(
             ClienteSeguimientoDocumento.fecha_documento.desc(),
             ClienteSeguimientoDocumento.id.desc()
         ).all()
         return jsonify([_serialize_seguimiento_documento(documento) for documento in documentos]), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except HTTPException:
         raise
     except Exception as exc:
@@ -1624,6 +2033,7 @@ def crear_seguimiento_documento_cliente(cliente_id):
     data = _get_payload()
 
     try:
+        _require_commercial_permission('documentos', 'create')
         cliente = ClienteComercial.query.get_or_404(cliente_id)
         payload = _build_seguimiento_documento_payload(data, cliente)
         documento = ClienteSeguimientoDocumento(**payload)
@@ -1633,6 +2043,9 @@ def crear_seguimiento_documento_cliente(cliente_id):
     except ValueError as exc:
         db.session.rollback()
         return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 403
     except HTTPException:
         raise
     except Exception as exc:
@@ -1647,6 +2060,7 @@ def actualizar_seguimiento_documento(documento_id):
     data = _get_payload()
 
     try:
+        _require_commercial_permission('documentos', 'update')
         documento = ClienteSeguimientoDocumento.query.get_or_404(documento_id)
         if documento.atencion_id:
             return jsonify({'error': 'Este documento fue generado desde una atencion y no se edita manualmente'}), 400
@@ -1659,6 +2073,9 @@ def actualizar_seguimiento_documento(documento_id):
     except ValueError as exc:
         db.session.rollback()
         return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 403
     except HTTPException:
         raise
     except Exception as exc:
@@ -1671,12 +2088,15 @@ def actualizar_seguimiento_documento(documento_id):
 @login_required
 def eliminar_seguimiento_documento(documento_id):
     try:
+        _require_commercial_permission('documentos', 'delete')
         documento = ClienteSeguimientoDocumento.query.get_or_404(documento_id)
         if documento.atencion_id:
             return jsonify({'error': 'Este documento fue generado desde una atencion y no se elimina manualmente'}), 400
         db.session.delete(documento)
         db.session.commit()
         return jsonify({'mensaje': 'Documento comercial eliminado'}), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except HTTPException:
         raise
     except Exception as exc:
@@ -1689,12 +2109,15 @@ def eliminar_seguimiento_documento(documento_id):
 @login_required
 def get_seguimiento_pagos_cliente(cliente_id):
     try:
+        _require_commercial_permission('pagos', 'read')
         cliente = ClienteComercial.query.get_or_404(cliente_id)
         pagos = ClienteSeguimientoPago.query.filter_by(cliente_id=cliente.id).order_by(
             ClienteSeguimientoPago.fecha_pago.desc(),
             ClienteSeguimientoPago.id.desc()
         ).all()
         return jsonify([_serialize_seguimiento_pago(pago) for pago in pagos]), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except HTTPException:
         raise
     except Exception as exc:
@@ -1708,6 +2131,7 @@ def crear_seguimiento_pago(documento_id):
     data = _get_payload()
 
     try:
+        _require_commercial_permission('pagos', 'create')
         documento = ClienteSeguimientoDocumento.query.get_or_404(documento_id)
         payload = _build_seguimiento_pago_payload(data, documento)
         pago = ClienteSeguimientoPago(**payload)
@@ -1729,6 +2153,9 @@ def crear_seguimiento_pago(documento_id):
     except ValueError as exc:
         db.session.rollback()
         return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 403
     except HTTPException:
         raise
     except Exception as exc:
@@ -1743,6 +2170,7 @@ def actualizar_seguimiento_pago(pago_id):
     data = _get_payload()
 
     try:
+        _require_commercial_permission('pagos', 'update')
         pago = ClienteSeguimientoPago.query.get_or_404(pago_id)
         payload = _build_seguimiento_pago_payload(data, pago.documento, pago=pago)
         for field, value in payload.items():
@@ -1768,6 +2196,9 @@ def actualizar_seguimiento_pago(pago_id):
     except ValueError as exc:
         db.session.rollback()
         return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 403
     except HTTPException:
         raise
     except Exception as exc:
@@ -1780,6 +2211,7 @@ def actualizar_seguimiento_pago(pago_id):
 @login_required
 def eliminar_seguimiento_pago(pago_id):
     try:
+        _require_commercial_permission('pagos', 'delete')
         pago = ClienteSeguimientoPago.query.get_or_404(pago_id)
         documento = pago.documento
         _eliminar_comprobante_pago(pago)
@@ -1788,6 +2220,8 @@ def eliminar_seguimiento_pago(pago_id):
         _recalcular_documento_con_pagos(documento)
         db.session.commit()
         return jsonify({'mensaje': 'Pago eliminado'}), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except HTTPException:
         raise
     except Exception as exc:
@@ -1800,9 +2234,12 @@ def eliminar_seguimiento_pago(pago_id):
 @login_required
 def descargar_comprobante_pago(pago_id):
     try:
+        _require_commercial_permission('pagos', 'read')
         pago = ClienteSeguimientoPago.query.get_or_404(pago_id)
         ruta = _get_pago_comprobante_path(pago)
         return send_file(ruta, as_attachment=True, download_name=pago.nombre_comprobante or 'comprobante_pago')
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except FileNotFoundError as exc:
         return jsonify({'error': str(exc)}), 404
     except HTTPException:
@@ -1816,10 +2253,13 @@ def descargar_comprobante_pago(pago_id):
 @login_required
 def descargar_adjunto_cliente(cliente_id, adjunto_id):
     try:
+        _require_commercial_permission('clientes', 'read')
         cliente = ClienteComercial.query.get_or_404(cliente_id)
         adjunto = ClienteComercialAdjunto.query.filter_by(id=adjunto_id, cliente_id=cliente.id).first_or_404()
         ruta = _get_adjunto_path(adjunto)
         return send_file(ruta, as_attachment=True, download_name=adjunto.nombre_original)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
     except FileNotFoundError as exc:
         return jsonify({'error': str(exc)}), 404
     except HTTPException:

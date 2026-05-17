@@ -28,10 +28,10 @@ Usuario:
 - postgres
 
 Password local actual:
-- PreventPg2026_Local!
+- PreventPg2026Local1
 
 DATABASE_URL local:
-- postgresql+psycopg2://postgres:PreventPg2026_Local!@127.0.0.1:5432/prevent_utf8
+- postgresql+psycopg2://postgres:PreventPg2026Local1@127.0.0.1:5432/prevent_utf8
 
 
 1. Estado actual
