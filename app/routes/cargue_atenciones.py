@@ -836,7 +836,10 @@ def _construir_examenes_str(regs_orden, catalogo_lookup):
         if not items_grupo:
             continue
         label = _LABEL_CLASIFICACION.get(clasificacion, clasificacion.capitalize())
-        partes.append(f"{label}: {' - '.join(items_grupo)}")
+        # Ordenar alfabéticamente para que el mismo conjunto de exámenes
+        # siempre produzca la misma cadena sin importar el orden de llegada
+        items_ordenados = sorted(items_grupo)
+        partes.append(f"{label}: {' - '.join(items_ordenados)}")
 
     return ' | '.join(partes) if partes else ''
 
@@ -951,7 +954,7 @@ def generar_prefacturas():
     periodo_label = f"{fecha_desde.strftime('%d/%m/%Y')} al {fecha_hasta.strftime('%d/%m/%Y')}"
 
     # -----------------------------------------------------------------------
-    # Construir Excel por empresa
+    # Construir Excel por empresa (2 hojas: relacion-pacientes y prefactura)
     # -----------------------------------------------------------------------
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -960,159 +963,289 @@ def generar_prefacturas():
 
     for nombre_empresa, filas in sorted(empresas.items()):
         wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = 'Prefactura'
 
-        # --- Estilos ---
-        font_titulo = Font(name='Calibri', bold=True, size=14, color='FFFFFFFF')
-        font_subtitulo = Font(name='Calibri', bold=True, size=11, color='FFFFFFFF')
-        font_header = Font(name='Calibri', bold=True, size=10, color='FFFFFFFF')
-        font_normal = Font(name='Calibri', size=10)
-        font_subtotal = Font(name='Calibri', bold=True, size=10, color='FF1F4E79')
+        # ---- Estilos compartidos ----
+        font_titulo        = Font(name='Calibri', bold=True, size=14, color='FFFFFFFF')
+        font_subtitulo     = Font(name='Calibri', bold=True, size=11, color='FFFFFFFF')
+        font_header        = Font(name='Calibri', bold=True, size=10, color='FFFFFFFF')
+        font_normal        = Font(name='Calibri', size=10)
+        font_subtotal      = Font(name='Calibri', bold=True, size=10, color='FF1F4E79')
         font_total_empresa = Font(name='Calibri', bold=True, size=11, color='FF1F4E79')
 
-        fill_titulo = PatternFill('solid', fgColor='FF1F4E79')
-        fill_header = PatternFill('solid', fgColor='FF2E75B6')
+        fill_titulo   = PatternFill('solid', fgColor='FF1F4E79')
+        fill_azul     = PatternFill('solid', fgColor='FF2E75B6')
         fill_subtotal = PatternFill('solid', fgColor='FFDAE3F3')
-        fill_total = PatternFill('solid', fgColor='FFBDD7EE')
+        fill_total    = PatternFill('solid', fgColor='FFBDD7EE')
 
-        thin = Side(style='thin', color='FF9DC3E6')
+        thin        = Side(style='thin', color='FF9DC3E6')
         border_thin = Border(left=thin, right=thin, top=thin, bottom=thin)
-        center = Alignment(horizontal='center', vertical='center', wrap_text=True)
-        left_al = Alignment(horizontal='left', vertical='center', wrap_text=True)
-        right_al = Alignment(horizontal='right', vertical='center')
+        center   = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        left_al  = Alignment(horizontal='left',   vertical='center', wrap_text=True)
+        right_al = Alignment(horizontal='right',  vertical='center')
 
-        # --- Fila 1: Nombre empresa ---
-        ws.merge_cells('A1:E1')
-        c = ws['A1']
-        c.value = nombre_empresa.upper()
-        c.font = font_titulo
-        c.fill = fill_titulo
-        c.alignment = center
-        ws.row_dimensions[1].height = 28
-
-        # --- Fila 2: Rango de fechas ---
-        ws.merge_cells('A2:E2')
-        c = ws['A2']
-        c.value = f'PREFACTURA  |  Periodo: {periodo_label}'
-        c.font = font_subtitulo
-        c.fill = PatternFill('solid', fgColor='FF2E75B6')
-        c.alignment = center
-        ws.row_dimensions[2].height = 20
-
-        # --- Fila 3: Encabezados ---
-        headers = ['Fecha Atencion', 'ID Paciente', 'Paciente', 'Examenes', 'Total Orden']
-        for col_idx, header in enumerate(headers, start=1):
-            c = ws.cell(row=3, column=col_idx, value=header)
-            c.font = font_header
-            c.fill = fill_header
-            c.alignment = center
-            c.border = border_thin
-        ws.row_dimensions[3].height = 18
-
-        # --- Agrupar: paciente -> orden -> filas ---
-        pacientes: dict = defaultdict(lambda: defaultdict(list))
+        # -----------------------------------------------------------------------
+        # Preparar datos: agrupar por orden -> (valor, examenes_str, fecha, id, nombre)
+        # -----------------------------------------------------------------------
+        ordenes_map: dict = defaultdict(list)
         for reg in filas:
-            key_pac = (reg.nro_identificacion or '', reg.nombre_paciente or '')
-            key_ord = reg.nro_orden or f'_sin_{reg.id}'
-            pacientes[key_pac][key_ord].append(reg)
+            key_ord = (reg.nro_identificacion or '', reg.nro_orden or f'_sin_{reg.id}')
+            ordenes_map[key_ord].append(reg)
 
-        fila_actual = 4
-        total_empresa = 0.0
+        filas_detalle = []
+        for (nro_id, _nro_ord), regs_orden in ordenes_map.items():
+            fechas       = [r.fecha_creacion_orden for r in regs_orden if r.fecha_creacion_orden]
+            fecha_str    = min(fechas).strftime('%d/%m/%Y') if fechas else ''
+            examenes_str = _construir_examenes_str(regs_orden, catalogo_lookup)
+            valor        = sum(float(r.precio) for r in regs_orden if r.precio is not None)
+            nombre_pac   = (regs_orden[0].nombre_paciente or '').strip()
+            filas_detalle.append((valor, examenes_str, fecha_str, nro_id, nombre_pac))
 
-        # Pre-calcular subtotal por paciente para ordenar de menor a mayor
-        def _subtotal_paciente(ordenes_dict):
-            return sum(
-                sum(float(r.precio) for r in regs if r.precio is not None)
-                for regs in ordenes_dict.values()
-            )
+        # Ordenar: valor asc -> examenes asc -> fecha asc
+        filas_detalle.sort(key=lambda x: (x[0], x[1], x[2]))
 
-        pacientes_ordenados = sorted(
-            pacientes.items(),
-            key=lambda x: _subtotal_paciente(x[1]),
+        # Calcular grupos para la hoja prefactura
+        # grupo: (valor_grupo, examenes_grupo, lista_de_filas)
+        grupos = []
+        i = 0
+        while i < len(filas_detalle):
+            valor_grupo    = filas_detalle[i][0]
+            examenes_grupo = filas_detalle[i][1]
+            grupo_filas    = []
+            while (i < len(filas_detalle)
+                   and filas_detalle[i][0] == valor_grupo
+                   and filas_detalle[i][1] == examenes_grupo):
+                grupo_filas.append(filas_detalle[i])
+                i += 1
+            grupos.append((valor_grupo, examenes_grupo, grupo_filas))
+
+        total_empresa = sum(vg * len(gf) for vg, _, gf in grupos)
+
+        # -----------------------------------------------------------------------
+        # Hoja 1: relacion-pacientes  (detalle sin subtotales)
+        # -----------------------------------------------------------------------
+        ws_rel = wb.active
+        ws_rel.title = 'relacion-pacientes'
+
+        def _escribir_cabecera(ws, titulo, subtitulo, headers_list, n_cols):
+            col_letra = chr(ord('A') + n_cols - 1)
+            rango = f'A1:{col_letra}1'
+            ws.merge_cells(rango)
+            c = ws['A1']
+            c.value = titulo; c.font = font_titulo
+            c.fill = fill_titulo; c.alignment = center
+            ws.row_dimensions[1].height = 28
+
+            ws.merge_cells(f'A2:{col_letra}2')
+            c = ws['A2']
+            c.value = subtitulo; c.font = font_subtitulo
+            c.fill = fill_azul; c.alignment = center
+            ws.row_dimensions[2].height = 20
+
+            for ci, h in enumerate(headers_list, start=1):
+                c = ws.cell(row=3, column=ci, value=h)
+                c.font = font_header; c.fill = fill_azul
+                c.alignment = center; c.border = border_thin
+            ws.row_dimensions[3].height = 18
+
+        _escribir_cabecera(
+            ws_rel,
+            nombre_empresa.upper(),
+            f'RELACION DE PACIENTES  |  Periodo: {periodo_label}',
+            ['Fecha Atencion', 'ID Paciente', 'Paciente', 'Examenes', 'Valor'],
+            5,
         )
 
-        for (nro_id, nombre_pac), ordenes in pacientes_ordenados:
-            subtotal_paciente = 0.0
+        fila_rel = 4
+        for (valor, examenes_str, fecha_str, nro_id, nombre_pac) in filas_detalle:
+            valores = [fecha_str, nro_id, nombre_pac, examenes_str, valor]
+            for ci, v in enumerate(valores, start=1):
+                c = ws_rel.cell(row=fila_rel, column=ci, value=v)
+                c.font = font_normal; c.border = border_thin
+                if ci in (1, 2):
+                    c.alignment = center
+                elif ci == 5:
+                    c.alignment = right_al; c.number_format = '#,##0.00'
+                else:
+                    c.alignment = left_al
+            fila_rel += 1
 
-            # Ordenar ordenes de menor a mayor valor
-            ordenes_ordenadas = sorted(
-                ordenes.items(),
-                key=lambda x: sum(float(r.precio) for r in x[1] if r.precio is not None),
-            )
+        # Total relacion-pacientes
+        ws_rel.merge_cells(f'A{fila_rel}:D{fila_rel}')
+        c = ws_rel.cell(row=fila_rel, column=1, value='TOTAL')
+        c.font = font_total_empresa; c.fill = fill_total
+        c.alignment = right_al; c.border = border_thin
+        c2 = ws_rel.cell(row=fila_rel, column=5, value=total_empresa)
+        c2.font = font_total_empresa; c2.fill = fill_total
+        c2.alignment = right_al; c2.number_format = '#,##0.00'; c2.border = border_thin
 
-            for nro_orden, regs_orden in ordenes_ordenadas:
-                fechas = [r.fecha_creacion_orden for r in regs_orden if r.fecha_creacion_orden]
-                fecha_str = min(fechas).strftime('%d/%m/%Y') if fechas else ''
+        ws_rel.column_dimensions['A'].width = 16
+        ws_rel.column_dimensions['B'].width = 16
+        ws_rel.column_dimensions['C'].width = 32
+        ws_rel.column_dimensions['D'].width = 70
+        ws_rel.column_dimensions['E'].width = 16
 
-                examenes_str = _construir_examenes_str(regs_orden, catalogo_lookup)
+        # -----------------------------------------------------------------------
+        # Hoja 2: prefactura  (solo subtotales por grupo)
+        # Columnas: Examenes | Cant. Pacientes | Valor Unit. | Total
+        # -----------------------------------------------------------------------
+        ws_pf = wb.create_sheet(title='prefactura')
 
-                total_orden = sum(
-                    float(r.precio) for r in regs_orden if r.precio is not None
-                )
-                subtotal_paciente += total_orden
+        _escribir_cabecera(
+            ws_pf,
+            nombre_empresa.upper(),
+            f'PREFACTURA  |  Periodo: {periodo_label}',
+            ['Examenes', 'Cant. Pacientes', 'Valor Unit.', 'Total'],
+            4,
+        )
 
-                valores = [fecha_str, nro_id, nombre_pac, examenes_str, total_orden]
-                for col_idx, valor in enumerate(valores, start=1):
-                    c = ws.cell(row=fila_actual, column=col_idx, value=valor)
-                    c.font = font_normal
-                    c.border = border_thin
-                    if col_idx == 5:
-                        c.alignment = right_al
-                        c.number_format = '#,##0.00'
-                    elif col_idx in (1, 2):
-                        c.alignment = center
-                    else:
-                        c.alignment = left_al
-                fila_actual += 1
+        fila_pf = 4
+        for (valor_grupo, examenes_grupo, grupo_filas) in grupos:
+            cant          = len(grupo_filas)
+            subtotal_grup = valor_grupo * cant
 
-            # Subtotal paciente (solo si tiene mas de una orden)
-            if len(ordenes) > 1:
-                ws.merge_cells(f'A{fila_actual}:D{fila_actual}')
-                c = ws.cell(row=fila_actual, column=1, value=f'Subtotal {nombre_pac}')
-                c.font = font_subtotal
-                c.fill = fill_subtotal
-                c.alignment = right_al
-                c.border = border_thin
-                c2 = ws.cell(row=fila_actual, column=5, value=subtotal_paciente)
-                c2.font = font_subtotal
-                c2.fill = fill_subtotal
-                c2.alignment = right_al
-                c2.number_format = '#,##0.00'
-                c2.border = border_thin
-                fila_actual += 1
+            valores_pf = [examenes_grupo, cant, valor_grupo, subtotal_grup]
+            for ci, v in enumerate(valores_pf, start=1):
+                c = ws_pf.cell(row=fila_pf, column=ci, value=v)
+                c.font = font_normal; c.border = border_thin
+                if ci == 1:
+                    c.alignment = left_al
+                elif ci == 2:
+                    c.alignment = center
+                else:
+                    c.alignment = right_al; c.number_format = '#,##0.00'
+            fila_pf += 1
 
-            total_empresa += subtotal_paciente
+        # Total prefactura
+        ws_pf.merge_cells(f'A{fila_pf}:C{fila_pf}')
+        c = ws_pf.cell(row=fila_pf, column=1, value='TOTAL')
+        c.font = font_total_empresa; c.fill = fill_total
+        c.alignment = right_al; c.border = border_thin
+        c2 = ws_pf.cell(row=fila_pf, column=4, value=total_empresa)
+        c2.font = font_total_empresa; c2.fill = fill_total
+        c2.alignment = right_al; c2.number_format = '#,##0.00'; c2.border = border_thin
 
-        # --- Total empresa ---
-        ws.merge_cells(f'A{fila_actual}:D{fila_actual}')
-        c = ws.cell(row=fila_actual, column=1, value='TOTAL EMPRESA')
-        c.font = font_total_empresa
-        c.fill = fill_total
-        c.alignment = right_al
-        c.border = border_thin
-        c2 = ws.cell(row=fila_actual, column=5, value=total_empresa)
-        c2.font = font_total_empresa
-        c2.fill = fill_total
-        c2.alignment = right_al
-        c2.number_format = '#,##0.00'
-        c2.border = border_thin
+        ws_pf.column_dimensions['A'].width = 70
+        ws_pf.column_dimensions['B'].width = 18
+        ws_pf.column_dimensions['C'].width = 16
+        ws_pf.column_dimensions['D'].width = 16
 
-        # --- Anchos ---
-        ws.column_dimensions['A'].width = 16
-        ws.column_dimensions['B'].width = 16
-        ws.column_dimensions['C'].width = 32
-        ws.column_dimensions['D'].width = 70
-        ws.column_dimensions['E'].width = 16
-
+        # -----------------------------------------------------------------------
+        # Guardar workbook
+        # -----------------------------------------------------------------------
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)
 
-        nombre_safe = re.sub(r'[^\w\s\-]', '', nombre_empresa).strip()
-        nombre_safe = re.sub(r'\s+', '_', nombre_safe)
+        nombre_safe  = re.sub(r'[^\w\s\-]', '', nombre_empresa).strip()
+        nombre_safe  = re.sub(r'\s+', '_', nombre_safe)
         nombre_archivo = f'{nombre_safe}-{periodo}.xlsx'
         archivos.append((nombre_archivo, buf.read()))
+
+    # -----------------------------------------------------------------------
+    # Generar resumen_<periodo>.xlsx
+    # -----------------------------------------------------------------------
+    import openpyxl as _openpyxl
+    from openpyxl.styles import (
+        Font as _Font, PatternFill as _Fill,
+        Alignment as _Align, Border as _Border, Side as _Side,
+    )
+
+    wb_res = _openpyxl.Workbook()
+    ws_res = wb_res.active
+    ws_res.title = 'Resumen'
+
+    _thin   = _Side(style='thin', color='FF9DC3E6')
+    _border = _Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
+    _center = _Align(horizontal='center', vertical='center', wrap_text=True)
+    _left   = _Align(horizontal='left',   vertical='center', wrap_text=True)
+    _right  = _Align(horizontal='right',  vertical='center')
+
+    # Fila 1: titulo
+    ws_res.merge_cells('A1:F1')
+    c = ws_res['A1']
+    c.value     = f'RESUMEN PREFACTURAS  |  Periodo: {periodo_label}'
+    c.font      = _Font(name='Calibri', bold=True, size=13, color='FFFFFFFF')
+    c.fill      = _Fill('solid', fgColor='FF1F4E79')
+    c.alignment = _center
+    ws_res.row_dimensions[1].height = 26
+
+    # Fila 2: encabezados
+    # Columnas: Empresa | Cantidad de Pacientes | Valor Total | Fecha Factura | Nro Factura | Valor Factura
+    _encabezados = [
+        'Empresa', 'Cantidad de Pacientes', 'Valor Total',
+        'Fecha Factura', 'Nro Factura', 'Valor Factura',
+    ]
+    for _ci, _enc in enumerate(_encabezados, start=1):
+        _c = ws_res.cell(row=2, column=_ci, value=_enc)
+        _c.font      = _Font(name='Calibri', bold=True, size=10, color='FFFFFFFF')
+        _c.fill      = _Fill('solid', fgColor='FF2E75B6')
+        _c.alignment = _center
+        _c.border    = _border
+    ws_res.row_dimensions[2].height = 18
+
+    _font_data  = _Font(name='Calibri', size=10)
+    _font_total = _Font(name='Calibri', bold=True, size=10, color='FF1F4E79')
+    _fill_total = _Fill('solid', fgColor='FFBDD7EE')
+
+    _gran_pac = 0
+    _gran_val = 0.0
+    _fila_res = 3
+
+    # Ordenar empresas por nombre (A-Z)
+    for _emp, _filas_emp in sorted(empresas.items(), key=lambda x: x[0].upper()):
+        _pacs = len({
+            (r.nro_identificacion or '', r.nombre_paciente or '')
+            for r in _filas_emp
+        })
+        _val_emp = sum(float(r.precio) for r in _filas_emp if r.precio is not None)
+        _gran_pac += _pacs
+        _gran_val += _val_emp
+
+        # 6 columnas: Empresa, Cant. Pacientes, Valor Total, Fecha Factura (vacío), Nro Factura (vacío), Valor Factura (vacío)
+        _row = [_emp, _pacs, _val_emp, '', '', '']
+        for _ci, _v in enumerate(_row, start=1):
+            _c = ws_res.cell(row=_fila_res, column=_ci, value=_v)
+            _c.font   = _font_data
+            _c.border = _border
+            if _ci == 1:
+                _c.alignment = _left
+            elif _ci == 2:
+                _c.alignment = _center
+            elif _ci == 3:
+                _c.alignment = _right
+                _c.number_format = '#,##0.00'
+            else:
+                _c.alignment = _center
+        _fila_res += 1
+
+    # Fila de totales
+    _ct = ws_res.cell(row=_fila_res, column=1, value='TOTAL')
+    _ct.font = _font_total; _ct.fill = _fill_total
+    _ct.alignment = _right; _ct.border = _border
+
+    _cp = ws_res.cell(row=_fila_res, column=2, value=_gran_pac)
+    _cp.font = _font_total; _cp.fill = _fill_total
+    _cp.alignment = _center; _cp.border = _border
+
+    _cv = ws_res.cell(row=_fila_res, column=3, value=_gran_val)
+    _cv.font = _font_total; _cv.fill = _fill_total
+    _cv.alignment = _right; _cv.number_format = '#,##0.00'; _cv.border = _border
+
+    for _ci in (4, 5, 6):
+        _c = ws_res.cell(row=_fila_res, column=_ci, value='')
+        _c.fill = _fill_total; _c.border = _border
+
+    ws_res.column_dimensions['A'].width = 45
+    ws_res.column_dimensions['B'].width = 22
+    ws_res.column_dimensions['C'].width = 18
+    ws_res.column_dimensions['D'].width = 16
+    ws_res.column_dimensions['E'].width = 18
+    ws_res.column_dimensions['F'].width = 16
+
+    _buf_res = io.BytesIO()
+    wb_res.save(_buf_res)
+    _buf_res.seek(0)
+    archivos.append(('resumen_periodo.xlsx', _buf_res.read()))
 
     # -----------------------------------------------------------------------
     # Guardar en carpeta del servidor si se especifico
