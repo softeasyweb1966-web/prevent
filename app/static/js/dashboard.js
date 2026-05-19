@@ -1472,6 +1472,7 @@ function syncComercialPermissionUI() {
     setComercialElementsVisibility('#clienteSeguimientoMenuDocumentos', canManageComercial('documentos', 'create'));
     setComercialElementsVisibility('#clienteSeguimientoMenuPagos', canManageComercial('pagos', 'create'));
     setComercialElementsVisibility('button[onclick="mostrarAgregarAtencionCliente()"]', canManageComercial('atenciones', 'create'));
+    setComercialElementsVisibility('button[onclick="abrirNuevaAtencionGestionInformacion()"]', canManageComercial('atenciones', 'create'));
     setComercialElementsVisibility('button[onclick="mostrarAgregarSeguimientoDocumento()"]', canManageComercial('documentos', 'create'));
     setComercialElementsVisibility('button[onclick="mostrarAgregarSeguimientoPago()"]', canManageComercial('pagos', 'create'));
 
@@ -3307,7 +3308,31 @@ window.cargueAtencionesDiaState = {
     perPage: 50,
     total: 0,
     clienteSearchTimer: null,
-    activeSection: 'inicio'
+    convenioSearchTimer: null,
+    activeSection: 'inicio',
+    records: [],
+    draftAtencionRows: [],
+    draftAtencionMode: 'create',
+    draftAtencionBase: null,
+    draftConvenioItems: [],
+    draftConvenioLoadedKey: '',
+    draftConvenioSelectedItemId: null
+};
+window.comercialPeriodosCargueState = {
+    loaded: false,
+    loading: false,
+    periodos: []
+};
+window.anticipoProgramadoState = {
+    empresaSearchTimer: null,
+    itemSearchTimer: null,
+    clienteId: '',
+    cliente: null,
+    convenioItems: [],
+    convenioLoadedKey: '',
+    selectedItemId: null,
+    draftDetalles: [],
+    paymentValueTouched: false
 };
 
 function updateCargueAtencionesDiaScope(scope, extraMessage = '') {
@@ -3415,11 +3440,28 @@ function construirResultadosAgrupadosCargueAtenciones(registros) {
         }
 
         grupo.ordenes.get(orderKey).detalles.push({
+            id: Number(item.id || 0),
+            clienteId: item.cliente_id || '',
+            vendedorId: item.vendedor_id || '',
+            esEditable: item.es_editable === true || String(item.estado_gestion || '').toUpperCase() === 'CARGADA',
             fecha: obtenerFechaBaseCargueAtenciones(item) || 'N/A',
             paciente: item.nombre_paciente || 'N/A',
+            identificacion: item.nro_identificacion || 'N/A',
             formaPago: item.forma_pago || 'N/A',
             servicio: item.servicio || 'N/A',
-            valor: Number(item.precio || 0)
+            valor: Number(item.precio || 0),
+            estado: item.estado_gestion || 'N/A',
+            estadoGestion: item.estado_gestion || 'N/A',
+            estadoArchivo: item.estado_orden || 'N/A',
+            factura: item.nro_factura || 'N/A',
+            archivoOrigen: item.archivo_origen || '',
+            nroOrden: item.nro_orden || '',
+            fechaFactura: item.fecha_factura || '',
+            acuerdoComercial: item.acuerdo_comercial || '',
+            empresaMision: item.empresa_mision || '',
+            sede: item.sede || '',
+            nombreVendedor: item.nombre_vendedor || item.vendedor_responsable || '',
+            usuarioCreacion: item.usuario_creacion || ''
         });
     });
 
@@ -3455,11 +3497,26 @@ function construirResultadosAgrupadosCargueAtenciones(registros) {
                                 <strong>${formatCurrency(orden.detalles.reduce((sum, detalle) => sum + Number(detalle.valor || 0), 0))}</strong>
                             </div>
                         </div>
-                        <div class="cargue-atenciones-order-body">
+                            <div class="cargue-atenciones-order-body">
                             ${orden.detalles.map((detalle, index) => `
                                 <div class="cargue-atenciones-detail-row">
-                                    <div class="cargue-atenciones-detail-cell">${index === 0 ? '<span>Servicio</span>' : ''}<strong>${escapeHtml(detalle.servicio)}</strong></div>
-                                    <div class="cargue-atenciones-detail-cell cargue-atenciones-detail-value">${index === 0 ? '<span>Valor</span>' : ''}<strong>${formatCurrency(detalle.valor)}</strong></div>
+                                    <div class="cargue-atenciones-detail-cell">
+                                        ${index === 0 ? '<span>Servicio</span>' : ''}
+                                        <strong>${escapeHtml(detalle.servicio)}</strong>
+                                        <div style="color:#666; font-size:0.85rem;">${escapeHtml(`${detalle.paciente} · ${detalle.identificacion}`)}</div>
+                                        <div style="color:#666; font-size:0.85rem;">${escapeHtml(`Estado gestion: ${detalle.estadoGestion} · Archivo: ${detalle.estadoArchivo} · Factura: ${detalle.factura}`)}</div>
+                                    </div>
+                                    <div class="cargue-atenciones-detail-cell cargue-atenciones-detail-value">
+                                        ${index === 0 ? '<span>Valor</span>' : ''}
+                                        <strong>${formatCurrency(detalle.valor)}</strong>
+                                        ${(canManageComercial('atenciones', 'update') || canManageComercial('atenciones', 'delete')) ? `
+                                            <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                                                ${detalle.esEditable && canManageComercial('atenciones', 'update') ? `<button type="button" class="action-btn action-btn-edit" onclick="abrirEditarAtencionGestionInformacion(${detalle.id})">Editar cargada</button>` : ''}
+                                                ${detalle.esEditable && canManageComercial('atenciones', 'delete') ? `<button type="button" class="action-btn action-btn-delete" onclick="eliminarAtencionGestionInformacion(${detalle.id})">Eliminar</button>` : ''}
+                                                ${!detalle.esEditable ? `<span style="color:#64748b; font-size:0.85rem;">Solo editable en CARGADA</span>` : ''}
+                                            </div>
+                                        ` : ''}
+                                    </div>
                                 </div>
                             `).join('')}
                         </div>
@@ -3506,6 +3563,112 @@ function hasActiveFiltersCargueAtencionesDia() {
         || (fechaDesdeInput?.value || '').trim()
         || (fechaHastaInput?.value || '').trim()
     );
+}
+
+function buildPeriodoCargueLabel(periodo) {
+    if (!periodo) return '';
+    const rango = [periodo.fecha_desde, periodo.fecha_hasta].filter(Boolean).join(' al ');
+    if (!rango) return '';
+    if (!periodo.source) return rango;
+    return `${rango} · ${String(periodo.source).toUpperCase()}`;
+}
+
+async function cargarPeriodosCargueComercial(forceReload = false) {
+    if (!forceReload && window.comercialPeriodosCargueState.loaded) {
+        return window.comercialPeriodosCargueState.periodos || [];
+    }
+    if (window.comercialPeriodosCargueState.loading) {
+        return window.comercialPeriodosCargueState.periodos || [];
+    }
+
+    window.comercialPeriodosCargueState.loading = true;
+    try {
+        const response = await fetch('/api/comercial/cargue-atenciones/periodos', { credentials: 'include' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || 'No se pudieron cargar los periodos disponibles.');
+        }
+        window.comercialPeriodosCargueState.loaded = true;
+        window.comercialPeriodosCargueState.periodos = Array.isArray(data.periodos) ? data.periodos : [];
+        return window.comercialPeriodosCargueState.periodos;
+    } finally {
+        window.comercialPeriodosCargueState.loading = false;
+    }
+}
+
+function llenarSelectPeriodoCargue(selectId, placeholder) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    const previousValue = select.value || '';
+    const periodos = Array.isArray(window.comercialPeriodosCargueState.periodos)
+        ? window.comercialPeriodosCargueState.periodos
+        : [];
+
+    select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`;
+    periodos.forEach(periodo => {
+        const option = document.createElement('option');
+        option.value = String(periodo.key || `${periodo.fecha_desde || ''}|${periodo.fecha_hasta || ''}`);
+        option.textContent = buildPeriodoCargueLabel(periodo);
+        option.dataset.fechaDesde = periodo.fecha_desde || '';
+        option.dataset.fechaHasta = periodo.fecha_hasta || '';
+        option.dataset.source = periodo.source || '';
+        select.appendChild(option);
+    });
+
+    if (previousValue && Array.from(select.options).some(option => option.value === previousValue)) {
+        select.value = previousValue;
+    }
+}
+
+async function actualizarSelectoresPeriodosComercial(forceReload = false) {
+    try {
+        await cargarPeriodosCargueComercial(forceReload);
+        llenarSelectPeriodoCargue('prefacturaPeriodoSelect', 'Seleccione un periodo...');
+        llenarSelectPeriodoCargue('consultaPrefPeriodo', 'Todos');
+        llenarSelectPeriodoCargue('cargueAtencionesDiaFiltroPeriodo', 'Todos');
+    } catch (error) {
+        console.error('Error cargando periodos comerciales:', error);
+    }
+}
+
+function aplicarPeriodoEnRango(selectId, fechaDesdeId, fechaHastaId) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    const option = select.options[select.selectedIndex];
+    const fechaDesdeInput = document.getElementById(fechaDesdeId);
+    const fechaHastaInput = document.getElementById(fechaHastaId);
+    if (!fechaDesdeInput || !fechaHastaInput) return;
+
+    if (!option || !option.value) {
+        return;
+    }
+
+    fechaDesdeInput.value = option.dataset.fechaDesde || '';
+    fechaHastaInput.value = option.dataset.fechaHasta || '';
+}
+
+function limpiarSeleccionPeriodoSiFechasManual(selectId, fechaDesdeId, fechaHastaId) {
+    const select = document.getElementById(selectId);
+    const fechaDesde = document.getElementById(fechaDesdeId)?.value || '';
+    const fechaHasta = document.getElementById(fechaHastaId)?.value || '';
+    if (!select || !select.value) return;
+
+    const option = select.options[select.selectedIndex];
+    const matches = option
+        && (option.dataset.fechaDesde || '') === fechaDesde
+        && (option.dataset.fechaHasta || '') === fechaHasta;
+    if (!matches) {
+        select.value = '';
+    }
+}
+
+function normalizarBusquedaBasica(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
 }
 
 function renderCargueAtencionesClienteSuggestions(clientes, query = '') {
@@ -3610,12 +3773,16 @@ function setIngresoInformacionSection(section = 'inicio') {
         inicio: ['ingresoInfoInicioPanel'],
         cargue_atenciones: ['ingresoInfoCarguePanel', 'ingresoInfoHistorialPanel'],
         prefacturas: ['ingresoInfoPrefacturasPanel'],
+        consulta_prefacturas: ['ingresoInfoConsultaPrefacturasPanel'],
+        cartera: ['ingresoInfoCarteraPanel'],
         consulta: ['ingresoInfoConsultaPanel']
     };
     const buttonMap = {
         inicio: 'ingresoInfoNavInicio',
         cargue_atenciones: 'ingresoInfoNavCargueAtenciones',
         prefacturas: 'ingresoInfoNavPrefacturas',
+        consulta_prefacturas: 'ingresoInfoNavConsultaPrefacturas',
+        cartera: 'ingresoInfoNavCartera',
         consulta: 'ingresoInfoNavConsulta'
     };
 
@@ -3644,11 +3811,17 @@ function setIngresoInformacionSection(section = 'inicio') {
     if (normalized === 'cargue_atenciones') {
         const canUpload = canManageComercial('atenciones', 'create');
         updateCargueAtencionesDiaScope('', canUpload ? '' : 'Tu perfil puede consultar, pero no cargar archivos.');
+        actualizarSelectoresPeriodosComercial();
         cargarHistorialCarguesAtenciones();
         return;
     }
 
+    if (normalized === 'prefacturas' || normalized === 'consulta_prefacturas') {
+        actualizarSelectoresPeriodosComercial();
+    }
+
     if (normalized === 'consulta') {
+        actualizarSelectoresPeriodosComercial();
         if (!hasActiveFiltersCargueAtencionesDia()) {
             resetConsultaAtencionesDia('Ingresa uno o varios criterios para consultar atenciones cargadas.');
         }
@@ -3662,10 +3835,9 @@ function setIngresoInformacionSection(section = 'inicio') {
 async function generarPrefacturas() {
     const fechaDesde = (document.getElementById('prefacturaFechaDesde') || {}).value || '';
     const fechaHasta = (document.getElementById('prefacturaFechaHasta') || {}).value || '';
-    const carpeta = ((document.getElementById('prefacturaCarpeta') || {}).value || '').trim();
-    const resultado = document.getElementById('prefacturasResultado');
-    const btn = document.getElementById('btnGenerarPrefacturas');
-    const label = document.getElementById('btnGenerarPrefacturasLabel');
+    const resultado  = document.getElementById('prefacturasResultado');
+    const btn        = document.getElementById('btnGenerarPrefacturas');
+    const label      = document.getElementById('btnGenerarPrefacturasLabel');
 
     if (!fechaDesde || !fechaHasta) {
         if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">&#9888; Debes seleccionar fecha inicio y fecha fin.</span>';
@@ -3682,7 +3854,6 @@ async function generarPrefacturas() {
 
     try {
         const params = new URLSearchParams({ fecha_desde: fechaDesde, fecha_hasta: fechaHasta });
-        if (carpeta) params.set('carpeta', carpeta);
 
         const response = await fetch(`/api/comercial/prefacturas/generar?${params}`, {
             method: 'GET',
@@ -3691,38 +3862,31 @@ async function generarPrefacturas() {
 
         if (!response.ok) {
             let msg = 'Error generando prefacturas.';
-            try {
-                const data = await response.json();
-                msg = data.error || msg;
-            } catch (_) {}
+            try { const data = await response.json(); msg = data.error || msg; } catch (_) {}
             if (resultado) resultado.innerHTML = `<span style="color:#c0392b;">&#9888; ${msg}</span>`;
             return;
         }
 
-        // Nombre del archivo desde Content-Disposition
         const disposition = response.headers.get('Content-Disposition') || '';
         let filename = 'Prefacturas.zip';
         const match = disposition.match(/filename[^;=\n]*=(?:(['"])([^'"]*)\1|([^;\n]*))/i);
         if (match) filename = (match[2] || match[3] || filename).trim();
 
         const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href = url; a.download = filename;
         document.body.appendChild(a);
         a.click();
         setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
 
-        let msg = `&#10004; Prefacturas descargadas: <strong>${filename}</strong>`;
-        if (carpeta) msg += `<br><small style="color:#27ae60;">Archivos también guardados en: ${carpeta}</small>`;
-        if (resultado) resultado.innerHTML = `<span style="color:#27ae60;">${msg}</span>`;
+        if (resultado) resultado.innerHTML = `<span style="color:#27ae60;">&#10004; Descarga iniciada: <strong>${filename}</strong></span>`;
     } catch (err) {
         console.error('generarPrefacturas error:', err);
         if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">&#9888; Error de conexi\u00f3n al generar prefacturas.</span>';
     } finally {
         if (btn) btn.disabled = false;
-        if (label) label.textContent = 'Generar Prefacturas';
+        if (label) label.textContent = 'Generar y Descargar ZIP';
     }
 }
 
@@ -3731,6 +3895,16 @@ function abrirCargueAtencionDia() {
         showError('No tienes permisos para consultar o cargar atenciones comerciales.');
         return;
     }
+
+    // Ocultar explícitamente todos los paneles antes de abrir
+    [
+        'ingresoInfoInicioPanel', 'ingresoInfoCarguePanel', 'ingresoInfoHistorialPanel',
+        'ingresoInfoPrefacturasPanel', 'ingresoInfoConsultaPrefacturasPanel',
+        'ingresoInfoCarteraPanel', 'ingresoInfoConsultaPanel',
+    ].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
 
     openCargueAtencionesDiaModal();
 
@@ -3762,6 +3936,7 @@ function limpiarFiltrosCargueAtencionDia() {
         'cargueAtencionesDiaFiltroVendedor',
         'cargueAtencionesDiaFiltroCondicionComercial',
         'cargueAtencionesDiaFiltroEstado',
+        'cargueAtencionesDiaFiltroPeriodo',
         'cargueAtencionesDiaFechaDesde',
         'cargueAtencionesDiaFechaHasta'
     ];
@@ -3778,7 +3953,7 @@ async function cargarHistorialCarguesAtenciones() {
     const tbody = document.getElementById('cargueAtencionesDiaHistorialTable');
     if (!tbody) return;
 
-    tbody.innerHTML = '<tr><td colspan="5" class="loading">Cargando historial...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">Cargando historial...</td></tr>';
     try {
         const response = await fetch('/api/comercial/cargue-atenciones/historial', { credentials: 'include' });
         const data = await response.json().catch(() => ({}));
@@ -3791,13 +3966,14 @@ async function cargarHistorialCarguesAtenciones() {
         updateCargueAtencionesDiaScope(data.scope);
 
         if (!registros.length) {
-            tbody.innerHTML = '<tr><td colspan="5" class="loading">No hay cargues visibles para este usuario.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="loading">No hay cargues visibles para este usuario.</td></tr>';
             return;
         }
 
         tbody.innerHTML = registros.map(item => `
             <tr>
                 <td>${escapeHtml(item.fecha || 'N/A')}</td>
+                <td>${escapeHtml(item.periodo || 'Sin periodo')}</td>
                 <td>${escapeHtml(item.nombre_archivo || 'N/A')}</td>
                 <td>${Number(item.total_filas || 0)}</td>
                 <td>${item.importadas == null ? 'N/A' : Number(item.importadas || 0)}</td>
@@ -3806,7 +3982,7 @@ async function cargarHistorialCarguesAtenciones() {
         `).join('');
     } catch (error) {
         console.error('Error cargando historial de atenciones del día:', error);
-        tbody.innerHTML = `<tr><td colspan="5" class="loading">${escapeHtml(error.message || 'Error al cargar historial')}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="loading">${escapeHtml(error.message || 'Error al cargar historial')}</td></tr>`;
     }
 }
 
@@ -3861,6 +4037,7 @@ async function consultarAtencionesDiaCargadas(page = 1) {
         }
 
         const registros = Array.isArray(data.registros) ? data.registros : [];
+        window.cargueAtencionesDiaState.records = registros;
         window.cargueAtencionesDiaState.page = Number(data.page || 1);
         window.cargueAtencionesDiaState.pages = Number(data.pages || 0);
         window.cargueAtencionesDiaState.total = Number(data.total || 0);
@@ -3904,7 +4081,10 @@ async function consultarAtencionesDiaCargadas(page = 1) {
                     <strong>${escapeHtml(item.vendedor_responsable || item.nombre_vendedor || 'N/A')}</strong>
                     <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.usuario_creacion || 'Sin usuario origen')}</div>
                 </td>
-                <td>${escapeHtml(item.estado_orden || 'N/A')}</td>
+                <td>
+                    <strong>${escapeHtml(item.estado_gestion || 'N/A')}</strong>
+                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(`Archivo: ${item.estado_orden || 'N/A'}`)}</div>
+                </td>
             </tr>
         `).join('');
     } catch (error) {
@@ -3947,6 +4127,7 @@ async function consultarAtencionesDiaCargadas(page = 1) {
     const vendedor = vendedorWrap?.style.display === 'none'
         ? ''
         : (document.getElementById('cargueAtencionesDiaFiltroVendedor')?.value?.trim() || '');
+    const condicionComercial = document.getElementById('cargueAtencionesDiaFiltroCondicionComercial')?.value?.trim();
     const estado = document.getElementById('cargueAtencionesDiaFiltroEstado')?.value?.trim();
     const fechaDesde = document.getElementById('cargueAtencionesDiaFechaDesde')?.value?.trim();
     const fechaHasta = document.getElementById('cargueAtencionesDiaFechaHasta')?.value?.trim();
@@ -3954,6 +4135,7 @@ async function consultarAtencionesDiaCargadas(page = 1) {
     if (clienteId) params.set('cliente_id', clienteId);
     if (acuerdo && !clienteId) params.set('acuerdo', acuerdo);
     if (vendedor) params.set('vendedor', vendedor);
+    if (condicionComercial) params.set('condicion_comercial', condicionComercial);
     if (estado) params.set('estado', estado);
     if (fechaDesde) params.set('fecha_desde', fechaDesde);
     if (fechaHasta) params.set('fecha_hasta', fechaHasta);
@@ -3966,6 +4148,7 @@ async function consultarAtencionesDiaCargadas(page = 1) {
         }
 
         const registros = Array.isArray(data.registros) ? data.registros : [];
+        window.cargueAtencionesDiaState.records = registros;
         window.cargueAtencionesDiaState.page = Number(data.page || 1);
         window.cargueAtencionesDiaState.pages = Number(data.pages || 0);
         window.cargueAtencionesDiaState.total = Number(data.total || 0);
@@ -3992,11 +4175,596 @@ async function consultarAtencionesDiaCargadas(page = 1) {
         results.innerHTML = construirResultadosAgrupadosCargueAtenciones(registros);
     } catch (error) {
         console.error('Error consultando atenciones cargadas:', error);
-        resumen.textContent = 'No se pudo consultar la informacion cargada.';
+        resumen.textContent = error.message || 'No se pudo consultar la informacion cargada.';
         pageInfo.textContent = 'Pagina 0 de 0';
         prevBtn.disabled = true;
         nextBtn.disabled = true;
         results.innerHTML = `<div class="loading">${escapeHtml(error.message || 'Error al consultar registros')}</div>`;
+    }
+}
+
+function setEditarAtencionMsg(message = '', isError = false) {
+    const node = document.getElementById('editarAtencionMsg');
+    if (!node) return;
+    node.textContent = message;
+    node.style.color = isError ? '#c0392b' : '#555';
+}
+
+function ocultarSugerenciasServicioAtencion() {
+    const container = document.getElementById('editAtenServicioSuggestions');
+    if (!container) return;
+    container.style.display = 'none';
+    container.innerHTML = '';
+}
+
+function actualizarHintServicioAtencion(message = '', isError = false) {
+    const hint = document.getElementById('editAtenServicioHint');
+    if (!hint) return;
+    hint.textContent = message || 'Al editar una orden, los nuevos examenes o paquetes se agregan con la misma fecha de atención de esta orden.';
+    hint.style.color = isError ? '#c0392b' : '#666';
+}
+
+async function cargarConvenioServicioAtencion(forceReload = false) {
+    const clienteId = document.getElementById('editarAtencionClienteId')?.value?.trim() || '';
+    const fechaAtencion = document.getElementById('editAtenFechaOrden')?.value?.trim() || '';
+    if (!clienteId) {
+        window.cargueAtencionesDiaState.draftConvenioItems = [];
+        window.cargueAtencionesDiaState.draftConvenioLoadedKey = '';
+        window.cargueAtencionesDiaState.draftConvenioSelectedItemId = null;
+        actualizarHintServicioAtencion('Esta atención no tiene cliente relacionado para sugerir examenes o paquetes convenidos.');
+        return [];
+    }
+
+    const cacheKey = `${clienteId}|${fechaAtencion || 'sin-fecha'}`;
+    if (!forceReload && cacheKey === window.cargueAtencionesDiaState.draftConvenioLoadedKey) {
+        return window.cargueAtencionesDiaState.draftConvenioItems || [];
+    }
+
+    const params = new URLSearchParams();
+    if (fechaAtencion) params.set('fecha_atencion', fechaAtencion);
+
+    const response = await fetch(`/api/comercial/clientes/${clienteId}/convenio-items${params.toString() ? `?${params.toString()}` : ''}`, {
+        credentials: 'include'
+    });
+    const data = await response.json().catch(() => ([]));
+    if (!response.ok) {
+        throw new Error(data.error || 'No se pudieron cargar los examenes o paquetes convenidos del cliente.');
+    }
+
+    window.cargueAtencionesDiaState.draftConvenioItems = Array.isArray(data) ? data : [];
+    window.cargueAtencionesDiaState.draftConvenioLoadedKey = cacheKey;
+    window.cargueAtencionesDiaState.draftConvenioSelectedItemId = null;
+    actualizarHintServicioAtencion(
+        window.cargueAtencionesDiaState.draftConvenioItems.length
+            ? 'Escribe para buscar entre los examenes y paquetes convenidos de este cliente. Al seleccionarlo, se completa el valor convenido.'
+            : 'Este cliente no tiene examenes o paquetes convenidos vigentes para la fecha de esta orden.'
+    );
+    return window.cargueAtencionesDiaState.draftConvenioItems;
+}
+
+function seleccionarServicioConvenioAtencion(itemId) {
+    const items = Array.isArray(window.cargueAtencionesDiaState.draftConvenioItems)
+        ? window.cargueAtencionesDiaState.draftConvenioItems
+        : [];
+    const item = items.find(entry => Number(entry.id) === Number(itemId));
+    if (!item) return;
+
+    const servicioInput = document.getElementById('editAtenServicio');
+    const precioInput = document.getElementById('editAtenPrecio');
+    if (servicioInput) servicioInput.value = item.nombre || '';
+    if (precioInput) precioInput.value = Number(item.valor_unitario || 0);
+    window.cargueAtencionesDiaState.draftConvenioSelectedItemId = Number(item.id);
+    actualizarHintServicioAtencion(`Seleccionado: ${item.nombre || 'Item'} (${item.tipo_item || 'ITEM'}) con valor ${formatCurrency(item.valor_unitario || 0)}. Se agregará a esta misma orden y fecha.`);
+    ocultarSugerenciasServicioAtencion();
+}
+
+function renderSugerenciasServicioAtencion(query = '') {
+    const container = document.getElementById('editAtenServicioSuggestions');
+    if (!container) return;
+
+    const text = String(query || '').trim().toLowerCase();
+    const items = Array.isArray(window.cargueAtencionesDiaState.draftConvenioItems)
+        ? window.cargueAtencionesDiaState.draftConvenioItems
+        : [];
+
+    const filtered = items.filter(item => {
+        if (!text) return true;
+        return [
+            item?.nombre || '',
+            item?.codigo || '',
+            item?.clasificacion_resumen || '',
+            item?.tipo_item || ''
+        ].some(value => String(value).toLowerCase().includes(text));
+    }).slice(0, 12);
+
+    if (!filtered.length) {
+        container.innerHTML = `<div class="cargue-atenciones-suggestion-empty">No encontramos examenes o paquetes convenidos para "${escapeHtml(query)}".</div>`;
+        container.style.display = 'block';
+        return;
+    }
+
+    container.innerHTML = filtered.map(item => `
+        <button
+            type="button"
+            class="cargue-atenciones-suggestion-item"
+            data-item-id="${Number(item.id)}">
+            <strong>${escapeHtml(item.nombre || 'Item')}</strong>
+            <span>${escapeHtml([item.tipo_item || '', item.clasificacion_resumen || item.codigo || '', formatCurrency(item.valor_unitario || 0)].filter(Boolean).join(' · '))}</span>
+        </button>
+    `).join('');
+    container.style.display = 'block';
+}
+
+function limpiarSeleccionConvenioAtencion() {
+    window.cargueAtencionesDiaState.draftConvenioSelectedItemId = null;
+}
+
+function programarBusquedaServicioAtencion() {
+    const servicioInput = document.getElementById('editAtenServicio');
+    const query = servicioInput?.value?.trim() || '';
+    limpiarSeleccionConvenioAtencion();
+    if (!query) {
+        ocultarSugerenciasServicioAtencion();
+        actualizarHintServicioAtencion();
+        return;
+    }
+
+    window.clearTimeout(window.cargueAtencionesDiaState.convenioSearchTimer);
+    window.cargueAtencionesDiaState.convenioSearchTimer = window.setTimeout(async () => {
+        try {
+            await cargarConvenioServicioAtencion(false);
+            renderSugerenciasServicioAtencion(query);
+        } catch (error) {
+            console.error('Error cargando sugerencias de convenio para atenciones:', error);
+            ocultarSugerenciasServicioAtencion();
+            actualizarHintServicioAtencion(error.message || 'No se pudieron cargar los examenes o paquetes convenidos.', true);
+        }
+    }, 120);
+}
+
+function normalizarServicioAtencion(valor) {
+    return String(valor || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
+function existeServicioDuplicadoAtencion(rows, servicio, excludeIndex = -1) {
+    const servicioNormalizado = normalizarServicioAtencion(servicio);
+    if (!servicioNormalizado) return false;
+
+    return (Array.isArray(rows) ? rows : []).some((row, index) => {
+        if (index === excludeIndex) return false;
+        return normalizarServicioAtencion(row?.servicio) === servicioNormalizado;
+    });
+}
+
+function renderServiciosBorradorAtencion() {
+    const tbody = document.getElementById('editarAtencionServiciosBody');
+    const totalNode = document.getElementById('editarAtencionServiciosTotal');
+    if (!tbody || !totalNode) return;
+
+    const rows = Array.isArray(window.cargueAtencionesDiaState.draftAtencionRows)
+        ? window.cargueAtencionesDiaState.draftAtencionRows
+        : [];
+
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="3" class="loading">Agrega al menos un servicio para continuar.</td></tr>';
+        totalNode.textContent = 'Total paciente: $0';
+        return;
+    }
+
+    let total = 0;
+    tbody.innerHTML = rows.map((row, index) => {
+        const valor = Number(row.precio || 0);
+        const servicioValue = String(row.servicio || '')
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        total += valor;
+        return `
+            <tr>
+                <td><input type="text" value="${servicioValue}" oninput="actualizarFilaBorradorAtencion(${index}, 'servicio', this.value)" placeholder="Nombre del examen o servicio"></td>
+                <td><input type="number" min="0" step="0.01" value="${Number.isFinite(valor) ? valor : 0}" oninput="actualizarFilaBorradorAtencion(${index}, 'precio', this.value)"></td>
+                <td><button type="button" class="action-btn action-btn-delete" onclick="eliminarFilaBorradorAtencion(${index})">Quitar</button></td>
+            </tr>
+        `;
+    }).join('');
+
+    totalNode.textContent = `Total paciente: ${formatCurrency(total)}`;
+}
+
+function actualizarTotalServiciosBorradorAtencion() {
+    const totalNode = document.getElementById('editarAtencionServiciosTotal');
+    if (!totalNode) return;
+    const rows = Array.isArray(window.cargueAtencionesDiaState.draftAtencionRows)
+        ? window.cargueAtencionesDiaState.draftAtencionRows
+        : [];
+    const total = rows.reduce((acc, row) => acc + Number(row.precio || 0), 0);
+    totalNode.textContent = `Total paciente: ${formatCurrency(total)}`;
+}
+
+function actualizarFilaBorradorAtencion(index, field, value) {
+    const rows = window.cargueAtencionesDiaState.draftAtencionRows || [];
+    if (!rows[index]) return;
+    rows[index][field] = field === 'precio' ? value : String(value || '');
+    if (field === 'precio') {
+        actualizarTotalServiciosBorradorAtencion();
+    }
+}
+
+function eliminarFilaBorradorAtencion(index) {
+    const rows = window.cargueAtencionesDiaState.draftAtencionRows || [];
+    rows.splice(index, 1);
+    renderServiciosBorradorAtencion();
+}
+
+function agregarServicioBorradorAtencion() {
+    const servicioInput = document.getElementById('editAtenServicio');
+    const precioInput = document.getElementById('editAtenPrecio');
+    const servicio = servicioInput?.value?.trim() || '';
+    const precio = precioInput?.value || '';
+    const selectedItemId = window.cargueAtencionesDiaState.draftConvenioSelectedItemId;
+    const convenioItems = Array.isArray(window.cargueAtencionesDiaState.draftConvenioItems)
+        ? window.cargueAtencionesDiaState.draftConvenioItems
+        : [];
+    const servicioNormalizado = servicio.toLowerCase();
+    const convenioItem = convenioItems.find(item => Number(item.id) === Number(selectedItemId))
+        || convenioItems.find(item => String(item?.nombre || '').trim().toLowerCase() === servicioNormalizado);
+    const precioFinal = (precio === '' || precio === null || typeof precio === 'undefined') && convenioItem
+        ? convenioItem.valor_unitario
+        : precio;
+
+    if (!servicio) {
+        showError('Escribe el nombre del examen o servicio antes de agregarlo.');
+        return;
+    }
+    if (existeServicioDuplicadoAtencion(window.cargueAtencionesDiaState.draftAtencionRows, servicio)) {
+        showError('Ese examen o servicio ya existe en esta orden del paciente.');
+        return;
+    }
+    if (precioFinal === '' || Number(precioFinal) < 0) {
+        showError('Ingresa un valor valido para el servicio.');
+        return;
+    }
+
+    window.cargueAtencionesDiaState.draftAtencionRows.push({
+        id: null,
+        servicio,
+        precio: precioFinal,
+        catalogo_item_id: convenioItem ? Number(convenioItem.id) : null,
+        tipo_item: convenioItem?.tipo_item || '',
+        fecha_creacion_orden: document.getElementById('editAtenFechaOrden')?.value || '',
+        nro_orden: document.getElementById('editAtenNroOrden')?.value || ''
+    });
+    if (servicioInput) servicioInput.value = '';
+    if (precioInput) precioInput.value = '';
+    limpiarSeleccionConvenioAtencion();
+    ocultarSugerenciasServicioAtencion();
+    actualizarHintServicioAtencion(convenioItem
+        ? `Se agregó ${convenioItem.nombre || 'el item'} con la misma fecha de atención de esta orden.`
+        : 'El servicio se agregará a esta misma orden y fecha de atención.'
+    );
+    renderServiciosBorradorAtencion();
+}
+
+function construirGrupoEdicionAtencion(registroBase) {
+    const records = Array.isArray(window.cargueAtencionesDiaState.records)
+        ? window.cargueAtencionesDiaState.records
+        : [];
+    const orderKey = String(registroBase?.nro_orden || '');
+    const docKey = String(registroBase?.nro_identificacion || '');
+    const nameKey = String(registroBase?.nombre_paciente || '');
+
+    return records.filter(item => {
+        if (String(item?.nro_orden || '') !== orderKey) return false;
+        if (docKey && String(item?.nro_identificacion || '') === docKey) return true;
+        return !docKey && String(item?.nombre_paciente || '') === nameKey;
+    });
+}
+
+function cerrarEditarAtencion() {
+    document.getElementById('editarAtencionModal')?.classList.remove('active');
+    window.cargueAtencionesDiaState.draftAtencionRows = [];
+    window.cargueAtencionesDiaState.draftAtencionBase = null;
+    window.cargueAtencionesDiaState.draftAtencionMode = 'create';
+    window.cargueAtencionesDiaState.draftConvenioItems = [];
+    window.cargueAtencionesDiaState.draftConvenioLoadedKey = '';
+    window.cargueAtencionesDiaState.draftConvenioSelectedItemId = null;
+    ocultarSugerenciasServicioAtencion();
+    actualizarHintServicioAtencion();
+    setEditarAtencionMsg('');
+}
+
+function poblarFormularioAtencionGestionInformacion(registro = {}, mode = 'edit') {
+    const isCreate = mode === 'create';
+    document.getElementById('editarAtencionTitulo').textContent = isCreate ? 'Nueva Atencion Comercial' : 'Editar Paciente en Orden Cargada';
+    document.getElementById('editarAtencionId').value = registro.id || '';
+    document.getElementById('editarAtencionClienteId').value = registro.cliente_id || '';
+    document.getElementById('editarAtencionVendedorId').value = registro.vendedor_id || '';
+    document.getElementById('editAtenNroOrden').value = registro.nro_orden || '';
+    document.getElementById('editAtenFechaOrden').value = (registro.fecha_creacion_orden || '').slice(0, 10);
+    document.getElementById('editAtenFormaPago').value = registro.forma_pago || '';
+    document.getElementById('editAtenEstado').value = registro.estado_gestion || 'CARGADA';
+    document.getElementById('editAtenNroId').value = registro.nro_identificacion || '';
+    document.getElementById('editAtenNombrePaciente').value = registro.nombre_paciente || '';
+    document.getElementById('editAtenServicio').value = '';
+    document.getElementById('editAtenPrecio').value = '';
+    limpiarSeleccionConvenioAtencion();
+    ocultarSugerenciasServicioAtencion();
+    document.getElementById('editAtenNroFactura').value = registro.nro_factura || '';
+    document.getElementById('editAtenFechaFactura').value = registro.fecha_factura || '';
+    document.getElementById('editAtenAcuerdo').value = registro.acuerdo_comercial || '';
+    document.getElementById('editAtenEmpresaMision').value = registro.empresa_mision || '';
+    document.getElementById('editAtenSede').value = registro.sede || '';
+    document.getElementById('editAtenNombreVendedor').value = registro.nombre_vendedor || registro.vendedor_responsable || '';
+    document.getElementById('editAtenUsuarioCreacion').value = registro.usuario_creacion || '';
+    actualizarHintServicioAtencion(registro.cliente_id
+        ? 'Escribe para buscar entre los examenes y paquetes convenidos de este cliente. Al seleccionarlo, se completa el valor convenido.'
+        : 'Esta atención no tiene cliente relacionado para sugerir examenes o paquetes convenidos.'
+    );
+    setEditarAtencionMsg(isCreate
+        ? 'Completa los datos del paciente y agrega uno o varios servicios.'
+        : 'Se editaran todos los examenes o servicios de este paciente mientras siga en estado CARGADA.');
+    renderServiciosBorradorAtencion();
+}
+
+function abrirNuevaAtencionGestionInformacion() {
+    if (!canManageComercial('atenciones', 'create')) {
+        showError('No tienes permiso para crear atenciones comerciales.');
+        return;
+    }
+
+    const orderNumber = `ATN-${Date.now()}`;
+    window.cargueAtencionesDiaState.draftAtencionMode = 'create';
+    window.cargueAtencionesDiaState.draftAtencionBase = {
+        archivo_origen: 'REGISTRO_MANUAL_ATENCIONES'
+    };
+    window.cargueAtencionesDiaState.draftAtencionRows = [];
+    poblarFormularioAtencionGestionInformacion({
+        nro_orden: orderNumber,
+        fecha_creacion_orden: getTodayIsoDate(),
+        estado_gestion: 'CARGADA',
+        forma_pago: '',
+        precio: ''
+    }, 'create');
+    document.getElementById('editarAtencionModal')?.classList.add('active');
+}
+
+async function abrirEditarAtencionGestionInformacion(registroId) {
+    if (!canManageComercial('atenciones', 'update')) {
+        showError('No tienes permiso para editar atenciones comerciales.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/comercial/atenciones-dia/${registroId}`, { credentials: 'include' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || 'No se pudo cargar la atencion');
+        }
+
+        const registro = data.registro || {};
+        if (!registro.es_editable) {
+            showError('Solo se pueden editar atenciones en estado CARGADA.');
+            return;
+        }
+
+        const grupo = construirGrupoEdicionAtencion(registro);
+        window.cargueAtencionesDiaState.draftAtencionMode = 'edit';
+        window.cargueAtencionesDiaState.draftAtencionBase = registro;
+        window.cargueAtencionesDiaState.draftAtencionRows = (grupo.length ? grupo : [registro]).map(item => ({
+            id: item.id,
+            servicio: item.servicio || '',
+            precio: item.precio || 0,
+            archivo_origen: item.archivo_origen || registro.archivo_origen || '',
+            fecha_creacion_orden: item.fecha_creacion_orden || registro.fecha_creacion_orden || '',
+            nro_orden: item.nro_orden || registro.nro_orden || ''
+        }));
+        poblarFormularioAtencionGestionInformacion(registro, 'edit');
+        try {
+            await cargarConvenioServicioAtencion(true);
+        } catch (convenioError) {
+            console.error('Error cargando convenio para la orden editada:', convenioError);
+            actualizarHintServicioAtencion(convenioError.message || 'No se pudieron cargar los examenes o paquetes convenidos.', true);
+        }
+        document.getElementById('editarAtencionModal')?.classList.add('active');
+    } catch (error) {
+        console.error('Error cargando atencion para edicion:', error);
+        showError(error.message || 'No fue posible cargar la atencion.');
+    }
+}
+
+async function guardarEdicionAtencion() {
+    const pendingService = document.getElementById('editAtenServicio')?.value?.trim() || '';
+    if (pendingService) {
+        agregarServicioBorradorAtencion();
+        if ((document.getElementById('editAtenServicio')?.value?.trim() || '') !== '') {
+            setEditarAtencionMsg('Revisa el servicio pendiente antes de guardar.', true);
+            return;
+        }
+    }
+
+    const isCreate = window.cargueAtencionesDiaState.draftAtencionMode === 'create';
+    const rows = Array.isArray(window.cargueAtencionesDiaState.draftAtencionRows)
+        ? window.cargueAtencionesDiaState.draftAtencionRows
+        : [];
+    if (isCreate && !canManageComercial('atenciones', 'create')) {
+        showError('No tienes permiso para crear atenciones comerciales.');
+        return;
+    }
+    if (!isCreate && !canManageComercial('atenciones', 'update')) {
+        showError('No tienes permiso para editar atenciones comerciales.');
+        return;
+    }
+    if (!rows.length) {
+        setEditarAtencionMsg('Agrega al menos un examen o servicio antes de guardar.', true);
+        return;
+    }
+    if (rows.some(row => !String(row.servicio || '').trim())) {
+        setEditarAtencionMsg('Todos los servicios deben tener nombre.', true);
+        return;
+    }
+    const serviciosDuplicados = rows.some((row, index) =>
+        existeServicioDuplicadoAtencion(rows, row.servicio, index)
+    );
+    if (serviciosDuplicados) {
+        setEditarAtencionMsg('No puedes guardar servicios repetidos dentro de la misma orden.', true);
+        return;
+    }
+    if (rows.some(row => row.precio === '' || Number(row.precio) < 0)) {
+        setEditarAtencionMsg('Todos los servicios deben tener un valor valido.', true);
+        return;
+    }
+
+    const draftBase = window.cargueAtencionesDiaState.draftAtencionBase || {};
+    const basePayload = {
+        cliente_id: document.getElementById('editarAtencionClienteId')?.value || '',
+        vendedor_id: document.getElementById('editarAtencionVendedorId')?.value || '',
+        nro_orden: document.getElementById('editAtenNroOrden')?.value?.trim() || '',
+        fecha_creacion_orden: document.getElementById('editAtenFechaOrden')?.value || '',
+        forma_pago: document.getElementById('editAtenFormaPago')?.value?.trim() || '',
+        estado_orden: draftBase.estado_orden || '',
+        nro_identificacion: document.getElementById('editAtenNroId')?.value?.trim() || '',
+        nombre_paciente: document.getElementById('editAtenNombrePaciente')?.value?.trim() || '',
+        nro_factura: document.getElementById('editAtenNroFactura')?.value?.trim() || '',
+        fecha_factura: document.getElementById('editAtenFechaFactura')?.value || '',
+        acuerdo_comercial: document.getElementById('editAtenAcuerdo')?.value?.trim() || '',
+        empresa_mision: document.getElementById('editAtenEmpresaMision')?.value?.trim() || '',
+        sede: document.getElementById('editAtenSede')?.value?.trim() || '',
+        nombre_vendedor: document.getElementById('editAtenNombreVendedor')?.value?.trim() || '',
+        usuario_creacion: document.getElementById('editAtenUsuarioCreacion')?.value?.trim() || '',
+        archivo_origen: draftBase.archivo_origen || 'REGISTRO_MANUAL_ATENCIONES',
+        estado_gestion: 'CARGADA'
+    };
+
+    setEditarAtencionMsg('Guardando...');
+
+    try {
+        if (isCreate) {
+            for (const row of rows) {
+                const response = await fetch('/api/comercial/atenciones-dia', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        ...basePayload,
+                        nro_orden: row.nro_orden || basePayload.nro_orden,
+                        fecha_creacion_orden: row.fecha_creacion_orden || basePayload.fecha_creacion_orden,
+                        servicio: String(row.servicio || '').trim(),
+                        precio: row.precio
+                    })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    setEditarAtencionMsg(data.error || 'No se pudo guardar la atencion.', true);
+                    return;
+                }
+            }
+        } else {
+            const existingRows = rows.filter(row => row.id);
+            const groupRows = construirGrupoEdicionAtencion(draftBase);
+            const originalIds = new Set(groupRows.map(item => Number(item.id)));
+            const keptIds = new Set(existingRows.map(item => Number(item.id)));
+
+            for (const row of existingRows) {
+                const response = await fetch(`/api/comercial/atenciones-dia/${row.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        ...basePayload,
+                        servicio: String(row.servicio || '').trim(),
+                        precio: row.precio
+                    })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    setEditarAtencionMsg(data.error || 'No se pudo actualizar la atencion.', true);
+                    return;
+                }
+            }
+
+            for (const row of rows.filter(row => !row.id)) {
+                const response = await fetch('/api/comercial/atenciones-dia', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        ...basePayload,
+                        nro_orden: row.nro_orden || basePayload.nro_orden,
+                        fecha_creacion_orden: row.fecha_creacion_orden || basePayload.fecha_creacion_orden,
+                        servicio: String(row.servicio || '').trim(),
+                        precio: row.precio
+                    })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    setEditarAtencionMsg(data.error || 'No se pudo agregar el servicio.', true);
+                    return;
+                }
+            }
+
+            for (const originalId of Array.from(originalIds)) {
+                if (keptIds.has(originalId)) continue;
+                const response = await fetch(`/api/comercial/atenciones-dia/${originalId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    setEditarAtencionMsg(data.error || 'No se pudo eliminar un servicio de la atencion cargada.', true);
+                    return;
+                }
+            }
+        }
+
+        cerrarEditarAtencion();
+        showSuccess(isCreate ? 'Atencion creada en estado CARGADA.' : 'Atencion CARGADA actualizada.');
+        if (hasActiveFiltersCargueAtencionesDia()) {
+            await consultarAtencionesDiaCargadas(window.cargueAtencionesDiaState.page || 1);
+        }
+    } catch (error) {
+        console.error('Error guardando atencion de gestion informacion:', error);
+        setEditarAtencionMsg(error.message || 'Error de conexion al guardar la atencion.', true);
+    }
+}
+
+async function eliminarAtencionGestionInformacion(registroId) {
+    if (!canManageComercial('atenciones', 'delete')) {
+        showError('No tienes permiso para eliminar atenciones comerciales.');
+        return;
+    }
+    const registro = (window.cargueAtencionesDiaState.records || []).find(item => Number(item.id) === Number(registroId));
+    if (registro && !(registro.es_editable === true || String(registro.estado_gestion || '').toUpperCase() === 'CARGADA')) {
+        showError('Solo se pueden eliminar atenciones en estado CARGADA.');
+        return;
+    }
+    if (!confirm('Desea eliminar esta atencion?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/comercial/atenciones-dia/${registroId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || 'No se pudo eliminar la atencion');
+        }
+
+        showSuccess('Atencion eliminada.');
+        if (hasActiveFiltersCargueAtencionesDia()) {
+            await consultarAtencionesDiaCargadas(window.cargueAtencionesDiaState.page || 1);
+        } else {
+            resetConsultaAtencionesDia('Ingresa uno o varios criterios para consultar atenciones cargadas.');
+        }
+    } catch (error) {
+        console.error('Error eliminando atencion de gestion informacion:', error);
+        showError(error.message || 'Error de conexion al eliminar la atencion.');
     }
 }
 
@@ -4010,53 +4778,572 @@ async function subirArchivoAtencionesDia(event) {
     const input = document.getElementById('cargueAtencionesDiaArchivo');
     const resultado = document.getElementById('cargueAtencionesDiaResultado');
     const submitButton = document.getElementById('cargueAtencionesDiaSubmit');
-    const archivo = input?.files?.[0];
+    const periodoDesde = document.getElementById('cargueAtencionesDiaPeriodoDesde')?.value || '';
+    const periodoHasta = document.getElementById('cargueAtencionesDiaPeriodoHasta')?.value || '';
+    const archivos = Array.from(input?.files || []);
 
-    if (!archivo) {
-        showError('Debes seleccionar un archivo .xlsx antes de cargar.');
+    if (!archivos.length) {
+        showError('Debes seleccionar al menos un archivo .xlsx antes de cargar.');
+        return;
+    }
+    if (!periodoDesde || !periodoHasta) {
+        showError('Debes indicar el periodo inicial del cargue antes de subir los archivos.');
+        return;
+    }
+    if (periodoDesde > periodoHasta) {
+        showError('El periodo inicial no puede tener una fecha final menor que la inicial.');
         return;
     }
 
-    const formData = new FormData();
-    formData.append('archivo', archivo);
-
     if (submitButton) submitButton.disabled = true;
-    if (resultado) resultado.textContent = 'Cargando archivo, por favor espera...';
+    if (resultado) resultado.textContent = `Procesando ${archivos.length} archivo(s)...`;
+
+    const resumenLineas = [];
+    let totalImportadas = 0, totalDuplicadas = 0, totalErrores = 0;
+
+    for (let idx = 0; idx < archivos.length; idx++) {
+        const archivo = archivos[idx];
+        if (resultado) resultado.textContent = `Procesando archivo ${idx + 1} de ${archivos.length}: ${archivo.name}...`;
+
+        const formData = new FormData();
+        formData.append('archivo', archivo);
+        formData.append('periodo_desde', periodoDesde);
+        formData.append('periodo_hasta', periodoHasta);
+
+        try {
+            const response = await fetch('/api/comercial/cargue-atenciones', {
+                method: 'POST',
+                credentials: 'include',
+                body: formData
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                resumenLineas.push(`❌ ${archivo.name}: ${data.error || 'Error desconocido'}`);
+                totalErrores++;
+                continue;
+            }
+            const imp  = Number(data.importadas || 0);
+            const dup  = Number(data.duplicadas || 0);
+            const err  = Number(data.errores || 0);
+            totalImportadas += imp;
+            totalDuplicadas += dup;
+            totalErrores    += err;
+            resumenLineas.push(`✔ ${archivo.name}: ${imp} importadas · ${dup} duplicadas · ${err} con error`);
+        } catch (error) {
+            resumenLineas.push(`❌ ${archivo.name}: ${error.message || 'Error de conexión'}`);
+            totalErrores++;
+        }
+    }
+
+    if (resultado) resultado.innerHTML =
+        resumenLineas.join('<br>') +
+        `<br><strong>Total: ${totalImportadas} importadas · ${totalDuplicadas} duplicadas · ${totalErrores} con error</strong>`;
+
+    if (input) input.value = '';
+    const periodoDesdeInput = document.getElementById('cargueAtencionesDiaPeriodoDesde');
+    const periodoHastaInput = document.getElementById('cargueAtencionesDiaPeriodoHasta');
+    if (periodoDesdeInput) periodoDesdeInput.value = '';
+    if (periodoHastaInput) periodoHastaInput.value = '';
+    showSuccess(`Cargue completado: ${archivos.length} archivo(s) procesado(s).`);
+    window.comercialPeriodosCargueState.loaded = false;
+    await cargarHistorialCarguesAtenciones();
+    await actualizarSelectoresPeriodosComercial(true);
+    if (hasActiveFiltersCargueAtencionesDia()) {
+        await consultarAtencionesDiaCargadas(1);
+    } else {
+        resetConsultaAtencionesDia('Ingresa uno o varios criterios para consultar atenciones cargadas.');
+    }
+
+    if (submitButton) submitButton.disabled = false;
+}
+
+function setAnticipoProgramadoMsg(message = '', isError = false) {
+    const node = document.getElementById('anticipoProgramadoMsg');
+    if (!node) return;
+    node.textContent = message;
+    node.style.color = isError ? '#c0392b' : '#555';
+}
+
+function limpiarSeleccionEmpresaAnticipo(preserveText = true) {
+    const empresaInput = document.getElementById('anticipoEmpresaInput');
+    const clienteIdInput = document.getElementById('anticipoClienteId');
+    const condicionInput = document.getElementById('anticipoCondicionCliente');
+    if (clienteIdInput) clienteIdInput.value = '';
+    if (empresaInput) {
+        empresaInput.dataset.selectedLabel = '';
+        if (!preserveText) empresaInput.value = '';
+    }
+    if (condicionInput) condicionInput.value = '';
+    window.anticipoProgramadoState.clienteId = '';
+    window.anticipoProgramadoState.cliente = null;
+    window.anticipoProgramadoState.convenioItems = [];
+    window.anticipoProgramadoState.convenioLoadedKey = '';
+    window.anticipoProgramadoState.selectedItemId = null;
+    actualizarHintItemAnticipo('Selecciona primero la empresa y la fecha para consultar el convenio vigente.');
+}
+
+function ocultarSugerenciasEmpresaAnticipo() {
+    const container = document.getElementById('anticipoEmpresaSuggestions');
+    if (!container) return;
+    container.style.display = 'none';
+    container.innerHTML = '';
+}
+
+function ocultarSugerenciasItemAnticipo() {
+    const container = document.getElementById('anticipoItemSuggestions');
+    if (!container) return;
+    container.style.display = 'none';
+    container.innerHTML = '';
+}
+
+function actualizarHintItemAnticipo(message = '', isError = false) {
+    const hint = document.getElementById('anticipoItemHint');
+    if (!hint) return;
+    hint.textContent = message || 'Selecciona primero la empresa y la fecha para consultar el convenio vigente.';
+    hint.style.color = isError ? '#c0392b' : '#666';
+}
+
+function obtenerClientesAnticipoDisponibles() {
+    const clientes = Array.isArray(clientesComercialesData) ? clientesComercialesData : [];
+    return clientes.filter(cliente => {
+        const condicion = String(cliente?.condicion_comercial || '').toUpperCase();
+        const estado = obtenerEstadoCliente(cliente);
+        return (condicion === 'EFECTIVO' || condicion === 'MIXTO') && estado !== 'INACTIVO';
+    });
+}
+
+function renderSugerenciasEmpresaAnticipo(clientes, query = '') {
+    const container = document.getElementById('anticipoEmpresaSuggestions');
+    if (!container) return;
+
+    if (!Array.isArray(clientes) || !clientes.length) {
+        container.innerHTML = `<div class="cargue-atenciones-suggestion-empty">No se encontraron empresas para "${escapeHtml(query)}".</div>`;
+        container.style.display = 'block';
+        return;
+    }
+
+    container.innerHTML = clientes.slice(0, 12).map(cliente => {
+        const label = cliente.razon_social || cliente.nombre_comercial || cliente.nit || 'Cliente sin nombre';
+        const secondary = [
+            cliente.nombre_comercial,
+            cliente.nit,
+            cliente.condicion_comercial
+        ].filter(Boolean).join(' | ');
+        return `
+            <button
+                type="button"
+                class="cargue-atenciones-suggestion-item"
+                data-cliente-id="${Number(cliente.id)}">
+                <strong>${escapeHtml(label)}</strong>
+                ${secondary ? `<span>${escapeHtml(secondary)}</span>` : ''}
+            </button>
+        `;
+    }).join('');
+    container.style.display = 'block';
+}
+
+async function buscarEmpresasAnticipoProgramado(query = '') {
+    const text = String(query || '').trim();
+    if (!text) {
+        ocultarSugerenciasEmpresaAnticipo();
+        return;
+    }
+
+    await ensureClientesComercialesLoaded();
+    const normalizedQuery = normalizarBusquedaBasica(text);
+    const sugerencias = obtenerClientesAnticipoDisponibles().filter(cliente => {
+        const values = [
+            cliente?.razon_social || '',
+            cliente?.nombre_comercial || '',
+            cliente?.nit || ''
+        ];
+        return values.some(value => normalizarBusquedaBasica(value).includes(normalizedQuery));
+    });
+    renderSugerenciasEmpresaAnticipo(sugerencias, text);
+}
+
+function seleccionarEmpresaAnticipo(clienteId) {
+    const cliente = obtenerClientesAnticipoDisponibles().find(item => Number(item.id) === Number(clienteId));
+    if (!cliente) return;
+
+    const label = cliente.razon_social || cliente.nombre_comercial || cliente.nit || '';
+    const empresaInput = document.getElementById('anticipoEmpresaInput');
+    const clienteIdInput = document.getElementById('anticipoClienteId');
+    const condicionInput = document.getElementById('anticipoCondicionCliente');
+    if (empresaInput) {
+        empresaInput.value = label;
+        empresaInput.dataset.selectedLabel = label;
+    }
+    if (clienteIdInput) clienteIdInput.value = String(cliente.id);
+    if (condicionInput) condicionInput.value = cliente.condicion_comercial || '';
+
+    window.anticipoProgramadoState.clienteId = String(cliente.id);
+    window.anticipoProgramadoState.cliente = cliente;
+    window.anticipoProgramadoState.convenioItems = [];
+    window.anticipoProgramadoState.convenioLoadedKey = '';
+    window.anticipoProgramadoState.selectedItemId = null;
+    ocultarSugerenciasEmpresaAnticipo();
+    actualizarHintItemAnticipo('Empresa seleccionada. Escribe el examen o paquete para buscar entre los items convenidos.');
+    cargarConvenioAnticipoProgramado(true).catch(error => {
+        console.error('Error cargando convenio del anticipo:', error);
+        actualizarHintItemAnticipo(error.message || 'No se pudieron cargar los items convenidos del cliente.', true);
+    });
+}
+
+async function cargarConvenioAnticipoProgramado(forceReload = false) {
+    const clienteId = window.anticipoProgramadoState.clienteId || document.getElementById('anticipoClienteId')?.value || '';
+    const fechaAtencion = document.getElementById('anticipoFechaAtencion')?.value || '';
+    if (!clienteId) {
+        window.anticipoProgramadoState.convenioItems = [];
+        window.anticipoProgramadoState.convenioLoadedKey = '';
+        actualizarHintItemAnticipo('Selecciona primero la empresa y la fecha para consultar el convenio vigente.');
+        return [];
+    }
+    if (!fechaAtencion) {
+        window.anticipoProgramadoState.convenioItems = [];
+        window.anticipoProgramadoState.convenioLoadedKey = '';
+        actualizarHintItemAnticipo('Indica la fecha de atencion para cargar el convenio vigente del cliente.');
+        return [];
+    }
+
+    const cacheKey = `${clienteId}|${fechaAtencion}`;
+    if (!forceReload && cacheKey === window.anticipoProgramadoState.convenioLoadedKey) {
+        return window.anticipoProgramadoState.convenioItems || [];
+    }
+
+    const params = new URLSearchParams({ fecha_atencion: fechaAtencion });
+    const response = await fetch(`/api/comercial/clientes/${clienteId}/convenio-items?${params.toString()}`, {
+        credentials: 'include'
+    });
+    const data = await response.json().catch(() => ([]));
+    if (!response.ok) {
+        throw new Error(data.error || 'No se pudieron cargar los items convenidos del cliente.');
+    }
+
+    window.anticipoProgramadoState.convenioItems = Array.isArray(data) ? data : [];
+    window.anticipoProgramadoState.convenioLoadedKey = cacheKey;
+    window.anticipoProgramadoState.selectedItemId = null;
+    actualizarHintItemAnticipo(
+        window.anticipoProgramadoState.convenioItems.length
+            ? 'Escribe para buscar entre los examenes y paquetes convenidos. Al seleccionarlo se carga el valor negociado.'
+            : 'Este cliente no tiene examenes o paquetes convenidos vigentes para la fecha seleccionada.'
+    );
+    return window.anticipoProgramadoState.convenioItems;
+}
+
+function seleccionarItemAnticipo(itemId) {
+    const item = (window.anticipoProgramadoState.convenioItems || []).find(entry => Number(entry.id) === Number(itemId));
+    if (!item) return;
+
+    const itemInput = document.getElementById('anticipoItemInput');
+    const valorInput = document.getElementById('anticipoItemValor');
+    if (itemInput) itemInput.value = item.nombre || '';
+    if (valorInput) valorInput.value = Number(item.valor_unitario || 0);
+    window.anticipoProgramadoState.selectedItemId = Number(item.id);
+    actualizarHintItemAnticipo(`Seleccionado: ${item.nombre || 'Item'} con valor ${formatCurrency(item.valor_unitario || 0)}.`);
+    ocultarSugerenciasItemAnticipo();
+}
+
+function renderSugerenciasItemAnticipo(query = '') {
+    const container = document.getElementById('anticipoItemSuggestions');
+    if (!container) return;
+
+    const text = normalizarBusquedaBasica(query);
+    const items = Array.isArray(window.anticipoProgramadoState.convenioItems)
+        ? window.anticipoProgramadoState.convenioItems
+        : [];
+
+    const filtered = items.filter(item => {
+        if (!text) return true;
+        const haystack = [
+            item?.nombre || '',
+            item?.codigo || '',
+            item?.tipo_item || '',
+            item?.clasificacion_resumen || '',
+            ...(Array.isArray(item?.componentes) ? item.componentes : [])
+        ].map(normalizarBusquedaBasica).join(' ');
+        return haystack.includes(text);
+    });
+
+    if (!filtered.length) {
+        container.innerHTML = `<div class="cargue-atenciones-suggestion-empty">No hay coincidencias para "${escapeHtml(query)}".</div>`;
+        container.style.display = 'block';
+        return;
+    }
+
+    container.innerHTML = filtered.slice(0, 12).map(item => `
+        <button type="button" class="cargue-atenciones-suggestion-item" data-item-id="${Number(item.id)}">
+            <strong>${escapeHtml(item.nombre || 'Item sin nombre')}</strong>
+            <span>${escapeHtml([item.tipo_item, item.clasificacion_resumen].filter(Boolean).join(' | '))}</span>
+            <span>${escapeHtml(`Valor: ${formatCurrency(item.valor_unitario || 0)}`)}</span>
+            ${item.tipo_item === 'PAQUETE' && Array.isArray(item.componentes) && item.componentes.length
+                ? `<span>${escapeHtml(`Incluye: ${item.componentes.join(', ')}`)}</span>`
+                : ''}
+        </button>
+    `).join('');
+    container.style.display = 'block';
+}
+
+function programarBusquedaItemAnticipo() {
+    const input = document.getElementById('anticipoItemInput');
+    if (!input) return;
+
+    const currentValue = input.value.trim();
+    const valorInput = document.getElementById('anticipoItemValor');
+    window.clearTimeout(window.anticipoProgramadoState.itemSearchTimer);
+    if (!currentValue) {
+        window.anticipoProgramadoState.selectedItemId = null;
+        if (valorInput) valorInput.value = '';
+        ocultarSugerenciasItemAnticipo();
+        return;
+    }
+
+    window.anticipoProgramadoState.selectedItemId = null;
+    if (valorInput) valorInput.value = '';
+    window.anticipoProgramadoState.itemSearchTimer = window.setTimeout(async () => {
+        try {
+            await cargarConvenioAnticipoProgramado();
+            renderSugerenciasItemAnticipo(currentValue);
+        } catch (error) {
+            console.error('Error buscando items de anticipo:', error);
+            actualizarHintItemAnticipo(error.message || 'No se pudieron consultar los items convenidos.', true);
+            ocultarSugerenciasItemAnticipo();
+        }
+    }, 160);
+}
+
+function existeDetalleDuplicadoAnticipo(pacienteDocumento, itemId) {
+    return (window.anticipoProgramadoState.draftDetalles || []).some(detalle =>
+        String(detalle.paciente_documento || '').trim().toUpperCase() === String(pacienteDocumento || '').trim().toUpperCase()
+        && Number(detalle.catalogo_item_id) === Number(itemId)
+    );
+}
+
+function renderDetalleAnticipoProgramado() {
+    const tbody = document.getElementById('anticipoDetalleTable');
+    const totalNode = document.getElementById('anticipoTotalResumen');
+    const valorPagoInput = document.getElementById('anticipoValorPago');
+    if (!tbody || !totalNode) return;
+
+    const detalles = Array.isArray(window.anticipoProgramadoState.draftDetalles)
+        ? window.anticipoProgramadoState.draftDetalles
+        : [];
+
+    if (!detalles.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="loading">Agrega uno o mÃ¡s pacientes con sus examenes o paquetes convenidos.</td></tr>';
+        totalNode.textContent = 'Total programado: $0';
+        if (valorPagoInput && !window.anticipoProgramadoState.paymentValueTouched) {
+            valorPagoInput.value = '';
+        }
+        return;
+    }
+
+    let total = 0;
+    tbody.innerHTML = detalles.map((detalle, index) => {
+        total += Number(detalle.valor_unitario || 0);
+        return `
+            <tr>
+                <td>${escapeHtml(detalle.paciente_documento || 'N/A')}</td>
+                <td>${escapeHtml(detalle.paciente_nombre || 'N/A')}</td>
+                <td>${escapeHtml(detalle.nombre || 'N/A')}</td>
+                <td>${escapeHtml(detalle.tipo_item || 'N/A')}</td>
+                <td>${formatCurrency(detalle.valor_unitario || 0)}</td>
+                <td><button type="button" class="action-btn action-btn-delete" onclick="eliminarDetalleAnticipoProgramado(${index})">Quitar</button></td>
+            </tr>
+        `;
+    }).join('');
+    totalNode.textContent = `Total programado: ${formatCurrency(total)}`;
+    if (valorPagoInput && (!window.anticipoProgramadoState.paymentValueTouched || !valorPagoInput.value)) {
+        valorPagoInput.value = total > 0 ? String(total) : '';
+    }
+}
+
+function limpiarFormularioDetalleAnticipo() {
+    const ids = ['anticipoPacienteDocumento', 'anticipoPacienteNombre', 'anticipoItemInput', 'anticipoItemValor'];
+    ids.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.value = '';
+    });
+    window.anticipoProgramadoState.selectedItemId = null;
+    ocultarSugerenciasItemAnticipo();
+}
+
+function actualizarAyudaPagoAnticipo() {
+    const medioPago = document.getElementById('anticipoMedioPago')?.value || 'EFECTIVO';
+    const canalSelect = document.getElementById('anticipoCanalPago');
+    const hint = document.getElementById('anticipoComprobanteHint');
+    if (canalSelect) {
+        canalSelect.disabled = medioPago !== 'TRANSFERENCIA';
+        if (medioPago !== 'TRANSFERENCIA') {
+            canalSelect.value = '';
+        }
+    }
+    if (hint) {
+        hint.textContent = medioPago === 'TRANSFERENCIA'
+            ? 'Obligatorio cuando el pago anticipado se registra por transferencia.'
+            : 'Opcional. Puedes adjuntar soporte si deseas dejar evidencia adicional.';
+    }
+}
+
+async function abrirProgramarAnticipoModal() {
+    if (!canManageComercial('atenciones', 'create') && !canManageComercial('documentos', 'create') && !canManageComercial('pagos', 'create')) {
+        showError('No tienes permiso para programar anticipos comerciales.');
+        return;
+    }
+    try {
+        await ensureClientesComercialesLoaded();
+    } catch (error) {
+        console.error('Error cargando clientes para anticipos:', error);
+    }
+
+    window.anticipoProgramadoState = {
+        empresaSearchTimer: null,
+        itemSearchTimer: null,
+        clienteId: '',
+        cliente: null,
+        convenioItems: [],
+        convenioLoadedKey: '',
+        selectedItemId: null,
+        draftDetalles: [],
+        paymentValueTouched: false
+    };
+
+    document.getElementById('programarAnticipoForm')?.reset();
+    document.getElementById('anticipoFechaAtencion').value = getTodayIsoDate();
+    document.getElementById('anticipoFechaPago').value = getTodayIsoDate();
+    setAnticipoProgramadoMsg('');
+    actualizarAyudaPagoAnticipo();
+    renderDetalleAnticipoProgramado();
+    actualizarHintItemAnticipo('Selecciona primero la empresa y la fecha para consultar el convenio vigente.');
+    document.getElementById('programarAnticipoModal')?.classList.add('active');
+}
+
+function cerrarProgramarAnticipoModal() {
+    document.getElementById('programarAnticipoModal')?.classList.remove('active');
+    ocultarSugerenciasEmpresaAnticipo();
+    ocultarSugerenciasItemAnticipo();
+    setAnticipoProgramadoMsg('');
+}
+
+function agregarDetalleAnticipoProgramado() {
+    const pacienteDocumento = document.getElementById('anticipoPacienteDocumento')?.value.trim() || '';
+    const pacienteNombre = document.getElementById('anticipoPacienteNombre')?.value.trim() || '';
+    const itemId = Number(window.anticipoProgramadoState.selectedItemId || 0);
+    if (!window.anticipoProgramadoState.clienteId) {
+        showError('Selecciona primero la empresa para programar el anticipo.');
+        return;
+    }
+    if (!document.getElementById('anticipoFechaAtencion')?.value) {
+        showError('Debes registrar la fecha de atencion antes de agregar detalles.');
+        return;
+    }
+    if (!pacienteDocumento || !pacienteNombre) {
+        showError('Debes registrar ID y nombre del paciente antes de agregar el detalle.');
+        return;
+    }
+    if (!itemId) {
+        showError('Selecciona un examen o paquete convenido de la ayuda inteligente.');
+        return;
+    }
+    if (existeDetalleDuplicadoAnticipo(pacienteDocumento, itemId)) {
+        showError('Ese examen o paquete ya fue agregado para este paciente.');
+        return;
+    }
+
+    const item = (window.anticipoProgramadoState.convenioItems || []).find(entry => Number(entry.id) === itemId);
+    if (!item) {
+        showError('El item seleccionado ya no estÃ¡ disponible en el convenio del cliente.');
+        return;
+    }
+
+    window.anticipoProgramadoState.draftDetalles.push({
+        catalogo_item_id: itemId,
+        paciente_documento: pacienteDocumento,
+        paciente_nombre: pacienteNombre,
+        nombre: item.nombre,
+        tipo_item: item.tipo_item,
+        valor_unitario: Number(item.valor_unitario || 0)
+    });
+    renderDetalleAnticipoProgramado();
+    limpiarFormularioDetalleAnticipo();
+}
+
+function eliminarDetalleAnticipoProgramado(index) {
+    window.anticipoProgramadoState.draftDetalles.splice(index, 1);
+    renderDetalleAnticipoProgramado();
+}
+
+async function guardarProgramarAnticipo(event) {
+    event.preventDefault();
+
+    const clienteId = window.anticipoProgramadoState.clienteId || document.getElementById('anticipoClienteId')?.value || '';
+    const fechaAtencion = document.getElementById('anticipoFechaAtencion')?.value || '';
+    const fechaPago = document.getElementById('anticipoFechaPago')?.value || '';
+    const valorPago = document.getElementById('anticipoValorPago')?.value || '';
+    const medioPago = document.getElementById('anticipoMedioPago')?.value || 'EFECTIVO';
+    const comprobante = document.getElementById('anticipoComprobantePago')?.files?.[0];
+
+    if (!clienteId) {
+        showError('Selecciona la empresa a la que se le programarÃ¡ el anticipo.');
+        return;
+    }
+    if (!fechaAtencion) {
+        showError('La fecha de atencion es obligatoria.');
+        return;
+    }
+    if (!(window.anticipoProgramadoState.draftDetalles || []).length) {
+        showError('Agrega al menos un paciente con su examen o paquete antes de guardar.');
+        return;
+    }
+    if (!fechaPago || !valorPago) {
+        showError('Debes registrar la fecha y el valor del pago anticipado.');
+        return;
+    }
+    if (medioPago === 'TRANSFERENCIA' && !comprobante) {
+        showError('Adjunta el soporte del pago cuando el anticipo se registra por transferencia.');
+        return;
+    }
+
+    setAnticipoProgramadoMsg('Guardando anticipo...');
 
     try {
-        const response = await fetch('/api/comercial/cargue-atenciones', {
+        const formData = new FormData();
+        formData.append('fecha_atencion', fechaAtencion);
+        formData.append('fecha_pago', fechaPago);
+        formData.append('valor_pago', valorPago);
+        formData.append('medio_pago', medioPago);
+        formData.append('canal_transferencia', document.getElementById('anticipoCanalPago')?.value || '');
+        formData.append('observaciones', document.getElementById('anticipoObservaciones')?.value.trim() || '');
+        formData.append('detalles', JSON.stringify(
+            (window.anticipoProgramadoState.draftDetalles || []).map(detalle => ({
+                catalogo_item_id: detalle.catalogo_item_id,
+                paciente_documento: detalle.paciente_documento,
+                paciente_nombre: detalle.paciente_nombre
+            }))
+        ));
+        if (comprobante) {
+            formData.append('comprobante_pago', comprobante);
+        }
+
+        const response = await fetch(`/api/comercial/clientes/${clienteId}/anticipos-programados`, {
             method: 'POST',
             credentials: 'include',
             body: formData
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-            throw new Error(data.error || 'No se pudo completar el cargue');
+            setAnticipoProgramadoMsg(data.error || 'No fue posible programar el anticipo.', true);
+            return;
         }
 
-        const partes = [
-            `${Number(data.importadas || 0)} importadas`,
-            `${Number(data.duplicadas || 0)} duplicadas`,
-            `${Number(data.errores || 0)} con error`,
-            `${Number(data.relacionadas_cliente || 0)} relacionadas con cliente`,
-            `${Number(data.relacionadas_vendedor || 0)} relacionadas con vendedor`
-        ];
-        if (resultado) resultado.textContent = `Archivo ${data.nombre_archivo || archivo.name}: ${partes.join(' · ')}`;
-
-        if (input) input.value = '';
-        showSuccess('Cargue de atenciones completado.');
-        await cargarHistorialCarguesAtenciones();
-        if (hasActiveFiltersCargueAtencionesDia()) {
-            await consultarAtencionesDiaCargadas(1);
-        } else {
-            resetConsultaAtencionesDia('Ingresa uno o varios criterios para consultar atenciones cargadas.');
+        cerrarProgramarAnticipoModal();
+        showSuccess(`Anticipo programado. Atencion ${data.nro_atencion || ''}`.trim());
+        if (window.cargueAtencionesDiaState.activeSection === 'consulta' && hasActiveFiltersCargueAtencionesDia()) {
+            await consultarAtencionesDiaCargadas(window.cargueAtencionesDiaState.page || 1);
         }
     } catch (error) {
-        console.error('Error cargando archivo de atenciones:', error);
-        if (resultado) resultado.textContent = error.message || 'No se pudo completar el cargue.';
-        showError(error.message || 'No se pudo completar el cargue.');
-    } finally {
-        if (submitButton) submitButton.disabled = false;
+        console.error('Error programando anticipo comercial:', error);
+        setAnticipoProgramadoMsg(error.message || 'Error de conexion al programar el anticipo.', true);
     }
 }
 
@@ -4069,6 +5356,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const acuerdoInput = document.getElementById('cargueAtencionesDiaFiltroAcuerdo');
     const suggestionsContainer = document.getElementById('cargueAtencionesDiaClienteSuggestions');
+    const editServicioInput = document.getElementById('editAtenServicio');
+    const editServicioSuggestions = document.getElementById('editAtenServicioSuggestions');
+    const editFechaOrdenInput = document.getElementById('editAtenFechaOrden');
     if (acuerdoInput && !acuerdoInput.dataset.boundClienteSuggestions) {
         acuerdoInput.addEventListener('input', programarBusquedaClientesCargueAtenciones);
         acuerdoInput.addEventListener('focus', () => {
@@ -4093,6 +5383,202 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
         suggestionsContainer.dataset.boundClienteSuggestions = 'true';
+    }
+    if (editServicioInput && !editServicioInput.dataset.boundAtencionConvenioSuggestions) {
+        editServicioInput.addEventListener('input', programarBusquedaServicioAtencion);
+        editServicioInput.addEventListener('focus', () => {
+            if (editServicioInput.value.trim()) {
+                programarBusquedaServicioAtencion();
+            }
+        });
+        editServicioInput.addEventListener('blur', () => {
+            window.setTimeout(ocultarSugerenciasServicioAtencion, 150);
+        });
+        editServicioInput.dataset.boundAtencionConvenioSuggestions = 'true';
+    }
+    if (editServicioSuggestions && !editServicioSuggestions.dataset.boundAtencionConvenioSuggestions) {
+        editServicioSuggestions.addEventListener('mousedown', event => {
+            const button = event.target.closest('.cargue-atenciones-suggestion-item');
+            if (!button) return;
+            seleccionarServicioConvenioAtencion(button.dataset.itemId);
+        });
+        editServicioSuggestions.dataset.boundAtencionConvenioSuggestions = 'true';
+    }
+    if (editFechaOrdenInput && !editFechaOrdenInput.dataset.boundAtencionConvenioDate) {
+        editFechaOrdenInput.addEventListener('change', async () => {
+            try {
+                await cargarConvenioServicioAtencion(true);
+                const currentQuery = document.getElementById('editAtenServicio')?.value?.trim() || '';
+                if (currentQuery) {
+                    renderSugerenciasServicioAtencion(currentQuery);
+                }
+            } catch (error) {
+                console.error('Error actualizando convenio por fecha de orden:', error);
+                actualizarHintServicioAtencion(error.message || 'No se pudieron actualizar los examenes o paquetes convenidos.', true);
+            }
+        });
+        editFechaOrdenInput.dataset.boundAtencionConvenioDate = 'true';
+    }
+
+    const prefEmpresaInput = document.getElementById('consultaPrefEmpresa');
+    const prefSuggestionsContainer = document.getElementById('consultaPrefEmpresaSuggestions');
+    if (prefEmpresaInput && !prefEmpresaInput.dataset.boundPrefEmpresaSuggestions) {
+        prefEmpresaInput.addEventListener('focus', () => {
+            if (prefEmpresaInput.value.trim()) {
+                buscarEmpresasPrefacturas(prefEmpresaInput.value);
+            }
+        });
+        prefEmpresaInput.addEventListener('blur', () => {
+            window.setTimeout(ocultarSugerenciasEmpresasPrefacturas, 150);
+        });
+        prefEmpresaInput.dataset.boundPrefEmpresaSuggestions = 'true';
+    }
+    if (prefSuggestionsContainer && !prefSuggestionsContainer.dataset.boundPrefEmpresaSuggestions) {
+        prefSuggestionsContainer.addEventListener('mousedown', event => {
+            const button = event.target.closest('.cargue-atenciones-suggestion-item');
+            if (!button) return;
+            seleccionarEmpresaPrefactura(decodeURIComponent(button.dataset.empresa || ''));
+        });
+        prefSuggestionsContainer.dataset.boundPrefEmpresaSuggestions = 'true';
+    }
+
+    const prefPeriodoSelect = document.getElementById('prefacturaPeriodoSelect');
+    if (prefPeriodoSelect && !prefPeriodoSelect.dataset.boundPeriodoCargue) {
+        prefPeriodoSelect.addEventListener('change', () => aplicarPeriodoEnRango('prefacturaPeriodoSelect', 'prefacturaFechaDesde', 'prefacturaFechaHasta'));
+        prefPeriodoSelect.dataset.boundPeriodoCargue = 'true';
+    }
+    const consultaPrefPeriodo = document.getElementById('consultaPrefPeriodo');
+    if (consultaPrefPeriodo && !consultaPrefPeriodo.dataset.boundPeriodoCargue) {
+        consultaPrefPeriodo.addEventListener('change', () => aplicarPeriodoEnRango('consultaPrefPeriodo', 'consultaPrefFechaDesde', 'consultaPrefFechaHasta'));
+        consultaPrefPeriodo.dataset.boundPeriodoCargue = 'true';
+    }
+    const atencionesPeriodo = document.getElementById('cargueAtencionesDiaFiltroPeriodo');
+    if (atencionesPeriodo && !atencionesPeriodo.dataset.boundPeriodoCargue) {
+        atencionesPeriodo.addEventListener('change', () => aplicarPeriodoEnRango('cargueAtencionesDiaFiltroPeriodo', 'cargueAtencionesDiaFechaDesde', 'cargueAtencionesDiaFechaHasta'));
+        atencionesPeriodo.dataset.boundPeriodoCargue = 'true';
+    }
+
+    [
+        ['prefacturaFechaDesde', 'prefacturaPeriodoSelect'],
+        ['prefacturaFechaHasta', 'prefacturaPeriodoSelect'],
+        ['consultaPrefFechaDesde', 'consultaPrefPeriodo'],
+        ['consultaPrefFechaHasta', 'consultaPrefPeriodo'],
+        ['cargueAtencionesDiaFechaDesde', 'cargueAtencionesDiaFiltroPeriodo'],
+        ['cargueAtencionesDiaFechaHasta', 'cargueAtencionesDiaFiltroPeriodo']
+    ].forEach(([inputId, selectId]) => {
+        const input = document.getElementById(inputId);
+        if (!input || input.dataset.boundPeriodoManual) return;
+        input.addEventListener('change', () => {
+            if (selectId === 'prefacturaPeriodoSelect') {
+                limpiarSeleccionPeriodoSiFechasManual(selectId, 'prefacturaFechaDesde', 'prefacturaFechaHasta');
+            } else if (selectId === 'consultaPrefPeriodo') {
+                limpiarSeleccionPeriodoSiFechasManual(selectId, 'consultaPrefFechaDesde', 'consultaPrefFechaHasta');
+            } else {
+                limpiarSeleccionPeriodoSiFechasManual(selectId, 'cargueAtencionesDiaFechaDesde', 'cargueAtencionesDiaFechaHasta');
+            }
+        });
+        input.dataset.boundPeriodoManual = 'true';
+    });
+
+    const anticipoForm = document.getElementById('programarAnticipoForm');
+    if (anticipoForm && !anticipoForm.dataset.boundAnticipoProgramado) {
+        anticipoForm.addEventListener('submit', guardarProgramarAnticipo);
+        anticipoForm.dataset.boundAnticipoProgramado = 'true';
+    }
+
+    const anticipoEmpresaInput = document.getElementById('anticipoEmpresaInput');
+    const anticipoEmpresaSuggestions = document.getElementById('anticipoEmpresaSuggestions');
+    if (anticipoEmpresaInput && !anticipoEmpresaInput.dataset.boundAnticipoEmpresa) {
+        anticipoEmpresaInput.addEventListener('input', () => {
+            const currentValue = anticipoEmpresaInput.value.trim();
+            const selectedLabel = (anticipoEmpresaInput.dataset.selectedLabel || '').trim();
+            if (!currentValue) {
+                limpiarSeleccionEmpresaAnticipo(false);
+                ocultarSugerenciasEmpresaAnticipo();
+                return;
+            }
+            if (!selectedLabel || currentValue !== selectedLabel) {
+                limpiarSeleccionEmpresaAnticipo(true);
+            }
+            window.clearTimeout(window.anticipoProgramadoState.empresaSearchTimer);
+            window.anticipoProgramadoState.empresaSearchTimer = window.setTimeout(() => {
+                buscarEmpresasAnticipoProgramado(currentValue).catch(error => {
+                    console.error('Error buscando empresas para anticipo:', error);
+                    ocultarSugerenciasEmpresaAnticipo();
+                });
+            }, 160);
+        });
+        anticipoEmpresaInput.addEventListener('focus', () => {
+            if (anticipoEmpresaInput.value.trim()) {
+                buscarEmpresasAnticipoProgramado(anticipoEmpresaInput.value).catch(() => {});
+            }
+        });
+        anticipoEmpresaInput.addEventListener('blur', () => {
+            window.setTimeout(ocultarSugerenciasEmpresaAnticipo, 150);
+        });
+        anticipoEmpresaInput.dataset.boundAnticipoEmpresa = 'true';
+    }
+    if (anticipoEmpresaSuggestions && !anticipoEmpresaSuggestions.dataset.boundAnticipoEmpresa) {
+        anticipoEmpresaSuggestions.addEventListener('mousedown', event => {
+            const button = event.target.closest('.cargue-atenciones-suggestion-item');
+            if (!button) return;
+            seleccionarEmpresaAnticipo(button.dataset.clienteId);
+        });
+        anticipoEmpresaSuggestions.dataset.boundAnticipoEmpresa = 'true';
+    }
+
+    const anticipoItemInput = document.getElementById('anticipoItemInput');
+    const anticipoItemSuggestions = document.getElementById('anticipoItemSuggestions');
+    if (anticipoItemInput && !anticipoItemInput.dataset.boundAnticipoItem) {
+        anticipoItemInput.addEventListener('input', programarBusquedaItemAnticipo);
+        anticipoItemInput.addEventListener('focus', () => {
+            if (anticipoItemInput.value.trim()) {
+                programarBusquedaItemAnticipo();
+            }
+        });
+        anticipoItemInput.addEventListener('blur', () => {
+            window.setTimeout(ocultarSugerenciasItemAnticipo, 150);
+        });
+        anticipoItemInput.dataset.boundAnticipoItem = 'true';
+    }
+    if (anticipoItemSuggestions && !anticipoItemSuggestions.dataset.boundAnticipoItem) {
+        anticipoItemSuggestions.addEventListener('mousedown', event => {
+            const button = event.target.closest('.cargue-atenciones-suggestion-item');
+            if (!button) return;
+            seleccionarItemAnticipo(button.dataset.itemId);
+        });
+        anticipoItemSuggestions.dataset.boundAnticipoItem = 'true';
+    }
+
+    const anticipoFechaAtencion = document.getElementById('anticipoFechaAtencion');
+    if (anticipoFechaAtencion && !anticipoFechaAtencion.dataset.boundAnticipoFecha) {
+        anticipoFechaAtencion.addEventListener('change', async () => {
+            try {
+                await cargarConvenioAnticipoProgramado(true);
+                const currentQuery = document.getElementById('anticipoItemInput')?.value?.trim() || '';
+                if (currentQuery) {
+                    renderSugerenciasItemAnticipo(currentQuery);
+                }
+            } catch (error) {
+                console.error('Error actualizando convenio de anticipo por fecha:', error);
+                actualizarHintItemAnticipo(error.message || 'No se pudieron actualizar los items convenidos.', true);
+            }
+        });
+        anticipoFechaAtencion.dataset.boundAnticipoFecha = 'true';
+    }
+
+    const anticipoMedioPago = document.getElementById('anticipoMedioPago');
+    if (anticipoMedioPago && !anticipoMedioPago.dataset.boundAnticipoPago) {
+        anticipoMedioPago.addEventListener('change', actualizarAyudaPagoAnticipo);
+        anticipoMedioPago.dataset.boundAnticipoPago = 'true';
+    }
+
+    const anticipoValorPago = document.getElementById('anticipoValorPago');
+    if (anticipoValorPago && !anticipoValorPago.dataset.boundAnticipoValor) {
+        anticipoValorPago.addEventListener('input', () => {
+            window.anticipoProgramadoState.paymentValueTouched = true;
+        });
+        anticipoValorPago.dataset.boundAnticipoValor = 'true';
     }
 });
 
@@ -12494,3 +13980,474 @@ function renderSeguimientoAtencionesTable() {
 }
 
 window.setTimeout(syncComercialPermissionUI, 0);
+
+// ===========================================================================
+// PREFACTURAS — CONSULTAR
+// ===========================================================================
+
+function _fmtMoney(v) {
+    return Number(v || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function ocultarSugerenciasEmpresasPrefacturas() {
+    const container = document.getElementById('consultaPrefEmpresaSuggestions');
+    if (!container) return;
+    container.style.display = 'none';
+    container.innerHTML = '';
+}
+
+function seleccionarEmpresaPrefactura(nombreEmpresa) {
+    const input = document.getElementById('consultaPrefEmpresa');
+    if (input) {
+        input.value = nombreEmpresa || '';
+    }
+    ocultarSugerenciasEmpresasPrefacturas();
+}
+
+async function buscarEmpresasPrefacturas(query) {
+    const container = document.getElementById('consultaPrefEmpresaSuggestions');
+    if (!container) return;
+
+    const text = String(query || '').trim();
+    if (!text) {
+        ocultarSugerenciasEmpresasPrefacturas();
+        return;
+    }
+
+    try {
+        await ensureClientesComercialesLoaded();
+        const normalizedQuery = text.toLowerCase();
+        const visibles = Array.isArray(clientesComercialesData) ? clientesComercialesData : [];
+
+        const sugerencias = visibles
+            .filter(cliente => {
+                const values = [
+                    cliente?.razon_social || '',
+                    cliente?.nombre_comercial || '',
+                    cliente?.nit || ''
+                ].map(value => String(value).toLowerCase());
+                return values.some(value => value.includes(normalizedQuery));
+            })
+            .map(cliente => ({
+                label: cliente.razon_social || cliente.nombre_comercial || cliente.nit || 'Cliente sin nombre',
+                secondary: [cliente.nombre_comercial, cliente.nit].filter(Boolean).join(' | ')
+            }));
+
+        const unique = [];
+        const seen = new Set();
+        sugerencias.forEach(item => {
+            const key = String(item.label || '').trim().toLowerCase();
+            if (!key || seen.has(key)) return;
+            seen.add(key);
+            unique.push(item);
+        });
+
+        if (!unique.length) {
+            container.innerHTML = `<div class="cargue-atenciones-suggestion-empty">No se encontraron empresas para "${escapeHtml(text)}".</div>`;
+            container.style.display = 'block';
+            return;
+        }
+
+        container.innerHTML = unique.slice(0, 12).map(item => `
+            <button
+                type="button"
+                class="cargue-atenciones-suggestion-item"
+                data-empresa="${encodeURIComponent(item.label || '')}">
+                <strong>${escapeHtml(item.label)}</strong>
+                ${item.secondary ? `<span>${escapeHtml(item.secondary)}</span>` : ''}
+            </button>
+        `).join('');
+        container.style.display = 'block';
+    } catch (error) {
+        console.error('Error buscando empresas para prefacturas:', error);
+        ocultarSugerenciasEmpresasPrefacturas();
+    }
+}
+
+function limpiarFiltrosPrefacturas() {
+    ['consultaPrefEmpresa','consultaPrefFormaPago','consultaPrefEstado','consultaPrefPeriodo',
+     'consultaPrefFechaDesde','consultaPrefFechaHasta'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    ocultarSugerenciasEmpresasPrefacturas();
+    const t = document.getElementById('consultaPrefTable');
+    if (t) t.style.display = 'none';
+    const r = document.getElementById('consultaPrefResultado');
+    if (r) r.textContent = '';
+}
+
+async function consultarPrefacturas() {
+    const resultado = document.getElementById('consultaPrefResultado');
+    const tabla     = document.getElementById('consultaPrefTable');
+    const tbody     = document.getElementById('consultaPrefBody');
+    if (resultado) resultado.textContent = 'Consultando…';
+    if (tabla)     tabla.style.display   = 'none';
+
+    const params = new URLSearchParams();
+    const empresa = (document.getElementById('consultaPrefEmpresa')?.value || '').trim();
+    const forma   = document.getElementById('consultaPrefFormaPago')?.value || '';
+    const estado  = document.getElementById('consultaPrefEstado')?.value || '';
+    const fd      = document.getElementById('consultaPrefFechaDesde')?.value || '';
+    const fh      = document.getElementById('consultaPrefFechaHasta')?.value || '';
+    if (empresa) params.set('empresa', empresa);
+    if (forma)   params.set('forma_pago', forma);
+    if (estado)  params.set('estado', estado);
+    if (fd)      params.set('fecha_desde', fd);
+    if (fh)      params.set('fecha_hasta', fh);
+
+    try {
+        const res  = await fetch('/api/comercial/prefacturas?' + params, { credentials: 'include' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { if (resultado) resultado.textContent = data.error || 'Error consultando.'; return; }
+
+        const prefs = data.prefacturas || [];
+        if (resultado) resultado.textContent = `${prefs.length} prefactura(s) encontrada(s).`;
+        if (!prefs.length) return;
+
+        tbody.innerHTML = '';
+        prefs.forEach(p => {
+            const estadoBadge = p.estado === 'CERRADA'
+                ? '<span style="color:#27ae60;font-weight:bold;">CERRADA</span>'
+                : '<span style="color:#e67e22;font-weight:bold;">BORRADOR</span>';
+            const periodo = `${p.fecha_desde || ''} al ${p.fecha_hasta || ''}`;
+            const esBorrador = p.estado === 'BORRADOR';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${escapeHtml(p.nombre_empresa)}</td>
+                <td style="font-size:0.85em;">${periodo}</td>
+                <td>${escapeHtml(p.forma_pago)}</td>
+                <td style="text-align:center;">${p.cant_pacientes}</td>
+                <td style="text-align:right;">$${_fmtMoney(p.valor_total)}</td>
+                <td style="text-align:center;">${estadoBadge}</td>
+                <td>${escapeHtml(p.nro_factura || '')}</td>
+                <td style="text-align:right;">${p.valor_factura != null ? '$' + _fmtMoney(p.valor_factura) : ''}</td>
+                <td style="text-align:right;">$${_fmtMoney(p.total_pagado)}</td>
+                <td style="text-align:right;">$${_fmtMoney(p.saldo_pendiente)}</td>
+                <td style="white-space:nowrap;">
+                    <button class="action-btn action-btn-edit"
+                        title="Ver detalle, factura y pagos"
+                        onclick="abrirDetallePrefactura(${p.id})">Ver / Pagar</button>
+                    ${esBorrador ? `
+                    <button class="action-btn action-btn-edit"
+                        title="Editar observaciones"
+                        style="background:#6c757d;"
+                        onclick="editarObservacionesPrefactura(${p.id})">Editar</button>
+                    <button class="action-btn action-btn-edit"
+                        title="Regenerar Excel de esta empresa"
+                        style="background:#17a2b8;"
+                        onclick="regenerarPrefacturaEmpresa(${JSON.stringify(p.nombre_empresa)}, ${JSON.stringify(p.fecha_desde)}, ${JSON.stringify(p.fecha_hasta)})">Regenerar</button>
+                    <button class="action-btn action-btn-delete"
+                        title="Eliminar prefactura (solo admin)"
+                        onclick="eliminarPrefactura(${p.id})">Eliminar</button>
+                    ` : ''}
+                </td>`;
+            tbody.appendChild(tr);
+        });
+        tabla.style.display = '';
+    } catch (err) {
+        console.error('consultarPrefacturas error', err);
+        if (resultado) resultado.textContent = 'Error de conexión.';
+    }
+}
+
+// ===========================================================================
+// PREFACTURAS — DETALLE / CERRAR / REABRIR
+// ===========================================================================
+
+async function abrirDetallePrefactura(prefId) {
+    document.getElementById('prefacturaDetalleId').value = prefId;
+    document.getElementById('prefDetalleMsg').textContent = '';
+    document.getElementById('nuevoPagoMsg').textContent   = '';
+
+    try {
+        const res  = await fetch(`/api/comercial/prefacturas/${prefId}`, { credentials: 'include' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(data.error || 'Error cargando prefactura', 'error'); return; }
+
+        const p = data.prefactura;
+        document.getElementById('prefacturaDetalleTitulo').textContent =
+            `${p.nombre_empresa} · ${p.forma_pago} · ${p.fecha_desde} al ${p.fecha_hasta}`;
+        document.getElementById('prefDetalleFechaFactura').value  = p.fecha_factura  || '';
+        document.getElementById('prefDetalleNroFactura').value    = p.nro_factura    || '';
+        document.getElementById('prefDetalleValorFactura').value  = p.valor_factura  != null ? p.valor_factura : p.valor_total;
+        document.getElementById('prefDetalleObservaciones').value = p.observaciones  || '';
+
+        const cerrado = p.estado === 'CERRADA';
+        document.getElementById('btnCerrarPrefactura').style.display  = cerrado ? 'none' : '';
+        document.getElementById('btnReabrirPrefactura').style.display = cerrado ? ''     : 'none';
+        document.getElementById('prefDetalleNuevoPagoSection').style.display = '';
+
+        // Campos de factura: readonly si cerrada
+        ['prefDetalleFechaFactura','prefDetalleNroFactura','prefDetalleValorFactura','prefDetalleObservaciones']
+            .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = cerrado; });
+
+        _renderCarteraBody(p.pagos || [], p.total_pagado, p.saldo_pendiente);
+
+        document.getElementById('prefacturaDetalleModal').classList.add('active');
+    } catch (err) {
+        console.error('abrirDetallePrefactura error', err);
+        showToast('Error de conexión', 'error');
+    }
+}
+
+function _renderCarteraBody(pagos, totalPagado, saldo) {
+    const tbody = document.getElementById('prefDetalleCarteraBody');
+    tbody.innerHTML = '';
+    if (!pagos.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;">Sin pagos registrados.</td></tr>';
+    } else {
+        pagos.forEach(pg => {
+            const anulado = pg.estado === 'ANULADO';
+            const tr = document.createElement('tr');
+            tr.style.opacity = anulado ? '0.5' : '1';
+            tr.innerHTML = `
+                <td>${pg.fecha_pago || ''}</td>
+                <td>${escapeHtml(pg.tipo_movimiento)}</td>
+                <td>${escapeHtml(pg.medio_pago || '')}</td>
+                <td>${escapeHtml(pg.nro_comprobante || '')}</td>
+                <td style="text-align:right;">$${_fmtMoney(pg.valor_pago)}</td>
+                <td>${escapeHtml(pg.estado)}</td>
+                <td>${anulado ? '' : `<button class="action-btn action-btn-delete" onclick="anularPagoCartera(${pg.id})">Anular</button>`}</td>`;
+            tbody.appendChild(tr);
+        });
+    }
+    document.getElementById('prefDetalleTotalPagado').textContent = '$' + _fmtMoney(totalPagado);
+    document.getElementById('prefDetalleSaldo').textContent       = '$' + _fmtMoney(saldo);
+}
+
+function cerrarPrefacturaDetalle() {
+    document.getElementById('prefacturaDetalleModal').classList.remove('active');
+}
+
+async function cerrarPrefacturaGuardar() {
+    const prefId = document.getElementById('prefacturaDetalleId').value;
+    const msg    = document.getElementById('prefDetalleMsg');
+    const payload = {
+        fecha_factura:  document.getElementById('prefDetalleFechaFactura').value  || null,
+        nro_factura:    document.getElementById('prefDetalleNroFactura').value     || null,
+        valor_factura:  document.getElementById('prefDetalleValorFactura').value   || null,
+        observaciones:  document.getElementById('prefDetalleObservaciones').value  || null,
+    };
+    try {
+        const res  = await fetch(`/api/comercial/prefacturas/${prefId}/cerrar`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { if (msg) msg.textContent = data.error || 'Error cerrando.'; return; }
+        showToast('Prefactura cerrada correctamente');
+        cerrarPrefacturaDetalle();
+        consultarPrefacturas();
+    } catch (err) {
+        if (msg) msg.textContent = 'Error de conexión.';
+    }
+}
+
+async function reabrirPrefactura() {
+    const prefId = document.getElementById('prefacturaDetalleId').value;
+    const msg    = document.getElementById('prefDetalleMsg');
+    if (!confirm('¿Reabrir esta prefactura a estado Borrador?')) return;
+    try {
+        const res  = await fetch(`/api/comercial/prefacturas/${prefId}/reabrir`, {
+            method: 'POST', credentials: 'include',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { if (msg) msg.textContent = data.error || 'Error reabriendo.'; return; }
+        showToast('Prefactura reabierta');
+        cerrarPrefacturaDetalle();
+        consultarPrefacturas();
+    } catch (err) {
+        if (msg) msg.textContent = 'Error de conexión.';
+    }
+}
+
+// ===========================================================================
+// CARTERA — REGISTRAR Y ANULAR PAGOS
+// ===========================================================================
+
+async function registrarPagoCartera() {
+    const prefId = document.getElementById('prefacturaDetalleId').value;
+    const msg    = document.getElementById('nuevoPagoMsg');
+    const payload = {
+        tipo_movimiento: document.getElementById('nuevoPagoTipo').value,
+        fecha_pago:      document.getElementById('nuevoPagoFecha').value,
+        valor_pago:      document.getElementById('nuevoPagoValor').value,
+        medio_pago:      document.getElementById('nuevoPagoMedio').value,
+        nro_comprobante: document.getElementById('nuevoPagoComprobante').value || null,
+        observaciones:   document.getElementById('nuevoPagoObs').value || null,
+    };
+    if (!payload.fecha_pago || !payload.valor_pago) {
+        if (msg) msg.textContent = 'Fecha y valor son obligatorios.'; return;
+    }
+    try {
+        const res  = await fetch(`/api/comercial/prefacturas/${prefId}/cartera`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { if (msg) msg.textContent = data.error || 'Error registrando pago.'; return; }
+        showToast('Pago registrado');
+        if (msg) msg.textContent = '';
+        // Limpiar campos de pago
+        ['nuevoPagoFecha','nuevoPagoValor','nuevoPagoComprobante','nuevoPagoObs']
+            .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        // Recargar detalle
+        abrirDetallePrefactura(prefId);
+    } catch (err) {
+        if (msg) msg.textContent = 'Error de conexión.';
+    }
+}
+
+async function anularPagoCartera(pagoId) {
+    if (!confirm('¿Anular este pago?')) return;
+    try {
+        const res  = await fetch(`/api/comercial/cartera/${pagoId}`, {
+            method: 'DELETE', credentials: 'include',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(data.error || 'Error anulando pago', 'error'); return; }
+        showToast('Pago anulado');
+        const prefId = document.getElementById('prefacturaDetalleId').value;
+        abrirDetallePrefactura(prefId);
+    } catch (err) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+// ===========================================================================
+// CARTERA — CARGA MASIVA DESDE resumen_periodo.xlsx
+// ===========================================================================
+
+async function cargarResumenPrefacturas() {
+    const input     = document.getElementById('carteraResumenArchivo');
+    const resultado = document.getElementById('carteraResumenResultado');
+    const archivo   = input?.files?.[0];
+    if (!archivo) { if (resultado) resultado.textContent = 'Selecciona un archivo primero.'; return; }
+
+    if (resultado) resultado.textContent = 'Procesando…';
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+
+    try {
+        const res  = await fetch('/api/comercial/prefacturas/cargar-resumen', {
+            method: 'POST', credentials: 'include', body: formData,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { if (resultado) resultado.textContent = data.error || 'Error procesando.'; return; }
+
+        let msg = `✔ ${data.actualizadas} prefactura(s) actualizadas.`;
+        if (data.no_encontradas?.length) {
+            msg += `<br><small style="color:#e67e22;">No encontradas: ${data.no_encontradas.join(', ')}</small>`;
+        }
+        if (resultado) resultado.innerHTML = msg;
+        if (input) input.value = '';
+        showToast('Resumen cargado correctamente');
+    } catch (err) {
+        if (resultado) resultado.textContent = 'Error de conexión.';
+    }
+}
+
+// ===========================================================================
+// PREFACTURAS — EDITAR OBSERVACIONES Y ELIMINAR
+// ===========================================================================
+
+async function editarObservacionesPrefactura(prefId) {
+    // Obtener observaciones actuales desde el backend
+    let obsActual = '';
+    try {
+        const res = await fetch(`/api/comercial/prefacturas/${prefId}`, { credentials: 'include' });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) obsActual = data.prefactura?.observaciones || '';
+    } catch (_) {}
+
+    const nueva = prompt('Observaciones:', obsActual);
+    if (nueva === null) return; // canceló
+    try {
+        const res  = await fetch(`/api/comercial/prefacturas/${prefId}`, {
+            method: 'PUT', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ observaciones: nueva }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(data.error || 'Error actualizando', 'error'); return; }
+        showToast('Observaciones actualizadas');
+        consultarPrefacturas();
+    } catch (err) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+async function eliminarPrefactura(prefId) {
+    if (!confirm('¿Eliminar esta prefactura? Solo es posible si está en estado Borrador y requiere permisos de administrador.')) return;
+    try {
+        const res  = await fetch(`/api/comercial/prefacturas/${prefId}`, {
+            method: 'DELETE', credentials: 'include',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(data.error || 'Error eliminando', 'error'); return; }
+        showToast('Prefactura eliminada');
+        consultarPrefacturas();
+    } catch (err) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+// ===========================================================================
+// PREFACTURAS — REGENERAR EMPRESA
+// ===========================================================================
+
+async function regenerarPrefacturaEmpresa(nombreEmpresa, fechaDesde, fechaHasta) {
+    if (!nombreEmpresa || !fechaDesde || !fechaHasta) {
+        showToast('Faltan datos para regenerar la prefactura', 'error');
+        return;
+    }
+    if (!confirm(`¿Regenerar la prefactura de "${nombreEmpresa}" para el periodo ${fechaDesde} al ${fechaHasta}?\nEsto actualizará el registro en BD con los datos actuales de atenciones.`)) return;
+
+    const resultado = document.getElementById('consultaPrefResultado');
+    if (resultado) resultado.textContent = `Regenerando prefactura de ${nombreEmpresa}…`;
+
+    try {
+        const params = new URLSearchParams({
+            empresa:      nombreEmpresa,
+            fecha_desde:  fechaDesde,
+            fecha_hasta:  fechaHasta,
+        });
+        const response = await fetch(`/api/comercial/prefacturas/regenerar-empresa?${params}`, {
+            method: 'GET',
+            credentials: 'same-origin',
+        });
+
+        if (!response.ok) {
+            let msg = 'Error regenerando prefactura.';
+            try { const data = await response.json(); msg = data.error || msg; } catch (_) {}
+            if (resultado) resultado.textContent = msg;
+            showToast(msg, 'error');
+            return;
+        }
+
+        const disposition = response.headers.get('Content-Disposition') || '';
+        let filename = 'Prefactura.zip';
+        const match = disposition.match(/filename[^;=\n]*=(?:(['"])([^'"]*)\1|([^;\n]*))/i);
+        if (match) filename = (match[2] || match[3] || filename).trim();
+
+        const blob = await response.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
+
+        if (resultado) resultado.innerHTML = `<span style="color:#27ae60;">✔ Prefactura regenerada y descargada: <strong>${filename}</strong></span>`;
+        showToast('Prefactura regenerada correctamente');
+        // Refrescar la tabla de prefacturas
+        consultarPrefacturas();
+    } catch (err) {
+        console.error('regenerarPrefacturaEmpresa error:', err);
+        if (resultado) resultado.textContent = 'Error de conexión al regenerar.';
+        showToast('Error de conexión', 'error');
+    }
+}

@@ -1086,6 +1086,8 @@ class CargueAtencionDia(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     nombre_archivo = db.Column(db.String(255), nullable=False)
+    periodo_desde = db.Column(db.DateTime, index=True)
+    periodo_hasta = db.Column(db.DateTime, index=True)
     total_filas = db.Column(db.Integer, default=0)
     filas_importadas = db.Column(db.Integer, default=0)
     filas_duplicadas = db.Column(db.Integer, default=0)
@@ -1130,6 +1132,7 @@ class AtencionDiaDetalle(db.Model):
     fecha_creacion_orden = db.Column(db.DateTime)
     usuario_creacion = db.Column(db.String(100))
     estado_orden = db.Column(db.String(50), index=True)
+    estado_gestion = db.Column(db.String(20), nullable=False, default='CARGADA', index=True)
     fecha_anulacion = db.Column(db.DateTime)
     archivo_origen = db.Column(db.String(300))
 
@@ -1144,3 +1147,112 @@ class AtencionDiaDetalle(db.Model):
 
     def __repr__(self):
         return f'<AtencionDiaDetalle orden={self.nro_orden} paciente={self.nombre_paciente}>'
+
+
+# ==================== MODELOS DE PREFACTURAS Y CARTERA COMERCIAL ====================
+
+class PrefacturaComercial(db.Model):
+    """Registro de prefacturas generadas por empresa y periodo.
+
+    Se crea/actualiza al generar el ZIP de prefacturas.
+    Estado BORRADOR: modificable (se puede regenerar la empresa).
+    Estado CERRADA: inmodificable, tiene factura asociada.
+    """
+    __tablename__ = 'prefacturas_comerciales'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Empresa (puede o no estar en clientes_comerciales)
+    cliente_id      = db.Column(db.Integer, db.ForeignKey('clientes_comerciales.id'), index=True)
+    nombre_empresa  = db.Column(db.String(300), nullable=False, index=True)
+
+    # Periodo
+    fecha_desde     = db.Column(db.DateTime, nullable=False, index=True)
+    fecha_hasta     = db.Column(db.DateTime, nullable=False, index=True)
+
+    # Forma de pago del grupo: CREDITO, EFECTIVO, MIXTO
+    forma_pago      = db.Column(db.String(20), nullable=False, index=True)
+
+    # Totales calculados al generar
+    cant_pacientes  = db.Column(db.Integer, default=0, nullable=False)
+    valor_total     = db.Column(Numeric(15, 2), default=0, nullable=False)
+
+    # Estado: BORRADOR -> CERRADA
+    estado          = db.Column(db.String(20), default='BORRADOR', nullable=False, index=True)
+
+    # Datos de factura (se completan al cerrar el periodo)
+    fecha_factura   = db.Column(db.DateTime)
+    nro_factura     = db.Column(db.String(80), index=True)
+    valor_factura   = db.Column(Numeric(15, 2))
+
+    # Auditoría
+    usuario_genera_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    usuario_cierra_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    fecha_cierre      = db.Column(db.DateTime)
+    observaciones     = db.Column(db.Text)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relaciones
+    cliente         = db.relationship('ClienteComercial',
+                                      backref=db.backref('prefacturas', lazy='dynamic'))
+    usuario_genera  = db.relationship('Usuario', foreign_keys=[usuario_genera_id])
+    usuario_cierra  = db.relationship('Usuario', foreign_keys=[usuario_cierra_id])
+    pagos_cartera   = db.relationship(
+        'CarteraPrefactura',
+        backref='prefactura',
+        lazy='dynamic',
+        cascade='all, delete-orphan',
+    )
+
+    __table_args__ = (
+        # Una empresa puede tener una sola prefactura por periodo + forma_pago
+        db.UniqueConstraint(
+            'nombre_empresa', 'fecha_desde', 'fecha_hasta', 'forma_pago',
+            name='uq_prefactura_empresa_periodo_forma',
+        ),
+    )
+
+    def __repr__(self):
+        return (f'<PrefacturaComercial {self.nombre_empresa} '
+                f'{self.fecha_desde:%d/%m/%Y}-{self.fecha_hasta:%d/%m/%Y} '
+                f'{self.forma_pago} [{self.estado}]>')
+
+
+class CarteraPrefactura(db.Model):
+    """Pagos y anticipos registrados contra una prefactura comercial.
+
+    Para crédito: se registra cuando llega el pago de la factura.
+    Para efectivo/anticipos: se registra manualmente para cruzar contra la prefactura.
+    """
+    __tablename__ = 'cartera_prefacturas'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    prefactura_id   = db.Column(db.Integer, db.ForeignKey('prefacturas_comerciales.id'),
+                                nullable=False, index=True)
+
+    # Tipo de movimiento: PAGO_FACTURA, ANTICIPO, ABONO, NOTA_CREDITO
+    tipo_movimiento = db.Column(db.String(30), nullable=False, index=True)
+
+    fecha_pago      = db.Column(db.DateTime, nullable=False, index=True)
+    valor_pago      = db.Column(Numeric(15, 2), nullable=False)
+
+    # Medio de pago: EFECTIVO, TRANSFERENCIA, CHEQUE
+    medio_pago      = db.Column(db.String(30))
+    nro_comprobante = db.Column(db.String(80))
+
+    # Estado del pago: PENDIENTE, APLICADO, ANULADO
+    estado          = db.Column(db.String(20), default='APLICADO', nullable=False, index=True)
+
+    observaciones   = db.Column(db.Text)
+    usuario_id      = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+
+    def __repr__(self):
+        return (f'<CarteraPrefactura pref={self.prefactura_id} '
+                f'{self.tipo_movimiento} {self.valor_pago}>')

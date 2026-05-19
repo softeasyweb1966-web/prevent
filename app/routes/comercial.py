@@ -210,6 +210,10 @@ def _require_commercial_permission(entity, action):
         raise PermissionError(f'No tienes permiso para {action} en {entity}')
 
 
+def _has_any_commercial_permission(*entity_action_pairs):
+    return any(_has_commercial_permission(entity, action) for entity, action in entity_action_pairs)
+
+
 def _get_catalog_permission_entity(tipo_item):
     normalized = str(tipo_item or '').strip().upper()
     if normalized == 'EXAMEN':
@@ -934,6 +938,46 @@ def _serialize_atencion(atencion):
         'detalles': [_serialize_atencion_detalle(detalle) for detalle in detalles],
         'created_at': atencion.created_at.strftime('%Y-%m-%d %H:%M:%S') if atencion.created_at else None,
         'updated_at': atencion.updated_at.strftime('%Y-%m-%d %H:%M:%S') if atencion.updated_at else None,
+    }
+
+
+def _construir_resumen_anticipo_detalles(detalles_payload):
+    pacientes = []
+    pacientes_seen = set()
+    examenes = []
+    examenes_seen = set()
+
+    for detalle in detalles_payload or []:
+        paciente_key = (
+            _normalize_optional_text(detalle.get('paciente_documento')) or '',
+            _normalize_optional_text(detalle.get('paciente_nombre')) or '',
+        )
+        if paciente_key not in pacientes_seen and any(paciente_key):
+            pacientes.append({
+                'documento': paciente_key[0],
+                'nombre': paciente_key[1],
+            })
+            pacientes_seen.add(paciente_key)
+
+        nombre_item = _normalize_optional_text(detalle.get('nombre_item'))
+        if nombre_item and nombre_item not in examenes_seen:
+            examenes.append(nombre_item)
+            examenes_seen.add(nombre_item)
+
+    if len(pacientes) == 1:
+        paciente_documento = pacientes[0]['documento']
+        paciente_nombre = pacientes[0]['nombre']
+    elif pacientes:
+        paciente_documento = 'VARIOS'
+        paciente_nombre = f'{len(pacientes)} pacientes'
+    else:
+        paciente_documento = None
+        paciente_nombre = None
+
+    return {
+        'paciente_documento': paciente_documento,
+        'paciente_nombre': paciente_nombre,
+        'examenes_realizados': ', '.join(examenes),
     }
 
 
@@ -1810,7 +1854,13 @@ def eliminar_cliente(cliente_id):
 @login_required
 def get_cliente_convenio_items(cliente_id):
     try:
-        _require_commercial_permission('clientes', 'read')
+        if not _has_any_commercial_permission(
+            ('clientes', 'read'),
+            ('atenciones', 'read'),
+            ('atenciones', 'create'),
+            ('atenciones', 'update'),
+        ):
+            raise PermissionError('No tienes permiso para consultar items convenidos del cliente')
         cliente = ClienteComercial.query.get_or_404(cliente_id)
         fecha_atencion = None
         raw_fecha = request.args.get('fecha_atencion')
@@ -1823,8 +1873,24 @@ def get_cliente_convenio_items(cliente_id):
         visibles = [
             item for item in items
             if (
-                (item.get('tipo_item') == 'EXAMEN' and _has_commercial_permission('examenes', 'read'))
-                or (item.get('tipo_item') != 'EXAMEN' and _has_commercial_permission('paquetes', 'read'))
+                (
+                    item.get('tipo_item') == 'EXAMEN'
+                    and _has_any_commercial_permission(
+                        ('examenes', 'read'),
+                        ('atenciones', 'read'),
+                        ('atenciones', 'create'),
+                        ('atenciones', 'update'),
+                    )
+                )
+                or (
+                    item.get('tipo_item') != 'EXAMEN'
+                    and _has_any_commercial_permission(
+                        ('paquetes', 'read'),
+                        ('atenciones', 'read'),
+                        ('atenciones', 'create'),
+                        ('atenciones', 'update'),
+                    )
+                )
             )
         ]
         return jsonify(visibles), 200
@@ -1914,6 +1980,102 @@ def crear_atencion_cliente(cliente_id):
         db.session.rollback()
         logger.error("Error creando atencion para cliente %s: %s", cliente_id, exc)
         return jsonify({'error': 'Error al registrar la atencion'}), 500
+
+
+@comercial_bp.route('/clientes/<int:cliente_id>/anticipos-programados', methods=['POST'])
+@login_required
+def crear_anticipo_programado_cliente(cliente_id):
+    data = _get_payload()
+
+    try:
+        if not _has_any_commercial_permission(
+            ('atenciones', 'create'),
+            ('documentos', 'create'),
+            ('pagos', 'create'),
+        ):
+            raise PermissionError('No tienes permiso para programar anticipos comerciales')
+
+        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        if cliente.condicion_comercial not in {'EFECTIVO', 'MIXTO'}:
+            return jsonify({'error': 'Por ahora solo puedes programar anticipos para empresas EFECTIVO o MIXTO'}), 409
+
+        payload = _build_atencion_payload(data, cliente)
+        detalles_payload = payload.pop('detalles')
+        resumen_detalle = _construir_resumen_anticipo_detalles(detalles_payload)
+        valor_anticipo = _parse_decimal_field(data, 'valor_pago', minimum=0.01)
+
+        atencion = ClienteAtencion(**payload)
+        db.session.add(atencion)
+        db.session.flush()
+
+        atencion.nro_atencion = _generar_numero_atencion(atencion)
+        for detalle_payload in detalles_payload:
+            db.session.add(ClienteAtencionDetalle(atencion_id=atencion.id, **detalle_payload))
+
+        genera_cartera = (
+            cliente.condicion_comercial == 'MIXTO'
+            or cliente.requiere_factura is True
+            or valor_anticipo < Decimal(str(atencion.valor_total or 0))
+        )
+        documento = ClienteSeguimientoDocumento(
+            cliente_id=cliente.id,
+            vendedor_id=cliente.vendedor_id,
+            atencion_id=atencion.id,
+            tipo_documento='INGRESO_SIN_FACTURA',
+            numero_documento=f'ANT-{atencion.nro_atencion}',
+            fecha_documento=atencion.fecha_atencion,
+            fecha_vencimiento=atencion.fecha_atencion if genera_cartera else None,
+            valor_documento=atencion.valor_total,
+            saldo_actual=atencion.saldo_pendiente,
+            genera_cartera=genera_cartera,
+            estado_documento='PENDIENTE',
+            observaciones=atencion.observaciones,
+        )
+        db.session.add(documento)
+        db.session.flush()
+
+        pago_data = dict(data)
+        pago_data['tipo_pago'] = 'PAGO_TOTAL' if valor_anticipo >= Decimal(str(atencion.valor_total or 0)) else 'ABONO'
+        pago_data['fecha_atencion'] = atencion.fecha_atencion.strftime('%Y-%m-%d') if atencion.fecha_atencion else ''
+        pago_data['paciente_documento'] = resumen_detalle['paciente_documento']
+        pago_data['paciente_nombre'] = resumen_detalle['paciente_nombre']
+        pago_data['examenes_realizados'] = resumen_detalle['examenes_realizados']
+
+        pago_payload = _build_seguimiento_pago_payload(pago_data, documento)
+        pago = ClienteSeguimientoPago(**pago_payload)
+        db.session.add(pago)
+        db.session.flush()
+
+        if _documento_requiere_recibo_caja(documento, pago.medio_pago):
+            pago.numero_recibo_caja = _generar_numero_recibo_caja(pago)
+
+        comprobante = request.files.get('comprobante_pago')
+        if pago.medio_pago == 'TRANSFERENCIA' and not comprobante:
+            raise ValueError('Debes cargar el comprobante cuando el anticipo se registra por transferencia')
+        if comprobante:
+            _guardar_comprobante_pago(pago, comprobante)
+
+        _recalcular_documento_con_pagos(documento)
+        db.session.commit()
+        return jsonify({
+            'mensaje': 'Anticipo programado',
+            'atencion_id': atencion.id,
+            'nro_atencion': atencion.nro_atencion,
+            'documento_id': documento.id,
+            'pago_id': pago.id,
+        }), 201
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error creando anticipo programado para cliente %s: %s", cliente_id, exc)
+        return jsonify({'error': 'Error al programar el anticipo'}), 500
 
 
 @comercial_bp.route('/atenciones/<int:atencion_id>', methods=['PUT'])
