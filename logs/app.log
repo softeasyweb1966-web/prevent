@@ -22918,3 +22918,4 @@ WHERE cargue_atenciones_dia.periodo_desde IS NOT NULL AND cargue_atenciones_dia.
 2026-05-19 01:00:15,981 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 01:00:15] "GET /api/chat/conversaciones HTTP/1.1" 200 -
 2026-05-19 01:00:28,006 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 01:00:28] "GET /api/chat/conversaciones HTTP/1.1" 200 -
 2026-05-19 01:01:27,928 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 01:01:27] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 01:02:27,968 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 01:02:27] "GET /api/chat/conversaciones HTTP/1.1" 200 -
