@@ -1172,6 +1172,8 @@ class PrefacturaComercial(db.Model):
 
     # Forma de pago del grupo: CREDITO, EFECTIVO, MIXTO
     forma_pago      = db.Column(db.String(20), nullable=False, index=True)
+    origen          = db.Column(db.String(30), nullable=False, default='ATENCIONES', index=True)
+    fecha_programada = db.Column(db.DateTime, index=True)
 
     # Totales calculados al generar
     cant_pacientes  = db.Column(db.Integer, default=0, nullable=False)
@@ -1189,6 +1191,8 @@ class PrefacturaComercial(db.Model):
     usuario_genera_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
     usuario_cierra_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
     fecha_cierre      = db.Column(db.DateTime)
+    bloqueada_por_pago = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    fecha_bloqueo_pago = db.Column(db.DateTime)
     observaciones     = db.Column(db.Text)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -1205,12 +1209,18 @@ class PrefacturaComercial(db.Model):
         lazy='dynamic',
         cascade='all, delete-orphan',
     )
+    detalles        = db.relationship(
+        'PrefacturaComercialDetalle',
+        backref='prefactura',
+        lazy='dynamic',
+        cascade='all, delete-orphan',
+    )
 
     __table_args__ = (
         # Una empresa puede tener una sola prefactura por periodo + forma_pago
         db.UniqueConstraint(
-            'nombre_empresa', 'fecha_desde', 'fecha_hasta', 'forma_pago',
-            name='uq_prefactura_empresa_periodo_forma',
+            'nombre_empresa', 'fecha_desde', 'fecha_hasta', 'forma_pago', 'origen',
+            name='uq_prefactura_empresa_periodo_forma_origen',
         ),
     )
 
@@ -1218,6 +1228,47 @@ class PrefacturaComercial(db.Model):
         return (f'<PrefacturaComercial {self.nombre_empresa} '
                 f'{self.fecha_desde:%d/%m/%Y}-{self.fecha_hasta:%d/%m/%Y} '
                 f'{self.forma_pago} [{self.estado}]>')
+
+
+class PrefacturaComercialDetalle(db.Model):
+    """Detalle manual por paciente/item para anticipos en efectivo."""
+    __tablename__ = 'prefacturas_comerciales_detalle'
+
+    id = db.Column(db.Integer, primary_key=True)
+    prefactura_id = db.Column(
+        db.Integer,
+        db.ForeignKey('prefacturas_comerciales.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    paciente_documento = db.Column(db.String(50), nullable=False, index=True)
+    paciente_nombre = db.Column(db.String(200), nullable=False, index=True)
+    catalogo_item_id = db.Column(db.Integer, db.ForeignKey('comercial_catalogo_items.id'), nullable=False, index=True)
+    tipo_item = db.Column(db.String(20), nullable=False, index=True)
+    nombre_item = db.Column(db.String(200), nullable=False)
+    valor_item = db.Column(Numeric(15, 2), default=0, nullable=False)
+    fecha_programada = db.Column(db.DateTime, nullable=False, index=True)
+    estado_cruce = db.Column(db.String(20), nullable=False, default='PENDIENTE', index=True)
+    atencion_dia_id = db.Column(db.Integer, db.ForeignKey('atenciones_dia_detalle.id'), index=True)
+    cruzado_at = db.Column(db.DateTime)
+    observaciones = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    item_catalogo = db.relationship(
+        'ComercialCatalogoItem',
+        backref=db.backref('prefacturas_detalle', lazy='dynamic'),
+    )
+    atencion_dia = db.relationship(
+        'AtencionDiaDetalle',
+        backref=db.backref('prefacturas_manual_detalle', lazy='dynamic'),
+    )
+
+    def __repr__(self):
+        return (
+            f'<PrefacturaComercialDetalle pref={self.prefactura_id} '
+            f'paciente={self.paciente_documento} item={self.catalogo_item_id}>'
+        )
 
 
 class CarteraPrefactura(db.Model):
@@ -1240,7 +1291,12 @@ class CarteraPrefactura(db.Model):
 
     # Medio de pago: EFECTIVO, TRANSFERENCIA, CHEQUE
     medio_pago      = db.Column(db.String(30))
+    canal_transferencia = db.Column(db.String(20), index=True)
     nro_comprobante = db.Column(db.String(80))
+    nombre_comprobante = db.Column(db.String(255))
+    ruta_comprobante = db.Column(db.String(500))
+    mime_type = db.Column(db.String(120))
+    tamano_bytes = db.Column(db.Integer)
 
     # Estado del pago: PENDIENTE, APLICADO, ANULADO
     estado          = db.Column(db.String(20), default='APLICADO', nullable=False, index=True)

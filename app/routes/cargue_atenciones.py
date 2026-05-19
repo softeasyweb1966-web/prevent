@@ -3,20 +3,23 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import os
 import re
 import unicodedata
+import uuid
 import zipfile
 from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree as ET
 
-from flask import jsonify, request, send_file
+from flask import current_app, jsonify, request, send_file
 from flask_login import current_user, login_required
 from sqlalchemy import BigInteger, cast, func, or_
 from sqlalchemy.exc import OperationalError, ProgrammingError
+from werkzeug.utils import secure_filename
 
 from app.models import (
     AtencionDiaDetalle,
@@ -25,6 +28,7 @@ from app.models import (
     ClienteComercial,
     ComercialCatalogoItem,
     PrefacturaComercial,
+    PrefacturaComercialDetalle,
     Vendedor,
     db,
 )
@@ -428,6 +432,103 @@ def _serialize_atencion_dia(registro):
     }
 
 
+def _coincide_detalle_prefactura_con_atencion(detalle: PrefacturaComercialDetalle, registro: AtencionDiaDetalle) -> bool:
+    if detalle is None or registro is None:
+        return False
+    if detalle.prefactura is None or detalle.prefactura.cliente_id != registro.cliente_id:
+        return False
+    if not detalle.fecha_programada or not registro.fecha_creacion_orden:
+        return False
+    if detalle.fecha_programada.date() != registro.fecha_creacion_orden.date():
+        return False
+    if _normalizar_match(detalle.paciente_documento) != _normalizar_match(registro.nro_identificacion):
+        return False
+    if _normalizar_match(detalle.nombre_item) != _normalizar_match(registro.servicio):
+        return False
+    return True
+
+
+def _sincronizar_cruce_prefacturas_con_atencion(registro: AtencionDiaDetalle) -> None:
+    if registro is None or registro.id is None or registro.cliente_id is None:
+        return
+
+    candidatos = (
+        PrefacturaComercialDetalle.query
+        .join(PrefacturaComercial, PrefacturaComercial.id == PrefacturaComercialDetalle.prefactura_id)
+        .filter(
+            PrefacturaComercial.origen == PREF_ORIGEN_MANUAL,
+            PrefacturaComercial.cliente_id == registro.cliente_id,
+            PrefacturaComercialDetalle.atencion_dia_id.is_(None),
+        )
+        .order_by(
+            PrefacturaComercialDetalle.fecha_programada.asc(),
+            PrefacturaComercialDetalle.id.asc(),
+        )
+        .all()
+    )
+
+    for detalle in candidatos:
+        if not _coincide_detalle_prefactura_con_atencion(detalle, registro):
+            continue
+        detalle.atencion_dia_id = registro.id
+        detalle.estado_cruce = PREF_DETALLE_CRUCE_CRUZADO
+        detalle.cruzado_at = datetime.utcnow()
+        break
+
+
+def _desvincular_prefacturas_de_atencion(registro: AtencionDiaDetalle) -> None:
+    if registro is None or registro.id is None:
+        return
+
+    detalles = PrefacturaComercialDetalle.query.filter_by(atencion_dia_id=registro.id).all()
+    for detalle in detalles:
+        detalle.atencion_dia_id = None
+        detalle.estado_cruce = PREF_DETALLE_CRUCE_PENDIENTE
+        detalle.cruzado_at = None
+
+
+def _intentar_cruzar_prefactura_manual(prefactura: PrefacturaComercial | None) -> None:
+    if prefactura is None or (prefactura.origen or PREF_ORIGEN_ATENCIONES).upper() != PREF_ORIGEN_MANUAL:
+        return
+
+    detalles = (
+        prefactura.detalles
+        .filter(PrefacturaComercialDetalle.atencion_dia_id.is_(None))
+        .order_by(PrefacturaComercialDetalle.id.asc())
+        .all()
+    )
+    if not detalles:
+        return
+
+    fecha_programada = prefactura.fecha_programada or prefactura.fecha_desde
+    if fecha_programada is None:
+        return
+
+    registros = (
+        AtencionDiaDetalle.query
+        .filter(
+            AtencionDiaDetalle.cliente_id == prefactura.cliente_id,
+            AtencionDiaDetalle.fecha_creacion_orden >= fecha_programada.replace(hour=0, minute=0, second=0, microsecond=0),
+            AtencionDiaDetalle.fecha_creacion_orden <= fecha_programada.replace(hour=23, minute=59, second=59, microsecond=999999),
+        )
+        .order_by(AtencionDiaDetalle.id.asc())
+        .all()
+    )
+
+    usados = {detalle.atencion_dia_id for detalle in prefactura.detalles if detalle.atencion_dia_id}
+    for detalle in detalles:
+        for registro in registros:
+            if registro.id in usados:
+                continue
+            if not _coincide_detalle_prefactura_con_atencion(detalle, registro):
+                continue
+            detalle.atencion_dia_id = registro.id
+            detalle.estado_cruce = PREF_DETALLE_CRUCE_CRUZADO
+            detalle.cruzado_at = datetime.utcnow()
+            usados.add(registro.id)
+            break
+
+
 def _parse_fecha_iso(valor, field_name):
     texto = _normalizar(valor)
     if not texto:
@@ -636,6 +737,7 @@ def cargar_atenciones_dia():
     errores = 0
     relacionadas_cliente = 0
     relacionadas_vendedor = 0
+    registros_nuevos: list[AtencionDiaDetalle] = []
 
     for registro in registros:
         try:
@@ -676,6 +778,7 @@ def cargar_atenciones_dia():
             )
             db.session.add(detalle)
             existentes.add(clave)
+            registros_nuevos.append(detalle)
             importadas += 1
             if cliente is not None:
                 relacionadas_cliente += 1
@@ -688,6 +791,9 @@ def cargar_atenciones_dia():
     cargue.filas_importadas = importadas
     cargue.filas_duplicadas = duplicadas
     cargue.filas_error = errores
+    db.session.flush()
+    for detalle in registros_nuevos:
+        _sincronizar_cruce_prefacturas_con_atencion(detalle)
     db.session.commit()
 
     logger.info(
@@ -1085,6 +1191,8 @@ def crear_atencion_dia_manual():
             **payload,
         )
         db.session.add(registro)
+        db.session.flush()
+        _sincronizar_cruce_prefacturas_con_atencion(registro)
         db.session.commit()
     except ValueError as exc:
         db.session.rollback()
@@ -1130,6 +1238,9 @@ def editar_atencion_dia(reg_id):
         setattr(reg, campo, valor)
 
     try:
+        _desvincular_prefacturas_de_atencion(reg)
+        db.session.flush()
+        _sincronizar_cruce_prefacturas_con_atencion(reg)
         db.session.commit()
     except Exception as exc:
         db.session.rollback()
@@ -1207,6 +1318,7 @@ def eliminar_atencion_dia(reg_id):
     cargue = reg.cargue
 
     try:
+        _desvincular_prefacturas_de_atencion(reg)
         db.session.delete(reg)
         db.session.flush()
 
@@ -2179,23 +2291,252 @@ def generar_prefacturas():
 # ENDPOINTS DE PREFACTURAS (CRUD + CONSULTA + CARTERA)
 # ===========================================================================
 
+PREF_ORIGEN_ATENCIONES = 'ATENCIONES'
+PREF_ORIGEN_MANUAL = 'MANUAL_ANTICIPO'
+PREF_DETALLE_CRUCE_PENDIENTE = 'PENDIENTE'
+PREF_DETALLE_CRUCE_CRUZADO = 'CRUZADO'
+_TIPOS_MOVIMIENTO_CARTERA = {'PAGO_FACTURA', 'ANTICIPO', 'ABONO', 'NOTA_CREDITO'}
+_MEDIOS_PAGO_CARTERA = {'EFECTIVO', 'TRANSFERENCIA', 'CHEQUE'}
+_ESTADOS_CARTERA = {'APLICADO', 'PENDIENTE', 'ANULADO'}
+_CANALES_TRANSFERENCIA_CARTERA = {'NEQUI', 'DAVIPLATA', 'BANCO'}
+
+
+def _prefactura_total_pagado(prefactura: PrefacturaComercial) -> Decimal:
+    total = Decimal('0')
+    for pago in prefactura.pagos_cartera:
+        if (pago.estado or '').upper() == 'ANULADO':
+            continue
+        total += Decimal(str(pago.valor_pago or 0))
+    return total
+
+
+def _prefactura_saldo(prefactura: PrefacturaComercial) -> Decimal:
+    base = Decimal(str(prefactura.valor_factura or prefactura.valor_total or 0))
+    return base - _prefactura_total_pagado(prefactura)
+
+
+def _prefactura_manual_bloqueada(prefactura: PrefacturaComercial) -> bool:
+    if (prefactura.origen or PREF_ORIGEN_ATENCIONES).upper() != PREF_ORIGEN_MANUAL:
+        return False
+    if prefactura.bloqueada_por_pago is True:
+        return True
+    total_programado = Decimal(str(prefactura.valor_total or 0))
+    if total_programado <= 0:
+        return False
+    return _prefactura_total_pagado(prefactura) >= total_programado
+
+
+def _actualizar_totales_prefactura_manual(prefactura: PrefacturaComercial) -> None:
+    if (prefactura.origen or PREF_ORIGEN_ATENCIONES).upper() != PREF_ORIGEN_MANUAL:
+        return
+
+    detalles = prefactura.detalles.all()
+    total = Decimal('0')
+    pacientes = set()
+    fecha_programada = None
+    fecha_hasta = None
+    for detalle in detalles:
+        total += Decimal(str(detalle.valor_item or 0))
+        pacientes.add((_normalizar(detalle.paciente_documento) or '', _normalizar(detalle.paciente_nombre) or ''))
+        if detalle.fecha_programada and (fecha_programada is None or detalle.fecha_programada < fecha_programada):
+            fecha_programada = detalle.fecha_programada
+        if detalle.fecha_programada and (fecha_hasta is None or detalle.fecha_programada > fecha_hasta):
+            fecha_hasta = detalle.fecha_programada
+
+    prefactura.valor_total = total
+    prefactura.valor_factura = total
+    prefactura.cant_pacientes = len([item for item in pacientes if item != ('', '')])
+    prefactura.fecha_programada = fecha_programada
+    if fecha_programada is not None:
+        prefactura.fecha_desde = fecha_programada
+        prefactura.fecha_hasta = fecha_hasta or fecha_programada
+
+
+def _actualizar_bloqueo_prefactura(prefactura: PrefacturaComercial) -> None:
+    if (prefactura.origen or PREF_ORIGEN_ATENCIONES).upper() != PREF_ORIGEN_MANUAL:
+        return
+    if prefactura.bloqueada_por_pago is True:
+        return
+    total_programado = Decimal(str(prefactura.valor_total or 0))
+    if total_programado > 0 and _prefactura_total_pagado(prefactura) >= total_programado:
+        prefactura.bloqueada_por_pago = True
+        prefactura.fecha_bloqueo_pago = prefactura.fecha_bloqueo_pago or datetime.utcnow()
+
+
+def _asegurar_prefactura_manual_editable(prefactura: PrefacturaComercial) -> None:
+    if (prefactura.origen or PREF_ORIGEN_ATENCIONES).upper() != PREF_ORIGEN_MANUAL:
+        raise ValueError('Esta operacion solo aplica para prefacturas manuales de anticipo')
+    if prefactura.estado == 'CERRADA':
+        raise ValueError('La prefactura ya esta cerrada y no admite cambios')
+    if _prefactura_manual_bloqueada(prefactura):
+        raise ValueError('La prefactura ya quedo bloqueada porque el anticipo cubrio el total programado')
+
+
+def _prefactura_detalle_to_dict(detalle: PrefacturaComercialDetalle) -> dict:
+    return {
+        'id': detalle.id,
+        'prefactura_id': detalle.prefactura_id,
+        'paciente_documento': detalle.paciente_documento,
+        'paciente_nombre': detalle.paciente_nombre,
+        'catalogo_item_id': detalle.catalogo_item_id,
+        'tipo_item': detalle.tipo_item,
+        'nombre_item': detalle.nombre_item,
+        'valor_item': float(detalle.valor_item or 0),
+        'fecha_programada': detalle.fecha_programada.strftime('%Y-%m-%d') if detalle.fecha_programada else None,
+        'estado_cruce': detalle.estado_cruce,
+        'atencion_dia_id': detalle.atencion_dia_id,
+        'cruzado_at': detalle.cruzado_at.strftime('%Y-%m-%d %H:%M') if detalle.cruzado_at else None,
+        'observaciones': detalle.observaciones,
+    }
+
+
+def _guardar_comprobante_cartera_prefactura(pago: CarteraPrefactura, archivo) -> None:
+    if not archivo or not archivo.filename:
+        return
+
+    upload_root = current_app.config['UPLOAD_FOLDER']
+    pago_dir = os.path.join(upload_root, 'comercial', 'prefacturas', str(pago.prefactura_id), 'cartera')
+    os.makedirs(pago_dir, exist_ok=True)
+
+    nombre_original = secure_filename(archivo.filename)
+    if not nombre_original:
+        return
+
+    nombre_guardado = f'{uuid.uuid4().hex}_{nombre_original}'
+    ruta_absoluta = os.path.join(pago_dir, nombre_guardado)
+    archivo.save(ruta_absoluta)
+
+    _eliminar_comprobante_cartera_prefactura(pago)
+
+    pago.nombre_comprobante = nombre_original
+    pago.ruta_comprobante = os.path.relpath(ruta_absoluta, upload_root)
+    pago.mime_type = archivo.mimetype
+    pago.tamano_bytes = os.path.getsize(ruta_absoluta)
+
+
+def _eliminar_comprobante_cartera_prefactura(pago: CarteraPrefactura) -> None:
+    if not pago.ruta_comprobante:
+        return
+
+    upload_root = os.path.abspath(current_app.config['UPLOAD_FOLDER'])
+    ruta = os.path.abspath(os.path.join(upload_root, pago.ruta_comprobante))
+    if ruta.startswith(upload_root) and os.path.exists(ruta):
+        try:
+            os.remove(ruta)
+        except OSError:
+            logger.warning('No se pudo eliminar el comprobante de cartera %s', ruta)
+
+    pago.nombre_comprobante = None
+    pago.ruta_comprobante = None
+    pago.mime_type = None
+    pago.tamano_bytes = None
+
+
+def _get_comprobante_cartera_prefactura_path(pago: CarteraPrefactura) -> str:
+    if not pago.ruta_comprobante:
+        raise FileNotFoundError('Comprobante no encontrado')
+    upload_root = os.path.abspath(current_app.config['UPLOAD_FOLDER'])
+    ruta = os.path.abspath(os.path.join(upload_root, pago.ruta_comprobante))
+    if not ruta.startswith(upload_root):
+        raise FileNotFoundError('Ruta de comprobante invalida')
+    if not os.path.exists(ruta):
+        raise FileNotFoundError('Comprobante no encontrado')
+    return ruta
+
+
+def _cargar_convenio_cliente_para_prefactura(cliente: ClienteComercial, fecha_programada: datetime) -> dict[int, dict]:
+    from app.routes.comercial import _build_cliente_convenio_items
+
+    items = _build_cliente_convenio_items(cliente, fecha_programada)
+    return {
+        int(item['id']): item
+        for item in items
+        if item.get('id') is not None
+    }
+
+
+def _parsear_detalles_prefactura_manual(cliente: ClienteComercial, fecha_programada: datetime, detalles_raw) -> list[dict]:
+    try:
+        detalles = json.loads(detalles_raw or '[]')
+    except json.JSONDecodeError as exc:
+        raise ValueError('No se pudieron leer los detalles de la prefactura manual') from exc
+
+    if not isinstance(detalles, list) or not detalles:
+        raise ValueError('Debes agregar al menos un paciente con un examen o paquete convenido')
+
+    convenio = _cargar_convenio_cliente_para_prefactura(cliente, fecha_programada)
+    payload_detalles = []
+    vistos = set()
+    for detalle in detalles:
+        if not isinstance(detalle, dict):
+            raise ValueError('Cada detalle programado debe tener un formato valido')
+
+        paciente_documento = _normalizar(detalle.get('paciente_documento'))
+        paciente_nombre = _normalizar(detalle.get('paciente_nombre'))
+        fecha_detalle_raw = _normalizar(detalle.get('fecha_programada'))
+        try:
+            item_id = int(detalle.get('catalogo_item_id') or detalle.get('item_id') or 0)
+        except (TypeError, ValueError):
+            item_id = 0
+        try:
+            fecha_detalle = datetime.strptime(fecha_detalle_raw, '%Y-%m-%d') if fecha_detalle_raw else fecha_programada
+        except ValueError as exc:
+            raise ValueError('Cada detalle debe tener una fecha valida con formato YYYY-MM-DD') from exc
+
+        if not paciente_documento:
+            raise ValueError('Cada detalle debe tener documento del paciente')
+        if not paciente_nombre:
+            raise ValueError('Cada detalle debe tener nombre del paciente')
+        if item_id <= 0 or item_id not in convenio:
+            raise ValueError('Uno o mas examenes o paquetes no estan disponibles en el convenio vigente del cliente')
+
+        item = convenio[item_id]
+        llave = (_normalizar_match(paciente_documento), _normalizar_match(item.get('nombre')), fecha_detalle.strftime('%Y-%m-%d'))
+        if llave in vistos:
+            raise ValueError('No puedes repetir el mismo examen o paquete para el mismo paciente dentro de la prefactura')
+        vistos.add(llave)
+
+        payload_detalles.append({
+            'paciente_documento': paciente_documento,
+            'paciente_nombre': paciente_nombre,
+            'catalogo_item_id': item_id,
+            'tipo_item': _normalizar(item.get('tipo_item')) or 'EXAMEN',
+            'nombre_item': _normalizar(item.get('nombre')) or 'ITEM SIN NOMBRE',
+            'valor_item': Decimal(str(item.get('valor_unitario') or 0)),
+            'fecha_programada': fecha_detalle,
+            'estado_cruce': PREF_DETALLE_CRUCE_PENDIENTE,
+            'observaciones': _normalizar(detalle.get('observaciones')),
+        })
+
+    return payload_detalles
+
+
+def _recalcular_prefactura_manual(prefactura: PrefacturaComercial) -> None:
+    _actualizar_totales_prefactura_manual(prefactura)
+    _actualizar_bloqueo_prefactura(prefactura)
+
+
 def _prefactura_to_dict(p):
     """Serializa una PrefacturaComercial a dict."""
-    pagos_total = sum(
-        float(pg.valor_pago) for pg in p.pagos_cartera
-        if pg.estado != 'ANULADO'
-    )
-    saldo = float(p.valor_factura or p.valor_total or 0) - pagos_total
+    pagos_total = float(_prefactura_total_pagado(p))
+    saldo = float(_prefactura_saldo(p))
+    origen = (p.origen or PREF_ORIGEN_ATENCIONES).upper()
+    detalles = p.detalles.all() if origen == PREF_ORIGEN_MANUAL else []
+    detalles_cruzados = len([detalle for detalle in detalles if detalle.atencion_dia_id is not None])
     return {
         'id':              p.id,
         'cliente_id':      p.cliente_id,
         'nombre_empresa':  p.nombre_empresa,
         'fecha_desde':     p.fecha_desde.strftime('%Y-%m-%d') if p.fecha_desde else None,
         'fecha_hasta':     p.fecha_hasta.strftime('%Y-%m-%d') if p.fecha_hasta else None,
+        'fecha_programada': p.fecha_programada.strftime('%Y-%m-%d') if p.fecha_programada else None,
         'forma_pago':      p.forma_pago,
+        'origen':          origen,
         'cant_pacientes':  p.cant_pacientes,
         'valor_total':     float(p.valor_total or 0),
         'estado':          p.estado,
+        'bloqueada_por_pago': _prefactura_manual_bloqueada(p),
+        'fecha_bloqueo_pago': p.fecha_bloqueo_pago.strftime('%Y-%m-%d %H:%M') if p.fecha_bloqueo_pago else None,
         'fecha_factura':   p.fecha_factura.strftime('%Y-%m-%d') if p.fecha_factura else None,
         'nro_factura':     p.nro_factura,
         'valor_factura':   float(p.valor_factura) if p.valor_factura is not None else None,
@@ -2203,6 +2544,8 @@ def _prefactura_to_dict(p):
         'observaciones':   p.observaciones,
         'total_pagado':    pagos_total,
         'saldo_pendiente': saldo,
+        'detalles_count':  len(detalles),
+        'detalles_cruzados': detalles_cruzados,
         'created_at':      p.created_at.strftime('%Y-%m-%d %H:%M') if p.created_at else None,
         'updated_at':      p.updated_at.strftime('%Y-%m-%d %H:%M') if p.updated_at else None,
     }
@@ -2216,7 +2559,10 @@ def _pago_cartera_to_dict(pg):
         'fecha_pago':      pg.fecha_pago.strftime('%Y-%m-%d') if pg.fecha_pago else None,
         'valor_pago':      float(pg.valor_pago or 0),
         'medio_pago':      pg.medio_pago,
+        'canal_transferencia': pg.canal_transferencia,
         'nro_comprobante': pg.nro_comprobante,
+        'comprobante_nombre': pg.nombre_comprobante,
+        'comprobante_url': f'/api/comercial/cartera/{pg.id}/comprobante' if pg.ruta_comprobante else None,
         'estado':          pg.estado,
         'observaciones':   pg.observaciones,
         'created_at':      pg.created_at.strftime('%Y-%m-%d %H:%M') if pg.created_at else None,
@@ -2281,6 +2627,135 @@ def listar_prefacturas():
 
 
 # ---------------------------------------------------------------------------
+# POST /api/comercial/clientes/<id>/prefacturas-manuales  — crear anticipo manual
+# ---------------------------------------------------------------------------
+@comercial_bp.route('/clientes/<int:cliente_id>/prefacturas-manuales', methods=['POST'])
+@login_required
+def crear_prefactura_manual(cliente_id):
+    try:
+        _require_commercial_permission(PERMISO_CARGUE_ATENCIONES)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+
+    vendedor_scope = _resolver_vendedor_usuario_actual()
+    if not _is_admin_user() and vendedor_scope is None:
+        return jsonify({'error': 'No tienes un vendedor asociado'}), 403
+
+    cliente = ClienteComercial.query.get_or_404(cliente_id)
+    if not _is_admin_user() and cliente.vendedor_id != vendedor_scope.id:
+        return jsonify({'error': 'No tienes acceso a este cliente'}), 403
+    if cliente.condicion_comercial not in {'EFECTIVO', 'MIXTO'}:
+        return jsonify({'error': 'Solo puedes crear esta prefactura manual para clientes EFECTIVO o MIXTO'}), 409
+
+    fecha_programada_raw = _normalizar(request.form.get('fecha_programada'))
+    fecha_pago_raw = _normalizar(request.form.get('fecha_pago'))
+    observaciones = _normalizar(request.form.get('observaciones'))
+    medio_pago = (_normalizar(request.form.get('medio_pago')) or 'EFECTIVO').upper()
+    nro_comprobante = _normalizar(request.form.get('nro_comprobante'))
+    canal_transferencia = (_normalizar(request.form.get('canal_transferencia')) or '').upper() or None
+
+    if not fecha_programada_raw:
+        return jsonify({'error': 'Debes indicar la fecha programada'}), 400
+    if not fecha_pago_raw:
+        return jsonify({'error': 'Debes indicar la fecha del anticipo'}), 400
+
+    try:
+        fecha_programada = datetime.strptime(fecha_programada_raw, '%Y-%m-%d')
+        fecha_pago = datetime.strptime(fecha_pago_raw, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'error': 'Las fechas deben tener formato YYYY-MM-DD'}), 400
+
+    if medio_pago not in _MEDIOS_PAGO_CARTERA:
+        return jsonify({'error': 'El medio de pago debe ser EFECTIVO, TRANSFERENCIA o CHEQUE'}), 400
+    if medio_pago == 'TRANSFERENCIA' and canal_transferencia not in _CANALES_TRANSFERENCIA_CARTERA:
+        return jsonify({'error': 'Debes indicar si la transferencia fue por NEQUI, DAVIPLATA o BANCO'}), 400
+
+    try:
+        detalles_payload = _parsear_detalles_prefactura_manual(
+            cliente,
+            fecha_programada,
+            request.form.get('detalles'),
+        )
+        valor_pago = Decimal(str(request.form.get('valor_pago') or 0))
+        if valor_pago <= 0:
+            raise ValueError
+    except ValueError as exc:
+        mensaje = str(exc) if str(exc) else 'El valor del anticipo debe ser mayor que cero'
+        return jsonify({'error': mensaje}), 400
+
+    pref_existente = PrefacturaComercial.query.filter_by(
+        cliente_id=cliente.id,
+        fecha_desde=fecha_programada,
+        fecha_hasta=fecha_programada,
+        forma_pago=cliente.condicion_comercial,
+        origen=PREF_ORIGEN_MANUAL,
+    ).first()
+    if pref_existente is not None:
+        return jsonify({'error': 'Ya existe una prefactura manual para este cliente y esta fecha programada'}), 409
+
+    pref = PrefacturaComercial(
+        cliente_id=cliente.id,
+        nombre_empresa=cliente.razon_social,
+        fecha_desde=fecha_programada,
+        fecha_hasta=fecha_programada,
+        fecha_programada=fecha_programada,
+        forma_pago=cliente.condicion_comercial,
+        origen=PREF_ORIGEN_MANUAL,
+        estado='BORRADOR',
+        observaciones=observaciones,
+        usuario_genera_id=getattr(current_user, 'id', None),
+    )
+    db.session.add(pref)
+    db.session.flush()
+
+    for detalle_payload in detalles_payload:
+        db.session.add(PrefacturaComercialDetalle(prefactura_id=pref.id, **detalle_payload))
+
+    db.session.flush()
+    _recalcular_prefactura_manual(pref)
+
+    pago = CarteraPrefactura(
+        prefactura_id=pref.id,
+        tipo_movimiento='ANTICIPO',
+        fecha_pago=fecha_pago,
+        valor_pago=valor_pago,
+        medio_pago=medio_pago,
+        canal_transferencia=canal_transferencia,
+        nro_comprobante=nro_comprobante,
+        estado='APLICADO',
+        observaciones=observaciones,
+        usuario_id=getattr(current_user, 'id', None),
+    )
+    db.session.add(pago)
+    db.session.flush()
+
+    comprobante = request.files.get('comprobante_pago')
+    if medio_pago == 'TRANSFERENCIA' and not comprobante:
+        db.session.rollback()
+        return jsonify({'error': 'Debes adjuntar el comprobante cuando el anticipo se registra por transferencia'}), 400
+    if comprobante:
+        _guardar_comprobante_cartera_prefactura(pago, comprobante)
+
+    _actualizar_bloqueo_prefactura(pref)
+
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('Error creando prefactura manual para cliente %s: %s', cliente_id, exc)
+        return jsonify({'error': 'No se pudo crear la prefactura manual'}), 500
+
+    pref = PrefacturaComercial.query.get(pref.id)
+    _intentar_cruzar_prefactura_manual(pref)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    return jsonify({'mensaje': 'Prefactura manual creada', 'prefactura': _prefactura_to_dict(pref)}), 201
+
+
+# ---------------------------------------------------------------------------
 # GET /api/comercial/prefacturas/<id>  — detalle de una prefactura
 # ---------------------------------------------------------------------------
 @comercial_bp.route('/prefacturas/<int:pref_id>', methods=['GET'])
@@ -2295,7 +2770,145 @@ def obtener_prefactura(pref_id):
     pagos = [_pago_cartera_to_dict(pg) for pg in pref.pagos_cartera.order_by(CarteraPrefactura.fecha_pago.asc()).all()]
     data = _prefactura_to_dict(pref)
     data['pagos'] = pagos
+    if (pref.origen or PREF_ORIGEN_ATENCIONES).upper() == PREF_ORIGEN_MANUAL:
+        data['detalles'] = [
+            _prefactura_detalle_to_dict(detalle)
+            for detalle in pref.detalles.order_by(
+                PrefacturaComercialDetalle.fecha_programada.asc(),
+                PrefacturaComercialDetalle.paciente_nombre.asc(),
+                PrefacturaComercialDetalle.nombre_item.asc(),
+                PrefacturaComercialDetalle.id.asc(),
+            ).all()
+        ]
     return jsonify({'prefactura': data}), 200
+
+
+@comercial_bp.route('/prefacturas/<int:pref_id>/detalles', methods=['POST'])
+@login_required
+def agregar_detalle_prefactura_manual(pref_id):
+    try:
+        _require_commercial_permission(PERMISO_EDICION_ATENCIONES)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+
+    pref = PrefacturaComercial.query.get_or_404(pref_id)
+    try:
+        _asegurar_prefactura_manual_editable(pref)
+        fecha_programada = pref.fecha_programada or pref.fecha_desde
+        cliente = pref.cliente or ClienteComercial.query.get(pref.cliente_id)
+        if cliente is None:
+            raise ValueError('La prefactura no tiene un cliente valido asociado')
+        detalles = _parsear_detalles_prefactura_manual(
+            cliente,
+            fecha_programada,
+            json.dumps([request.get_json() or {}]),
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    detalle = PrefacturaComercialDetalle(prefactura_id=pref.id, **detalles[0])
+    db.session.add(detalle)
+    db.session.flush()
+    _recalcular_prefactura_manual(pref)
+
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('Error agregando detalle a prefactura %s: %s', pref_id, exc)
+        return jsonify({'error': 'No se pudo agregar el detalle a la prefactura'}), 500
+
+    _intentar_cruzar_prefactura_manual(pref)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    return jsonify({'detalle': _prefactura_detalle_to_dict(detalle), 'prefactura': _prefactura_to_dict(pref)}), 201
+
+
+@comercial_bp.route('/prefacturas/detalles/<int:detalle_id>', methods=['PUT'])
+@login_required
+def editar_detalle_prefactura_manual(detalle_id):
+    try:
+        _require_commercial_permission(PERMISO_EDICION_ATENCIONES)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+
+    detalle = PrefacturaComercialDetalle.query.get_or_404(detalle_id)
+    pref = detalle.prefactura
+    try:
+        _asegurar_prefactura_manual_editable(pref)
+        cliente = pref.cliente or ClienteComercial.query.get(pref.cliente_id)
+        if cliente is None:
+            raise ValueError('La prefactura no tiene un cliente valido asociado')
+        payloads = _parsear_detalles_prefactura_manual(
+            cliente,
+            pref.fecha_programada or pref.fecha_desde,
+            json.dumps([request.get_json() or {}]),
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    payload = payloads[0]
+    detalle.paciente_documento = payload['paciente_documento']
+    detalle.paciente_nombre = payload['paciente_nombre']
+    detalle.catalogo_item_id = payload['catalogo_item_id']
+    detalle.tipo_item = payload['tipo_item']
+    detalle.nombre_item = payload['nombre_item']
+    detalle.valor_item = payload['valor_item']
+    detalle.fecha_programada = payload['fecha_programada']
+    detalle.observaciones = payload['observaciones']
+    detalle.atencion_dia_id = None
+    detalle.estado_cruce = PREF_DETALLE_CRUCE_PENDIENTE
+    detalle.cruzado_at = None
+    _recalcular_prefactura_manual(pref)
+
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('Error editando detalle manual %s: %s', detalle_id, exc)
+        return jsonify({'error': 'No se pudo actualizar el detalle de la prefactura'}), 500
+
+    _intentar_cruzar_prefactura_manual(pref)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    return jsonify({'detalle': _prefactura_detalle_to_dict(detalle), 'prefactura': _prefactura_to_dict(pref)}), 200
+
+
+@comercial_bp.route('/prefacturas/detalles/<int:detalle_id>', methods=['DELETE'])
+@login_required
+def eliminar_detalle_prefactura_manual(detalle_id):
+    try:
+        _require_commercial_permission(PERMISO_ELIMINACION_ATENCIONES)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+
+    detalle = PrefacturaComercialDetalle.query.get_or_404(detalle_id)
+    pref = detalle.prefactura
+    try:
+        _asegurar_prefactura_manual_editable(pref)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 409
+
+    try:
+        db.session.delete(detalle)
+        db.session.flush()
+        if pref.detalles.count() == 0:
+            db.session.delete(pref)
+        else:
+            _recalcular_prefactura_manual(pref)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('Error eliminando detalle manual %s: %s', detalle_id, exc)
+        return jsonify({'error': 'No se pudo eliminar el detalle de la prefactura'}), 500
+
+    return jsonify({'ok': True}), 200
 
 
 # ---------------------------------------------------------------------------
@@ -2315,6 +2928,8 @@ def actualizar_prefactura(pref_id):
         return jsonify({'error': 'La prefactura está cerrada y no puede modificarse'}), 409
 
     data = request.get_json() or {}
+    if (pref.origen or PREF_ORIGEN_ATENCIONES).upper() == PREF_ORIGEN_MANUAL and _prefactura_manual_bloqueada(pref):
+        return jsonify({'error': 'La prefactura manual ya esta bloqueada porque el anticipo cubrio el total'}), 409
     if 'observaciones' in data:
         pref.observaciones = (data['observaciones'] or '').strip() or None
 
@@ -2347,6 +2962,9 @@ def cerrar_prefactura(pref_id):
     data = request.get_json() or {}
 
     # Para crédito: fecha y nro factura son obligatorios
+    if (pref.origen or PREF_ORIGEN_ATENCIONES).upper() == PREF_ORIGEN_MANUAL:
+        return jsonify({'error': 'Las prefacturas manuales de anticipo no se cierran por este flujo'}), 409
+
     if pref.forma_pago in ('CREDITO', 'MIXTO'):
         fecha_fac_str = (data.get('fecha_factura') or '').strip()
         nro_fac       = (data.get('nro_factura') or '').strip()
@@ -2424,8 +3042,12 @@ def eliminar_prefactura(pref_id):
     pref = PrefacturaComercial.query.get_or_404(pref_id)
     if pref.estado == 'CERRADA':
         return jsonify({'error': 'No se puede eliminar una prefactura cerrada'}), 409
+    if (pref.origen or PREF_ORIGEN_ATENCIONES).upper() == PREF_ORIGEN_MANUAL and _prefactura_manual_bloqueada(pref):
+        return jsonify({'error': 'La prefactura manual esta bloqueada y ya no se puede eliminar'}), 409
 
     try:
+        for pago in pref.pagos_cartera.all():
+            _eliminar_comprobante_cartera_prefactura(pago)
         db.session.delete(pref)
         db.session.commit()
     except Exception as exc:
@@ -2532,6 +3154,7 @@ def cargar_resumen_prefacturas():
             PrefacturaComercial.nombre_empresa.ilike(nombre_emp),
             PrefacturaComercial.estado == 'BORRADOR',
             PrefacturaComercial.forma_pago.in_(['CREDITO', 'MIXTO']),
+            PrefacturaComercial.origen == PREF_ORIGEN_ATENCIONES,
         ).all()
 
         if not prefs:
@@ -2580,14 +3203,6 @@ def listar_cartera_prefactura(pref_id):
     return jsonify({'pagos': [_pago_cartera_to_dict(pg) for pg in pagos]}), 200
 
 
-# ---------------------------------------------------------------------------
-# POST /api/comercial/prefacturas/<id>/cartera  — registrar pago/anticipo
-# ---------------------------------------------------------------------------
-_TIPOS_MOVIMIENTO_CARTERA  = {'PAGO_FACTURA', 'ANTICIPO', 'ABONO', 'NOTA_CREDITO'}
-_MEDIOS_PAGO_CARTERA       = {'EFECTIVO', 'TRANSFERENCIA', 'CHEQUE'}
-_ESTADOS_CARTERA           = {'APLICADO', 'PENDIENTE', 'ANULADO'}
-
-
 @comercial_bp.route('/prefacturas/<int:pref_id>/cartera', methods=['POST'])
 @login_required
 def registrar_pago_cartera(pref_id):
@@ -2597,7 +3212,12 @@ def registrar_pago_cartera(pref_id):
         return jsonify({'error': str(exc)}), 403
 
     pref = PrefacturaComercial.query.get_or_404(pref_id)
-    data = request.get_json() or {}
+    if (pref.origen or PREF_ORIGEN_ATENCIONES).upper() == PREF_ORIGEN_MANUAL and _prefactura_manual_bloqueada(pref):
+        return jsonify({'error': 'La prefactura manual ya esta bloqueada y no admite mas movimientos'}), 409
+
+    data = request.get_json() if request.is_json else request.form.to_dict()
+    data = data or {}
+    comprobante = request.files.get('comprobante_pago')
 
     tipo = str(data.get('tipo_movimiento') or 'PAGO_FACTURA').strip().upper()
     if tipo not in _TIPOS_MOVIMIENTO_CARTERA:
@@ -2622,6 +3242,9 @@ def registrar_pago_cartera(pref_id):
     medio = str(data.get('medio_pago') or 'EFECTIVO').strip().upper()
     if medio not in _MEDIOS_PAGO_CARTERA:
         medio = 'EFECTIVO'
+    canal_transferencia = (_normalizar(data.get('canal_transferencia')) or '').upper() or None
+    if medio == 'TRANSFERENCIA' and canal_transferencia not in _CANALES_TRANSFERENCIA_CARTERA:
+        return jsonify({'error': 'Debes indicar si la transferencia fue por NEQUI, DAVIPLATA o BANCO'}), 400
 
     pg = CarteraPrefactura(
         prefactura_id   = pref.id,
@@ -2629,12 +3252,21 @@ def registrar_pago_cartera(pref_id):
         fecha_pago      = fecha_pago,
         valor_pago      = valor_pago,
         medio_pago      = medio,
+        canal_transferencia = canal_transferencia,
         nro_comprobante = (data.get('nro_comprobante') or '').strip() or None,
         estado          = 'APLICADO',
         observaciones   = (data.get('observaciones') or '').strip() or None,
         usuario_id      = current_user.id,
     )
     db.session.add(pg)
+    db.session.flush()
+
+    if medio == 'TRANSFERENCIA' and not comprobante:
+        db.session.rollback()
+        return jsonify({'error': 'Debes adjuntar el comprobante cuando el pago se registra por transferencia'}), 400
+    if comprobante:
+        _guardar_comprobante_cartera_prefactura(pg, comprobante)
+    _actualizar_bloqueo_prefactura(pref)
 
     try:
         db.session.commit()
@@ -2656,8 +3288,14 @@ def actualizar_pago_cartera(pago_id):
     except PermissionError as exc:
         return jsonify({'error': str(exc)}), 403
 
-    pg   = CarteraPrefactura.query.get_or_404(pago_id)
-    data = request.get_json() or {}
+    pg = CarteraPrefactura.query.get_or_404(pago_id)
+    pref = pg.prefactura
+    if (pref.origen or PREF_ORIGEN_ATENCIONES).upper() == PREF_ORIGEN_MANUAL and _prefactura_manual_bloqueada(pref):
+        return jsonify({'error': 'La prefactura manual ya esta bloqueada y no admite cambios en sus pagos'}), 409
+
+    data = request.get_json() if request.is_json else request.form.to_dict()
+    data = data or {}
+    comprobante = request.files.get('comprobante_pago')
 
     if 'fecha_pago' in data and data['fecha_pago']:
         try:
@@ -2679,6 +3317,11 @@ def actualizar_pago_cartera(pago_id):
         medio = str(data['medio_pago'] or '').strip().upper()
         if medio in _MEDIOS_PAGO_CARTERA:
             pg.medio_pago = medio
+    if 'canal_transferencia' in data:
+        canal = (_normalizar(data.get('canal_transferencia')) or '').upper() or None
+        if pg.medio_pago == 'TRANSFERENCIA' and canal not in _CANALES_TRANSFERENCIA_CARTERA:
+            return jsonify({'error': 'Debes indicar si la transferencia fue por NEQUI, DAVIPLATA o BANCO'}), 400
+        pg.canal_transferencia = canal if pg.medio_pago == 'TRANSFERENCIA' else None
 
     if 'nro_comprobante' in data:
         pg.nro_comprobante = (data['nro_comprobante'] or '').strip() or None
@@ -2690,6 +3333,13 @@ def actualizar_pago_cartera(pago_id):
 
     if 'observaciones' in data:
         pg.observaciones = (data['observaciones'] or '').strip() or None
+    if pg.medio_pago == 'TRANSFERENCIA' and not comprobante and not pg.ruta_comprobante:
+        return jsonify({'error': 'Debes adjuntar el comprobante cuando el pago se registra por transferencia'}), 400
+    if pg.medio_pago != 'TRANSFERENCIA':
+        _eliminar_comprobante_cartera_prefactura(pg)
+        pg.canal_transferencia = None
+    elif comprobante:
+        _guardar_comprobante_cartera_prefactura(pg, comprobante)
 
     try:
         db.session.commit()
@@ -2712,6 +3362,9 @@ def anular_pago_cartera(pago_id):
         return jsonify({'error': str(exc)}), 403
 
     pg = CarteraPrefactura.query.get_or_404(pago_id)
+    pref = pg.prefactura
+    if (pref.origen or PREF_ORIGEN_ATENCIONES).upper() == PREF_ORIGEN_MANUAL and _prefactura_manual_bloqueada(pref):
+        return jsonify({'error': 'La prefactura manual ya esta bloqueada y no admite anulaciones de pago'}), 409
     pg.estado = 'ANULADO'
 
     try:
@@ -2721,3 +3374,22 @@ def anular_pago_cartera(pago_id):
         return jsonify({'error': 'No se pudo anular el pago'}), 500
 
     return jsonify({'pago': _pago_cartera_to_dict(pg)}), 200
+
+
+@comercial_bp.route('/cartera/<int:pago_id>/comprobante', methods=['GET'])
+@login_required
+def descargar_comprobante_cartera_prefactura(pago_id):
+    try:
+        _require_commercial_permission(PERMISO_CONSULTA_ATENCIONES)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+
+    pago = CarteraPrefactura.query.get_or_404(pago_id)
+    try:
+        ruta = _get_comprobante_cartera_prefactura_path(pago)
+        return send_file(ruta, as_attachment=True, download_name=pago.nombre_comprobante or 'comprobante_pago')
+    except FileNotFoundError as exc:
+        return jsonify({'error': str(exc)}), 404
+    except Exception as exc:
+        logger.error('Error descargando comprobante de cartera %s: %s', pago_id, exc)
+        return jsonify({'error': 'Error al descargar el comprobante del pago'}), 500

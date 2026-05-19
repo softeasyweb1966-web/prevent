@@ -3334,6 +3334,11 @@ window.anticipoProgramadoState = {
     draftDetalles: [],
     paymentValueTouched: false
 };
+window.prefacturaManualState = {
+    detalleEditId: null,
+    convenioItems: [],
+    convenioLoadedKey: ''
+};
 
 function updateCargueAtencionesDiaScope(scope, extraMessage = '') {
     const scopeContainer = document.getElementById('cargueAtencionesDiaScope');
@@ -5002,7 +5007,7 @@ async function cargarConvenioAnticipoProgramado(forceReload = false) {
     if (!fechaAtencion) {
         window.anticipoProgramadoState.convenioItems = [];
         window.anticipoProgramadoState.convenioLoadedKey = '';
-        actualizarHintItemAnticipo('Indica la fecha de atencion para cargar el convenio vigente del cliente.');
+        actualizarHintItemAnticipo('Indica la fecha programada para cargar el convenio vigente del cliente.');
         return [];
     }
 
@@ -5112,10 +5117,11 @@ function programarBusquedaItemAnticipo() {
     }, 160);
 }
 
-function existeDetalleDuplicadoAnticipo(pacienteDocumento, itemId) {
+function existeDetalleDuplicadoAnticipo(pacienteDocumento, itemId, fechaProgramada = '') {
     return (window.anticipoProgramadoState.draftDetalles || []).some(detalle =>
         String(detalle.paciente_documento || '').trim().toUpperCase() === String(pacienteDocumento || '').trim().toUpperCase()
         && Number(detalle.catalogo_item_id) === Number(itemId)
+        && String(detalle.fecha_programada || '').trim() === String(fechaProgramada || '').trim()
     );
 }
 
@@ -5143,10 +5149,10 @@ function renderDetalleAnticipoProgramado() {
         total += Number(detalle.valor_unitario || 0);
         return `
             <tr>
+                <td>${escapeHtml(detalle.fecha_programada || 'N/A')}</td>
                 <td>${escapeHtml(detalle.paciente_documento || 'N/A')}</td>
                 <td>${escapeHtml(detalle.paciente_nombre || 'N/A')}</td>
                 <td>${escapeHtml(detalle.nombre || 'N/A')}</td>
-                <td>${escapeHtml(detalle.tipo_item || 'N/A')}</td>
                 <td>${formatCurrency(detalle.valor_unitario || 0)}</td>
                 <td><button type="button" class="action-btn action-btn-delete" onclick="eliminarDetalleAnticipoProgramado(${index})">Quitar</button></td>
             </tr>
@@ -5228,13 +5234,14 @@ function cerrarProgramarAnticipoModal() {
 function agregarDetalleAnticipoProgramado() {
     const pacienteDocumento = document.getElementById('anticipoPacienteDocumento')?.value.trim() || '';
     const pacienteNombre = document.getElementById('anticipoPacienteNombre')?.value.trim() || '';
+    const fechaProgramada = document.getElementById('anticipoFechaAtencion')?.value || '';
     const itemId = Number(window.anticipoProgramadoState.selectedItemId || 0);
     if (!window.anticipoProgramadoState.clienteId) {
         showError('Selecciona primero la empresa para programar el anticipo.');
         return;
     }
-    if (!document.getElementById('anticipoFechaAtencion')?.value) {
-        showError('Debes registrar la fecha de atencion antes de agregar detalles.');
+    if (!fechaProgramada) {
+        showError('Debes registrar la fecha programada antes de agregar detalles.');
         return;
     }
     if (!pacienteDocumento || !pacienteNombre) {
@@ -5245,7 +5252,7 @@ function agregarDetalleAnticipoProgramado() {
         showError('Selecciona un examen o paquete convenido de la ayuda inteligente.');
         return;
     }
-    if (existeDetalleDuplicadoAnticipo(pacienteDocumento, itemId)) {
+    if (existeDetalleDuplicadoAnticipo(pacienteDocumento, itemId, fechaProgramada)) {
         showError('Ese examen o paquete ya fue agregado para este paciente.');
         return;
     }
@@ -5257,6 +5264,7 @@ function agregarDetalleAnticipoProgramado() {
     }
 
     window.anticipoProgramadoState.draftDetalles.push({
+        fecha_programada: fechaProgramada,
         catalogo_item_id: itemId,
         paciente_documento: pacienteDocumento,
         paciente_nombre: pacienteNombre,
@@ -5288,7 +5296,7 @@ async function guardarProgramarAnticipo(event) {
         return;
     }
     if (!fechaAtencion) {
-        showError('La fecha de atencion es obligatoria.');
+        showError('La fecha programada es obligatoria.');
         return;
     }
     if (!(window.anticipoProgramadoState.draftDetalles || []).length) {
@@ -5308,7 +5316,7 @@ async function guardarProgramarAnticipo(event) {
 
     try {
         const formData = new FormData();
-        formData.append('fecha_atencion', fechaAtencion);
+        formData.append('fecha_programada', fechaAtencion);
         formData.append('fecha_pago', fechaPago);
         formData.append('valor_pago', valorPago);
         formData.append('medio_pago', medioPago);
@@ -5316,6 +5324,7 @@ async function guardarProgramarAnticipo(event) {
         formData.append('observaciones', document.getElementById('anticipoObservaciones')?.value.trim() || '');
         formData.append('detalles', JSON.stringify(
             (window.anticipoProgramadoState.draftDetalles || []).map(detalle => ({
+                fecha_programada: detalle.fecha_programada,
                 catalogo_item_id: detalle.catalogo_item_id,
                 paciente_documento: detalle.paciente_documento,
                 paciente_nombre: detalle.paciente_nombre
@@ -5325,7 +5334,7 @@ async function guardarProgramarAnticipo(event) {
             formData.append('comprobante_pago', comprobante);
         }
 
-        const response = await fetch(`/api/comercial/clientes/${clienteId}/anticipos-programados`, {
+        const response = await fetch(`/api/comercial/clientes/${clienteId}/prefacturas-manuales`, {
             method: 'POST',
             credentials: 'include',
             body: formData
@@ -5337,9 +5346,10 @@ async function guardarProgramarAnticipo(event) {
         }
 
         cerrarProgramarAnticipoModal();
-        showSuccess(`Anticipo programado. Atencion ${data.nro_atencion || ''}`.trim());
-        if (window.cargueAtencionesDiaState.activeSection === 'consulta' && hasActiveFiltersCargueAtencionesDia()) {
-            await consultarAtencionesDiaCargadas(window.cargueAtencionesDiaState.page || 1);
+        showSuccess('Prefactura manual de anticipo creada.');
+        await consultarPrefacturas();
+        if (data.prefactura?.id) {
+            await abrirDetallePrefactura(data.prefactura.id);
         }
     } catch (error) {
         console.error('Error programando anticipo comercial:', error);
@@ -5440,6 +5450,27 @@ document.addEventListener('DOMContentLoaded', () => {
             seleccionarEmpresaPrefactura(decodeURIComponent(button.dataset.empresa || ''));
         });
         prefSuggestionsContainer.dataset.boundPrefEmpresaSuggestions = 'true';
+    }
+    const prefManualItemSelect = document.getElementById('prefManualItemSelect');
+    if (prefManualItemSelect && !prefManualItemSelect.dataset.boundPrefManualItem) {
+        prefManualItemSelect.addEventListener('change', actualizarValorItemPrefacturaManual);
+        prefManualItemSelect.dataset.boundPrefManualItem = 'true';
+    }
+    const prefManualFechaProgramada = document.getElementById('prefManualFechaProgramada');
+    if (prefManualFechaProgramada && !prefManualFechaProgramada.dataset.boundPrefManualFecha) {
+        prefManualFechaProgramada.addEventListener('change', async () => {
+            const clienteId = document.getElementById('prefacturaDetalleClienteId')?.value || '';
+            const fechaProgramada = prefManualFechaProgramada.value || '';
+            if (!clienteId || !fechaProgramada) return;
+            try {
+                await cargarConvenioPrefacturaManual(clienteId, fechaProgramada, true);
+                actualizarValorItemPrefacturaManual();
+            } catch (error) {
+                console.error('Error actualizando convenio de detalle manual:', error);
+                setPrefDetalleManualMsg(error.message || 'No se pudo actualizar el convenio para la fecha seleccionada.', true);
+            }
+        });
+        prefManualFechaProgramada.dataset.boundPrefManualFecha = 'true';
     }
 
     const prefPeriodoSelect = document.getElementById('prefacturaPeriodoSelect');
@@ -14107,20 +14138,22 @@ async function consultarPrefacturas() {
 
         tbody.innerHTML = '';
         prefs.forEach(p => {
+            const esManual = String(p.origen || '').toUpperCase() === 'MANUAL_ANTICIPO';
             const estadoBadge = p.estado === 'CERRADA'
                 ? '<span style="color:#27ae60;font-weight:bold;">CERRADA</span>'
                 : '<span style="color:#e67e22;font-weight:bold;">BORRADOR</span>';
             const periodo = `${p.fecha_desde || ''} al ${p.fecha_hasta || ''}`;
             const esBorrador = p.estado === 'BORRADOR';
+            const numeroPrefactura = construirNumeroPrefactura(p);
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>${escapeHtml(p.nombre_empresa)}</td>
+                <td>${escapeHtml(p.nombre_empresa)}${esManual ? `<div style="color:#2563eb;font-size:0.82rem;">${escapeHtml(numeroPrefactura)}</div>` : ''}</td>
                 <td style="font-size:0.85em;">${periodo}</td>
                 <td>${escapeHtml(p.forma_pago)}</td>
                 <td style="text-align:center;">${p.cant_pacientes}</td>
                 <td style="text-align:right;">$${_fmtMoney(p.valor_total)}</td>
-                <td style="text-align:center;">${estadoBadge}</td>
-                <td>${escapeHtml(p.nro_factura || '')}</td>
+                <td style="text-align:center;">${estadoBadge}${p.bloqueada_por_pago ? '<div style="color:#b45309;font-size:0.82rem;">Bloqueada por anticipo</div>' : ''}</td>
+                <td>${escapeHtml(esManual ? numeroPrefactura : (p.nro_factura || ''))}</td>
                 <td style="text-align:right;">${p.valor_factura != null ? '$' + _fmtMoney(p.valor_factura) : ''}</td>
                 <td style="text-align:right;">$${_fmtMoney(p.total_pagado)}</td>
                 <td style="text-align:right;">$${_fmtMoney(p.saldo_pendiente)}</td>
@@ -14155,10 +14188,263 @@ async function consultarPrefacturas() {
 // PREFACTURAS — DETALLE / CERRAR / REABRIR
 // ===========================================================================
 
+function construirNumeroPrefactura(prefactura) {
+    const id = Number(prefactura?.id || 0);
+    if (!id) return '';
+    const esManual = String(prefactura?.origen || '').toUpperCase() === 'MANUAL_ANTICIPO';
+    const prefijo = esManual ? 'PREF-ANT' : 'PREF';
+    return `${prefijo}-${String(id).padStart(6, '0')}`;
+}
+
+function obtenerPagosActivosPrefactura(prefactura) {
+    return (Array.isArray(prefactura?.pagos) ? prefactura.pagos : [])
+        .filter(pg => String(pg?.estado || '').toUpperCase() !== 'ANULADO')
+        .sort((a, b) => String(a?.fecha_pago || '').localeCompare(String(b?.fecha_pago || '')));
+}
+
+function renderCabeceraPrefacturaManual(prefactura) {
+    const pagoReferencia = obtenerPagosActivosPrefactura(prefactura)[0] || null;
+    const comprobanteNode = document.getElementById('prefDetalleAnticipoComprobante');
+    const empresaInput = document.getElementById('prefDetalleAnticipoEmpresa');
+    const numeroInput = document.getElementById('prefDetalleAnticipoNumero');
+    const valorInput = document.getElementById('prefDetalleAnticipoValorCancelado');
+    const fechaPagoInput = document.getElementById('prefDetalleAnticipoFechaPago');
+    const formaPagoInput = document.getElementById('prefDetalleAnticipoFormaPago');
+
+    if (empresaInput) empresaInput.value = prefactura?.nombre_empresa || '';
+    if (numeroInput) numeroInput.value = construirNumeroPrefactura(prefactura);
+    if (valorInput) valorInput.value = formatCurrency(prefactura?.total_pagado || 0);
+    if (fechaPagoInput) fechaPagoInput.value = pagoReferencia?.fecha_pago || '';
+    if (formaPagoInput) {
+        const medio = pagoReferencia?.medio_pago || '';
+        const canal = pagoReferencia?.canal_transferencia ? ` / ${pagoReferencia.canal_transferencia}` : '';
+        formaPagoInput.value = `${medio}${canal}`;
+    }
+    if (comprobanteNode) {
+        comprobanteNode.innerHTML = pagoReferencia?.comprobante_url
+            ? `<a href="${pagoReferencia.comprobante_url}" target="_blank" rel="noopener">Descargar comprobante</a>`
+            : 'Sin comprobante adjunto.';
+    }
+}
+
+function obtenerFechaBasePrefacturaManualEditor() {
+    return document.getElementById('prefacturaDetalleFechaProgramada')?.value || getTodayIsoDate();
+}
+
+function setPrefDetalleManualMsg(message = '', isError = false) {
+    const node = document.getElementById('prefDetalleManualMsg');
+    if (!node) return;
+    node.textContent = message;
+    node.style.color = isError ? '#c0392b' : '#555';
+}
+
+function limpiarEditorDetallePrefacturaManual() {
+    ['prefManualPacienteDocumento', 'prefManualPacienteNombre', 'prefManualItemValor'].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.value = '';
+    });
+    const fechaInput = document.getElementById('prefManualFechaProgramada');
+    if (fechaInput) fechaInput.value = obtenerFechaBasePrefacturaManualEditor();
+    const itemSelect = document.getElementById('prefManualItemSelect');
+    if (itemSelect) itemSelect.value = '';
+    window.prefacturaManualState.detalleEditId = null;
+    const saveBtn = document.getElementById('prefManualGuardarBtn');
+    const cancelBtn = document.getElementById('prefManualCancelarBtn');
+    if (saveBtn) saveBtn.textContent = 'Agregar detalle';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+    setPrefDetalleManualMsg('');
+}
+
+function poblarSelectDetallePrefacturaManual(items = []) {
+    const select = document.getElementById('prefManualItemSelect');
+    if (!select) return;
+    const options = ['<option value="">Seleccione...</option>'].concat(
+        (Array.isArray(items) ? items : []).map(item => `
+            <option value="${Number(item.id)}">${escapeHtml(`${item.nombre || 'Item'}${item.tipo_item ? ` · ${item.tipo_item}` : ''}`)}</option>
+        `)
+    );
+    select.innerHTML = options.join('');
+}
+
+async function cargarConvenioPrefacturaManual(clienteId, fechaProgramada, forceReload = false) {
+    if (!clienteId || !fechaProgramada) {
+        window.prefacturaManualState.convenioItems = [];
+        window.prefacturaManualState.convenioLoadedKey = '';
+        poblarSelectDetallePrefacturaManual([]);
+        return [];
+    }
+    const cacheKey = `${clienteId}|${fechaProgramada}`;
+    if (!forceReload && cacheKey === window.prefacturaManualState.convenioLoadedKey) {
+        return window.prefacturaManualState.convenioItems || [];
+    }
+    const params = new URLSearchParams({ fecha_atencion: fechaProgramada });
+    const response = await fetch(`/api/comercial/clientes/${clienteId}/convenio-items?${params.toString()}`, {
+        credentials: 'include'
+    });
+    const data = await response.json().catch(() => ([]));
+    if (!response.ok) {
+        throw new Error(data.error || 'No se pudieron cargar los items del convenio para esta prefactura.');
+    }
+    window.prefacturaManualState.convenioItems = Array.isArray(data) ? data : [];
+    window.prefacturaManualState.convenioLoadedKey = cacheKey;
+    poblarSelectDetallePrefacturaManual(window.prefacturaManualState.convenioItems);
+    return window.prefacturaManualState.convenioItems;
+}
+
+function actualizarValorItemPrefacturaManual() {
+    const select = document.getElementById('prefManualItemSelect');
+    const valorInput = document.getElementById('prefManualItemValor');
+    if (!select || !valorInput) return;
+    const item = (window.prefacturaManualState.convenioItems || []).find(entry => Number(entry.id) === Number(select.value));
+    valorInput.value = item ? Number(item.valor_unitario || 0) : '';
+}
+
+function renderPrefacturaManualDetalles(prefactura) {
+    const section = document.getElementById('prefDetalleManualSection');
+    const tbody = document.getElementById('prefDetalleManualBody');
+    const resumen = document.getElementById('prefDetalleManualResumen');
+    const hint = document.getElementById('prefDetalleManualHint');
+    const editor = document.getElementById('prefDetalleManualEditor');
+    if (!section || !tbody || !resumen || !hint || !editor) return;
+
+    const esManual = String(prefactura?.origen || '').toUpperCase() === 'MANUAL_ANTICIPO';
+    if (!esManual) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = '';
+    const detalles = Array.isArray(prefactura?.detalles) ? prefactura.detalles : [];
+    const bloqueada = prefactura?.bloqueada_por_pago === true;
+    hint.textContent = bloqueada
+        ? 'Esta prefactura ya quedo bloqueada porque el anticipo cubrio el total programado.'
+        : 'Solo se pueden usar items vigentes del convenio del cliente y modificar mientras no este bloqueada.';
+    editor.style.display = bloqueada ? 'none' : '';
+
+    if (!detalles.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;">No hay detalles programados.</td></tr>';
+    } else {
+        tbody.innerHTML = detalles.map(detalle => `
+            <tr>
+                <td>${escapeHtml(detalle.fecha_programada || 'N/A')}</td>
+                <td>${escapeHtml(detalle.paciente_documento || 'N/A')}</td>
+                <td>${escapeHtml(detalle.paciente_nombre || 'N/A')}</td>
+                <td>${escapeHtml(detalle.nombre_item || 'N/A')}</td>
+                <td style="text-align:right;">${formatCurrency(detalle.valor_item || 0)}</td>
+                <td>${detalle.atencion_dia_id ? '<span style="color:#27ae60;font-weight:600;">Cruzado</span>' : '<span style="color:#e67e22;">Pendiente</span>'}</td>
+                <td style="white-space:nowrap;">
+                    ${bloqueada ? '' : `
+                        <button class="action-btn action-btn-edit" type="button" onclick="editarDetallePrefacturaManual(${detalle.id})">Editar</button>
+                        <button class="action-btn action-btn-delete" type="button" onclick="eliminarDetallePrefacturaManual(${detalle.id})">Eliminar</button>
+                    `}
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    resumen.textContent = `Total programado: ${formatCurrency(prefactura?.valor_total || 0)} | Total cancelado: ${formatCurrency(prefactura?.total_pagado || 0)} | Cruzados: ${Number(prefactura?.detalles_cruzados || 0)} / ${Number(prefactura?.detalles_count || 0)}`;
+}
+
+function editarDetallePrefacturaManual(detalleId) {
+    const prefactura = window.prefacturaManualState.currentPrefactura || {};
+    const detalles = Array.isArray(prefactura.detalles) ? prefactura.detalles : [];
+    const detalle = detalles.find(item => Number(item.id) === Number(detalleId));
+    if (!detalle) return;
+
+    document.getElementById('prefManualFechaProgramada').value = detalle.fecha_programada || obtenerFechaBasePrefacturaManualEditor();
+    document.getElementById('prefManualPacienteDocumento').value = detalle.paciente_documento || '';
+    document.getElementById('prefManualPacienteNombre').value = detalle.paciente_nombre || '';
+    document.getElementById('prefManualItemSelect').value = String(detalle.catalogo_item_id || '');
+    actualizarValorItemPrefacturaManual();
+    window.prefacturaManualState.detalleEditId = Number(detalle.id);
+    const saveBtn = document.getElementById('prefManualGuardarBtn');
+    const cancelBtn = document.getElementById('prefManualCancelarBtn');
+    if (saveBtn) saveBtn.textContent = 'Guardar cambio';
+    if (cancelBtn) cancelBtn.style.display = '';
+    setPrefDetalleManualMsg('Editando detalle seleccionado.');
+}
+
+function cancelarEdicionDetallePrefacturaManual() {
+    limpiarEditorDetallePrefacturaManual();
+}
+
+async function guardarDetallePrefacturaManual() {
+    const prefId = document.getElementById('prefacturaDetalleId')?.value;
+    const clienteId = document.getElementById('prefacturaDetalleClienteId')?.value;
+    const fechaProgramada = document.getElementById('prefManualFechaProgramada')?.value || document.getElementById('prefacturaDetalleFechaProgramada')?.value;
+    const pacienteDocumento = document.getElementById('prefManualPacienteDocumento')?.value?.trim() || '';
+    const pacienteNombre = document.getElementById('prefManualPacienteNombre')?.value?.trim() || '';
+    const itemId = document.getElementById('prefManualItemSelect')?.value || '';
+    const editingId = window.prefacturaManualState.detalleEditId;
+
+    if (!prefId || !clienteId || !fechaProgramada) {
+        setPrefDetalleManualMsg('No hay una prefactura manual lista para editar.', true);
+        return;
+    }
+    if (!pacienteDocumento || !pacienteNombre || !itemId) {
+        setPrefDetalleManualMsg('Debes completar paciente e item del convenio.', true);
+        return;
+    }
+
+    setPrefDetalleManualMsg(editingId ? 'Guardando cambio...' : 'Agregando detalle...');
+    try {
+        const response = await fetch(
+            editingId ? `/api/comercial/prefacturas/detalles/${editingId}` : `/api/comercial/prefacturas/${prefId}/detalles`,
+            {
+                method: editingId ? 'PUT' : 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fecha_programada: fechaProgramada,
+                    paciente_documento: pacienteDocumento,
+                    paciente_nombre: pacienteNombre,
+                    catalogo_item_id: Number(itemId)
+                })
+            }
+        );
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            setPrefDetalleManualMsg(data.error || 'No se pudo guardar el detalle.', true);
+            return;
+        }
+        limpiarEditorDetallePrefacturaManual();
+        await abrirDetallePrefactura(prefId);
+    } catch (error) {
+        console.error('Error guardando detalle manual de prefactura:', error);
+        setPrefDetalleManualMsg(error.message || 'Error de conexion al guardar el detalle.', true);
+    }
+}
+
+async function eliminarDetallePrefacturaManual(detalleId) {
+    const prefId = document.getElementById('prefacturaDetalleId')?.value;
+    if (!detalleId || !prefId) return;
+    if (!confirm('¿Eliminar este detalle de la prefactura manual?')) return;
+    try {
+        const response = await fetch(`/api/comercial/prefacturas/detalles/${detalleId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            setPrefDetalleManualMsg(data.error || 'No se pudo eliminar el detalle.', true);
+            return;
+        }
+        limpiarEditorDetallePrefacturaManual();
+        await abrirDetallePrefactura(prefId);
+    } catch (error) {
+        console.error('Error eliminando detalle manual de prefactura:', error);
+        setPrefDetalleManualMsg(error.message || 'Error de conexion al eliminar el detalle.', true);
+    }
+}
+
 async function abrirDetallePrefactura(prefId) {
     document.getElementById('prefacturaDetalleId').value = prefId;
+    document.getElementById('prefacturaDetalleClienteId').value = '';
+    document.getElementById('prefacturaDetalleOrigen').value = '';
+    document.getElementById('prefacturaDetalleFechaProgramada').value = '';
     document.getElementById('prefDetalleMsg').textContent = '';
     document.getElementById('nuevoPagoMsg').textContent   = '';
+    limpiarEditorDetallePrefacturaManual();
 
     try {
         const res  = await fetch(`/api/comercial/prefacturas/${prefId}`, { credentials: 'include' });
@@ -14166,23 +14452,56 @@ async function abrirDetallePrefactura(prefId) {
         if (!res.ok) { showToast(data.error || 'Error cargando prefactura', 'error'); return; }
 
         const p = data.prefactura;
+        window.prefacturaManualState.currentPrefactura = p;
+        const esManual = String(p.origen || '').toUpperCase() === 'MANUAL_ANTICIPO';
+        const rangoPrefactura = `${p.fecha_desde || ''}${p.fecha_hasta && p.fecha_hasta !== p.fecha_desde ? ` al ${p.fecha_hasta}` : ''}`;
         document.getElementById('prefacturaDetalleTitulo').textContent =
             `${p.nombre_empresa} · ${p.forma_pago} · ${p.fecha_desde} al ${p.fecha_hasta}`;
+        document.getElementById('prefacturaDetalleClienteId').value = p.cliente_id || '';
+        document.getElementById('prefacturaDetalleOrigen').value = p.origen || '';
+        document.getElementById('prefacturaDetalleFechaProgramada').value = p.fecha_programada || '';
         document.getElementById('prefDetalleFechaFactura').value  = p.fecha_factura  || '';
         document.getElementById('prefDetalleNroFactura').value    = p.nro_factura    || '';
         document.getElementById('prefDetalleValorFactura').value  = p.valor_factura  != null ? p.valor_factura : p.valor_total;
         document.getElementById('prefDetalleObservaciones').value = p.observaciones  || '';
+        document.getElementById('prefacturaDetalleTitulo').textContent = esManual
+            ? `${construirNumeroPrefactura(p)} | ${p.nombre_empresa}`
+            : `${p.nombre_empresa} | ${p.forma_pago} | ${rangoPrefactura}`;
+        document.getElementById('prefacturaDetalleFechaProgramada').value = p.fecha_programada || p.fecha_desde || '';
+        const fechaManualInput = document.getElementById('prefManualFechaProgramada');
+        if (fechaManualInput) fechaManualInput.value = p.fecha_programada || p.fecha_desde || getTodayIsoDate();
 
         const cerrado = p.estado === 'CERRADA';
-        document.getElementById('btnCerrarPrefactura').style.display  = cerrado ? 'none' : '';
-        document.getElementById('btnReabrirPrefactura').style.display = cerrado ? ''     : 'none';
-        document.getElementById('prefDetalleNuevoPagoSection').style.display = '';
+        const bloqueada = p.bloqueada_por_pago === true;
+        const facturaSection = document.getElementById('prefDetalleFacturaSection');
+        const anticipoSection = document.getElementById('prefDetalleAnticipoSection');
+        const pagoTitulo = document.getElementById('prefDetalleNuevoPagoTitulo');
+        document.getElementById('btnCerrarPrefactura').style.display  = (cerrado || esManual) ? 'none' : '';
+        document.getElementById('btnReabrirPrefactura').style.display = (!esManual && cerrado) ? '' : 'none';
+        document.getElementById('prefDetalleNuevoPagoSection').style.display = bloqueada ? 'none' : '';
+        if (facturaSection) facturaSection.style.display = esManual ? 'none' : '';
+        if (anticipoSection) anticipoSection.style.display = esManual ? '' : 'none';
+        if (pagoTitulo) pagoTitulo.textContent = esManual ? 'Registrar pago adicional' : 'Registrar Pago / Anticipo';
 
         // Campos de factura: readonly si cerrada
         ['prefDetalleFechaFactura','prefDetalleNroFactura','prefDetalleValorFactura','prefDetalleObservaciones']
-            .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = cerrado; });
+            .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = cerrado || bloqueada; });
 
+        if (esManual) {
+            renderCabeceraPrefacturaManual(p);
+        }
         _renderCarteraBody(p.pagos || [], p.total_pagado, p.saldo_pendiente);
+        renderPrefacturaManualDetalles(p);
+        if (esManual && p.cliente_id && (p.fecha_programada || p.fecha_desde)) {
+            try {
+                await cargarConvenioPrefacturaManual(p.cliente_id, p.fecha_programada || p.fecha_desde, true);
+            } catch (error) {
+                console.error('Error cargando convenio para prefactura manual:', error);
+                setPrefDetalleManualMsg(error.message || 'No se pudo cargar el convenio del cliente.', true);
+            }
+        } else {
+            poblarSelectDetallePrefacturaManual([]);
+        }
 
         document.getElementById('prefacturaDetalleModal').classList.add('active');
     } catch (err) {
@@ -14204,8 +14523,11 @@ function _renderCarteraBody(pagos, totalPagado, saldo) {
             tr.innerHTML = `
                 <td>${pg.fecha_pago || ''}</td>
                 <td>${escapeHtml(pg.tipo_movimiento)}</td>
-                <td>${escapeHtml(pg.medio_pago || '')}</td>
-                <td>${escapeHtml(pg.nro_comprobante || '')}</td>
+                <td>${escapeHtml(`${pg.medio_pago || ''}${pg.canal_transferencia ? ` / ${pg.canal_transferencia}` : ''}`)}</td>
+                <td>
+                    ${escapeHtml(pg.nro_comprobante || '')}
+                    ${pg.comprobante_url ? `<div><a href="${pg.comprobante_url}" target="_blank" rel="noopener">Descargar soporte</a></div>` : ''}
+                </td>
                 <td style="text-align:right;">$${_fmtMoney(pg.valor_pago)}</td>
                 <td>${escapeHtml(pg.estado)}</td>
                 <td>${anulado ? '' : `<button class="action-btn action-btn-delete" onclick="anularPagoCartera(${pg.id})">Anular</button>`}</td>`;
@@ -14218,6 +14540,8 @@ function _renderCarteraBody(pagos, totalPagado, saldo) {
 
 function cerrarPrefacturaDetalle() {
     document.getElementById('prefacturaDetalleModal').classList.remove('active');
+    window.prefacturaManualState.currentPrefactura = null;
+    limpiarEditorDetallePrefacturaManual();
 }
 
 async function cerrarPrefacturaGuardar() {
@@ -14272,20 +14596,29 @@ async function registrarPagoCartera() {
     const msg    = document.getElementById('nuevoPagoMsg');
     const payload = {
         tipo_movimiento: document.getElementById('nuevoPagoTipo').value,
-        fecha_pago:      document.getElementById('nuevoPagoFecha').value,
-        valor_pago:      document.getElementById('nuevoPagoValor').value,
-        medio_pago:      document.getElementById('nuevoPagoMedio').value,
+        fecha_pago: document.getElementById('nuevoPagoFecha').value,
+        valor_pago: document.getElementById('nuevoPagoValor').value,
+        medio_pago: document.getElementById('nuevoPagoMedio').value,
         nro_comprobante: document.getElementById('nuevoPagoComprobante').value || null,
-        observaciones:   document.getElementById('nuevoPagoObs').value || null,
+        canal_transferencia: document.getElementById('nuevoPagoCanal')?.value || '',
+        observaciones: document.getElementById('nuevoPagoObs').value || null,
     };
+    const comprobanteArchivo = document.getElementById('nuevoPagoComprobanteArchivo')?.files?.[0];
     if (!payload.fecha_pago || !payload.valor_pago) {
         if (msg) msg.textContent = 'Fecha y valor son obligatorios.'; return;
     }
+    if (payload.medio_pago === 'TRANSFERENCIA' && !comprobanteArchivo) {
+        if (msg) msg.textContent = 'Adjunta el soporte cuando el pago se registra por transferencia.'; return;
+    }
     try {
+        const formData = new FormData();
+        Object.entries(payload).forEach(([key, value]) => {
+            if (value !== null && value !== '') formData.append(key, value);
+        });
+        if (comprobanteArchivo) formData.append('comprobante_pago', comprobanteArchivo);
         const res  = await fetch(`/api/comercial/prefacturas/${prefId}/cartera`, {
             method: 'POST', credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: formData,
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) { if (msg) msg.textContent = data.error || 'Error registrando pago.'; return; }
@@ -14294,6 +14627,10 @@ async function registrarPagoCartera() {
         // Limpiar campos de pago
         ['nuevoPagoFecha','nuevoPagoValor','nuevoPagoComprobante','nuevoPagoObs']
             .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        const canal = document.getElementById('nuevoPagoCanal');
+        if (canal) canal.value = '';
+        const archivo = document.getElementById('nuevoPagoComprobanteArchivo');
+        if (archivo) archivo.value = '';
         // Recargar detalle
         abrirDetallePrefactura(prefId);
     } catch (err) {

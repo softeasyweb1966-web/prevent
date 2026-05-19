@@ -240,6 +240,49 @@ def _normalize_text_for_matching(value):
     return ' '.join(normalized.lower().strip().split())
 
 
+def _resolver_vendedor_usuario_actual():
+    if _is_admin_user():
+        return None
+
+    normalized_candidates = [
+        _normalize_text_for_matching(getattr(current_user, 'email', None)),
+        _normalize_text_for_matching(getattr(current_user, 'usuario', None)),
+        _normalize_text_for_matching(getattr(current_user, 'nombre_completo', None)),
+    ]
+    normalized_candidates = [value for value in normalized_candidates if value]
+    if not normalized_candidates:
+        return None
+
+    vendedores = Vendedor.query.all()
+    for vendedor in vendedores:
+        vendor_candidates = {
+            _normalize_text_for_matching(vendedor.nombre),
+            _normalize_text_for_matching(vendedor.email),
+            _normalize_text_for_matching(vendedor.documento),
+        }
+        vendor_candidates.discard('')
+        if any(candidate in vendor_candidates for candidate in normalized_candidates):
+            return vendedor
+    return None
+
+
+def _asegurar_cliente_en_scope(cliente):
+    if cliente is None or _is_admin_user():
+        return cliente
+
+    vendedor_scope = _resolver_vendedor_usuario_actual()
+    if vendedor_scope is None:
+        raise PermissionError('No tienes un vendedor asociado')
+    if cliente.vendedor_id != vendedor_scope.id:
+        raise PermissionError('No tienes acceso a este cliente')
+    return cliente
+
+
+def _obtener_cliente_comercial_en_scope(cliente_id):
+    cliente = ClienteComercial.query.get_or_404(cliente_id)
+    return _asegurar_cliente_en_scope(cliente)
+
+
 def _split_convenio_tokens(value):
     tokens = []
     for line in str(value or '').replace('\r', '\n').split('\n'):
@@ -1630,7 +1673,17 @@ def eliminar_catalogo_comercial(item_id):
 def get_tarifas_comerciales():
     try:
         _require_commercial_permission('tarifas', 'read')
-        tarifas = ClienteComercialTarifa.query.order_by(
+        tarifas_query = ClienteComercialTarifa.query
+        if not _is_admin_user():
+            vendedor_scope = _resolver_vendedor_usuario_actual()
+            if vendedor_scope is None:
+                return jsonify([]), 200
+            tarifas_query = tarifas_query.join(
+                ClienteComercial,
+                ClienteComercial.id == ClienteComercialTarifa.cliente_id,
+            ).filter(ClienteComercial.vendedor_id == vendedor_scope.id)
+
+        tarifas = tarifas_query.order_by(
             ClienteComercialTarifa.activo.desc(),
             ClienteComercialTarifa.id.desc()
         ).all()
@@ -1650,6 +1703,7 @@ def crear_tarifa_comercial():
     try:
         _require_commercial_permission('tarifas', 'create')
         payload = _build_tarifa_cliente_payload(data)
+        _obtener_cliente_comercial_en_scope(payload['cliente_id'])
         existente = ClienteComercialTarifa.query.filter_by(
             cliente_id=payload['cliente_id'],
             catalogo_item_id=payload['catalogo_item_id']
@@ -1679,7 +1733,9 @@ def actualizar_tarifa_comercial(tarifa_id):
     try:
         _require_commercial_permission('tarifas', 'update')
         tarifa = ClienteComercialTarifa.query.get_or_404(tarifa_id)
+        _asegurar_cliente_en_scope(tarifa.cliente)
         payload = _build_tarifa_cliente_payload(data)
+        _obtener_cliente_comercial_en_scope(payload['cliente_id'])
         existente = ClienteComercialTarifa.query.filter(
             ClienteComercialTarifa.cliente_id == payload['cliente_id'],
             ClienteComercialTarifa.catalogo_item_id == payload['catalogo_item_id'],
@@ -1709,6 +1765,7 @@ def eliminar_tarifa_comercial(tarifa_id):
     try:
         _require_commercial_permission('tarifas', 'delete')
         tarifa = ClienteComercialTarifa.query.get_or_404(tarifa_id)
+        _asegurar_cliente_en_scope(tarifa.cliente)
         db.session.delete(tarifa)
         db.session.commit()
         return jsonify({'mensaje': 'Tarifa comercial eliminada'}), 200
@@ -1725,7 +1782,14 @@ def eliminar_tarifa_comercial(tarifa_id):
 def get_clientes():
     try:
         _require_commercial_permission('clientes', 'read')
-        clientes = ClienteComercial.query.order_by(
+        clientes_query = ClienteComercial.query
+        if not _is_admin_user():
+            vendedor_scope = _resolver_vendedor_usuario_actual()
+            if vendedor_scope is None:
+                return jsonify([]), 200
+            clientes_query = clientes_query.filter(ClienteComercial.vendedor_id == vendedor_scope.id)
+
+        clientes = clientes_query.order_by(
             ClienteComercial.activo.desc(),
             ClienteComercial.razon_social.asc()
         ).all()
@@ -1745,6 +1809,11 @@ def crear_cliente():
     try:
         _require_commercial_permission('clientes', 'create')
         payload = _build_cliente_payload(data)
+        if not _is_admin_user():
+            vendedor_scope = _resolver_vendedor_usuario_actual()
+            if vendedor_scope is None:
+                raise PermissionError('No tienes un vendedor asociado')
+            payload['vendedor_id'] = vendedor_scope.id
         nit = payload['nit']
         if nit and ClienteComercial.query.filter_by(nit=nit).first():
             return jsonify({'error': 'Ya existe un cliente con ese NIT'}), 409
@@ -1779,8 +1848,13 @@ def actualizar_cliente(cliente_id):
 
     try:
         _require_commercial_permission('clientes', 'update')
-        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        cliente = _obtener_cliente_comercial_en_scope(cliente_id)
         payload = _build_cliente_payload(data)
+        if not _is_admin_user():
+            vendedor_scope = _resolver_vendedor_usuario_actual()
+            if vendedor_scope is None:
+                raise PermissionError('No tienes un vendedor asociado')
+            payload['vendedor_id'] = vendedor_scope.id
         nit = payload['nit']
         if nit:
             existente = ClienteComercial.query.filter(
@@ -1817,7 +1891,7 @@ def actualizar_cliente(cliente_id):
 def eliminar_cliente(cliente_id):
     try:
         _require_commercial_permission('clientes', 'delete')
-        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        cliente = _obtener_cliente_comercial_en_scope(cliente_id)
         atenciones_count = cliente.atenciones.count()
         documentos_count = cliente.seguimiento_documentos.count()
         pagos_count = cliente.seguimiento_pagos.count()
@@ -1861,7 +1935,7 @@ def get_cliente_convenio_items(cliente_id):
             ('atenciones', 'update'),
         ):
             raise PermissionError('No tienes permiso para consultar items convenidos del cliente')
-        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        cliente = _obtener_cliente_comercial_en_scope(cliente_id)
         fecha_atencion = None
         raw_fecha = request.args.get('fecha_atencion')
         if raw_fecha:
@@ -1908,7 +1982,7 @@ def get_cliente_convenio_items(cliente_id):
 def get_atenciones_cliente(cliente_id):
     try:
         _require_commercial_permission('atenciones', 'read')
-        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        cliente = _obtener_cliente_comercial_en_scope(cliente_id)
         atenciones = ClienteAtencion.query.filter_by(cliente_id=cliente.id).order_by(
             ClienteAtencion.fecha_atencion.desc(),
             ClienteAtencion.id.desc(),
@@ -1930,7 +2004,7 @@ def crear_atencion_cliente(cliente_id):
 
     try:
         _require_commercial_permission('atenciones', 'create')
-        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        cliente = _obtener_cliente_comercial_en_scope(cliente_id)
         payload = _build_atencion_payload(data, cliente)
         detalles_payload = payload.pop('detalles')
 
@@ -1995,7 +2069,7 @@ def crear_anticipo_programado_cliente(cliente_id):
         ):
             raise PermissionError('No tienes permiso para programar anticipos comerciales')
 
-        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        cliente = _obtener_cliente_comercial_en_scope(cliente_id)
         if cliente.condicion_comercial not in {'EFECTIVO', 'MIXTO'}:
             return jsonify({'error': 'Por ahora solo puedes programar anticipos para empresas EFECTIVO o MIXTO'}), 409
 
@@ -2086,6 +2160,7 @@ def actualizar_atencion_cliente(atencion_id):
     try:
         _require_commercial_permission('atenciones', 'update')
         atencion = ClienteAtencion.query.get_or_404(atencion_id)
+        _asegurar_cliente_en_scope(atencion.cliente)
         documento = atencion.documento_cobro
         pagos_count = documento.pagos.count() if documento is not None else 0
         if pagos_count:
@@ -2147,6 +2222,7 @@ def eliminar_atencion_cliente(atencion_id):
     try:
         _require_commercial_permission('atenciones', 'delete')
         atencion = ClienteAtencion.query.get_or_404(atencion_id)
+        _asegurar_cliente_en_scope(atencion.cliente)
         documento = atencion.documento_cobro
         pagos_count = documento.pagos.count() if documento is not None else 0
 
@@ -2176,7 +2252,7 @@ def eliminar_atencion_cliente(atencion_id):
 def get_seguimiento_documentos_cliente(cliente_id):
     try:
         _require_commercial_permission('documentos', 'read')
-        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        cliente = _obtener_cliente_comercial_en_scope(cliente_id)
         documentos = ClienteSeguimientoDocumento.query.filter_by(cliente_id=cliente.id).order_by(
             ClienteSeguimientoDocumento.fecha_documento.desc(),
             ClienteSeguimientoDocumento.id.desc()
@@ -2198,7 +2274,7 @@ def crear_seguimiento_documento_cliente(cliente_id):
 
     try:
         _require_commercial_permission('documentos', 'create')
-        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        cliente = _obtener_cliente_comercial_en_scope(cliente_id)
         payload = _build_seguimiento_documento_payload(data, cliente)
         documento = ClienteSeguimientoDocumento(**payload)
         db.session.add(documento)
@@ -2226,6 +2302,7 @@ def actualizar_seguimiento_documento(documento_id):
     try:
         _require_commercial_permission('documentos', 'update')
         documento = ClienteSeguimientoDocumento.query.get_or_404(documento_id)
+        _asegurar_cliente_en_scope(documento.cliente)
         if documento.atencion_id:
             return jsonify({'error': 'Este documento fue generado desde una atencion y no se edita manualmente'}), 400
         payload = _build_seguimiento_documento_payload(data, documento.cliente, documento=documento)
@@ -2254,6 +2331,7 @@ def eliminar_seguimiento_documento(documento_id):
     try:
         _require_commercial_permission('documentos', 'delete')
         documento = ClienteSeguimientoDocumento.query.get_or_404(documento_id)
+        _asegurar_cliente_en_scope(documento.cliente)
         if documento.atencion_id:
             return jsonify({'error': 'Este documento fue generado desde una atencion y no se elimina manualmente'}), 400
         db.session.delete(documento)
@@ -2274,7 +2352,7 @@ def eliminar_seguimiento_documento(documento_id):
 def get_seguimiento_pagos_cliente(cliente_id):
     try:
         _require_commercial_permission('pagos', 'read')
-        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        cliente = _obtener_cliente_comercial_en_scope(cliente_id)
         pagos = ClienteSeguimientoPago.query.filter_by(cliente_id=cliente.id).order_by(
             ClienteSeguimientoPago.fecha_pago.desc(),
             ClienteSeguimientoPago.id.desc()
@@ -2297,6 +2375,7 @@ def crear_seguimiento_pago(documento_id):
     try:
         _require_commercial_permission('pagos', 'create')
         documento = ClienteSeguimientoDocumento.query.get_or_404(documento_id)
+        _asegurar_cliente_en_scope(documento.cliente)
         payload = _build_seguimiento_pago_payload(data, documento)
         pago = ClienteSeguimientoPago(**payload)
         db.session.add(pago)
@@ -2336,6 +2415,7 @@ def actualizar_seguimiento_pago(pago_id):
     try:
         _require_commercial_permission('pagos', 'update')
         pago = ClienteSeguimientoPago.query.get_or_404(pago_id)
+        _asegurar_cliente_en_scope(getattr(pago, 'cliente', None) or getattr(pago.documento, 'cliente', None))
         payload = _build_seguimiento_pago_payload(data, pago.documento, pago=pago)
         for field, value in payload.items():
             setattr(pago, field, value)
@@ -2377,6 +2457,7 @@ def eliminar_seguimiento_pago(pago_id):
     try:
         _require_commercial_permission('pagos', 'delete')
         pago = ClienteSeguimientoPago.query.get_or_404(pago_id)
+        _asegurar_cliente_en_scope(getattr(pago, 'cliente', None) or getattr(pago.documento, 'cliente', None))
         documento = pago.documento
         _eliminar_comprobante_pago(pago)
         db.session.delete(pago)
@@ -2400,6 +2481,7 @@ def descargar_comprobante_pago(pago_id):
     try:
         _require_commercial_permission('pagos', 'read')
         pago = ClienteSeguimientoPago.query.get_or_404(pago_id)
+        _asegurar_cliente_en_scope(getattr(pago, 'cliente', None) or getattr(pago.documento, 'cliente', None))
         ruta = _get_pago_comprobante_path(pago)
         return send_file(ruta, as_attachment=True, download_name=pago.nombre_comprobante or 'comprobante_pago')
     except PermissionError as exc:
@@ -2418,7 +2500,7 @@ def descargar_comprobante_pago(pago_id):
 def descargar_adjunto_cliente(cliente_id, adjunto_id):
     try:
         _require_commercial_permission('clientes', 'read')
-        cliente = ClienteComercial.query.get_or_404(cliente_id)
+        cliente = _obtener_cliente_comercial_en_scope(cliente_id)
         adjunto = ClienteComercialAdjunto.query.filter_by(id=adjunto_id, cliente_id=cliente.id).first_or_404()
         ruta = _get_adjunto_path(adjunto)
         return send_file(ruta, as_attachment=True, download_name=adjunto.nombre_original)

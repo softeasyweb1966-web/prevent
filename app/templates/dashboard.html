@@ -2734,7 +2734,17 @@
         </div>
         <!-- CONSULTAR PREFACTURAS -->
         <div id="ingresoInfoConsultaPrefacturasPanel" class="recent-section ingreso-info-panel" style="display:none; margin-bottom:16px;">
-            <h3 style="margin-top:0;">Consulta de Prefacturas</h3>
+            <div class="module-header seguimiento-section-header" style="margin:0 0 12px;">
+                <div>
+                    <h3 style="margin:0;">Consulta de Prefacturas</h3>
+                    <p style="margin:6px 0 0; color:#555;">
+                        Consulta prefacturas generadas y registra prefacturas anticipadas para clientes en efectivo o mixto.
+                    </p>
+                </div>
+                <div class="button-group seguimiento-section-actions">
+                    <button type="button" class="btn btn-primary" onclick="abrirProgramarAnticipoModal()">Nueva prefactura anticipada</button>
+                </div>
+            </div>
             <div class="consulta-toolbar-grid" style="grid-template-columns: repeat(3, minmax(160px, 1fr));">
                 <div class="form-group" style="position:relative;">
                     <label for="consultaPrefEmpresa">Empresa</label>
@@ -2786,7 +2796,7 @@
                     <thead><tr>
                         <th>Empresa</th><th>Periodo</th><th>Forma</th>
                         <th>Pacientes</th><th>Valor Total</th><th>Estado</th>
-                        <th>Nro Factura</th><th>Valor Factura</th>
+                        <th>Nro Pref./Factura</th><th>Valor Factura</th>
                         <th>Pagado</th><th>Saldo</th><th>Acciones</th>
                     </tr></thead>
                     <tbody id="consultaPrefBody"></tbody>
@@ -2946,7 +2956,10 @@
                     <span class="close" onclick="cerrarPrefacturaDetalle()">&times;</span>
                 </div>
                 <input type="hidden" id="prefacturaDetalleId">
-                <div class="recent-section" style="margin-bottom:12px;">
+                <input type="hidden" id="prefacturaDetalleClienteId">
+                <input type="hidden" id="prefacturaDetalleOrigen">
+                <input type="hidden" id="prefacturaDetalleFechaProgramada">
+                <div class="recent-section" id="prefDetalleFacturaSection" style="margin-bottom:12px;">
                     <h4 style="margin-top:0;">Datos de Factura</h4>
                     <div class="form-row" style="gap:12px; flex-wrap:wrap;">
                         <div class="form-group" style="flex:1; min-width:140px;">
@@ -2970,14 +2983,94 @@
                         <button type="button" class="btn btn-primary" id="btnCerrarPrefactura" onclick="cerrarPrefacturaGuardar()">Cerrar Periodo</button>
                         <button type="button" class="btn btn-secondary" id="btnReabrirPrefactura" style="display:none;" onclick="reabrirPrefactura()">Reabrir (Admin)</button>
                     </div>
-                    <div id="prefDetalleMsg" style="margin-top:8px; color:#555;"></div>
                 </div>
+                <div class="recent-section" id="prefDetalleAnticipoSection" style="margin-bottom:12px; display:none;">
+                    <h4 style="margin-top:0;">Encabezado Prefactura Anticipada</h4>
+                    <div class="form-row" style="gap:12px; flex-wrap:wrap;">
+                        <div class="form-group" style="flex:2; min-width:220px;">
+                            <label for="prefDetalleAnticipoEmpresa">Empresa</label>
+                            <input type="text" id="prefDetalleAnticipoEmpresa" readonly>
+                        </div>
+                        <div class="form-group" style="flex:1; min-width:180px;">
+                            <label for="prefDetalleAnticipoNumero">Nro Prefactura</label>
+                            <input type="text" id="prefDetalleAnticipoNumero" readonly>
+                        </div>
+                        <div class="form-group" style="flex:1; min-width:180px;">
+                            <label for="prefDetalleAnticipoValorCancelado">Valor cancelado</label>
+                            <input type="text" id="prefDetalleAnticipoValorCancelado" readonly>
+                        </div>
+                    </div>
+                    <div class="form-row" style="gap:12px; flex-wrap:wrap;">
+                        <div class="form-group" style="flex:1; min-width:170px;">
+                            <label for="prefDetalleAnticipoFechaPago">Fecha pago</label>
+                            <input type="text" id="prefDetalleAnticipoFechaPago" readonly>
+                        </div>
+                        <div class="form-group" style="flex:1; min-width:170px;">
+                            <label for="prefDetalleAnticipoFormaPago">Forma de pago</label>
+                            <input type="text" id="prefDetalleAnticipoFormaPago" readonly>
+                        </div>
+                        <div class="form-group" style="flex:2; min-width:240px;">
+                            <label>Comprobante</label>
+                            <div id="prefDetalleAnticipoComprobante" class="form-help" style="padding-top:10px;">Sin comprobante adjunto.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="recent-section" id="prefDetalleManualSection" style="margin-bottom:12px; display:none;">
+                    <div class="module-header seguimiento-section-header" style="margin:0 0 10px;">
+                        <div>
+                            <h4 style="margin:0;">Pacientes y Exámenes Programados</h4>
+                            <p id="prefDetalleManualHint" style="margin:6px 0 0; color:#555;">Solo se pueden usar items vigentes del convenio del cliente.</p>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead><tr>
+                                <th>Fecha</th><th>ID Paciente</th><th>Paciente</th>
+                                <th>Examen / Paquete</th><th>Valor</th><th>Cruce</th><th>Acciones</th>
+                            </tr></thead>
+                            <tbody id="prefDetalleManualBody"></tbody>
+                        </table>
+                    </div>
+                    <div id="prefDetalleManualResumen" style="margin-top:8px; font-weight:bold; text-align:right;">Total programado: $0</div>
+                    <div id="prefDetalleManualEditor" style="margin-top:12px;">
+                        <div class="form-row" style="gap:12px; flex-wrap:wrap;">
+                            <div class="form-group" style="flex:1; min-width:150px;">
+                                <label for="prefManualFechaProgramada">Fecha *</label>
+                                <input type="date" id="prefManualFechaProgramada">
+                            </div>
+                            <div class="form-group" style="flex:1; min-width:160px;">
+                                <label for="prefManualPacienteDocumento">ID Paciente *</label>
+                                <input type="text" id="prefManualPacienteDocumento" maxlength="50">
+                            </div>
+                            <div class="form-group" style="flex:2; min-width:220px;">
+                                <label for="prefManualPacienteNombre">Paciente *</label>
+                                <input type="text" id="prefManualPacienteNombre" maxlength="200">
+                            </div>
+                            <div class="form-group" style="flex:2; min-width:240px;">
+                                <label for="prefManualItemSelect">Examen / Paquete *</label>
+                                <select id="prefManualItemSelect">
+                                    <option value="">Seleccione...</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex:1; min-width:140px;">
+                                <label for="prefManualItemValor">Valor</label>
+                                <input type="number" id="prefManualItemValor" readonly>
+                            </div>
+                        </div>
+                        <div class="button-group module-actions" style="margin-top:8px; gap:8px;">
+                            <button type="button" class="btn btn-primary" id="prefManualGuardarBtn" onclick="guardarDetallePrefacturaManual()">Agregar detalle</button>
+                            <button type="button" class="btn btn-secondary" id="prefManualCancelarBtn" style="display:none;" onclick="cancelarEdicionDetallePrefacturaManual()">Cancelar edicion</button>
+                        </div>
+                        <div id="prefDetalleManualMsg" style="margin-top:8px; color:#555;"></div>
+                    </div>
+                </div>
+                <div id="prefDetalleMsg" style="margin:8px 0 12px; color:#555;"></div>
                 <div class="recent-section" style="margin-bottom:12px;">
                     <h4 style="margin-top:0;">Pagos Registrados</h4>
                     <div class="table-container">
                         <table class="data-table">
                             <thead><tr>
-                                <th>Fecha</th><th>Tipo</th><th>Medio</th>
+                                <th>Fecha</th><th>Tipo</th><th>Forma de pago</th>
                                 <th>Comprobante</th><th>Valor</th><th>Estado</th><th>Acciones</th>
                             </tr></thead>
                             <tbody id="prefDetalleCarteraBody"></tbody>
@@ -2989,7 +3082,7 @@
                     </div>
                 </div>
                 <div class="recent-section" id="prefDetalleNuevoPagoSection">
-                    <h4 style="margin-top:0;">Registrar Pago / Anticipo</h4>
+                    <h4 id="prefDetalleNuevoPagoTitulo" style="margin-top:0;">Registrar Pago / Anticipo</h4>
                     <div class="form-row" style="gap:12px; flex-wrap:wrap;">
                         <div class="form-group" style="flex:1; min-width:130px;">
                             <label for="nuevoPagoFecha">Fecha *</label>
@@ -3020,9 +3113,24 @@
                             <label for="nuevoPagoComprobante">Comprobante</label>
                             <input type="text" id="nuevoPagoComprobante">
                         </div>
+                        <div class="form-group" style="flex:1; min-width:140px;">
+                            <label for="nuevoPagoCanal">Canal transferencia</label>
+                            <select id="nuevoPagoCanal">
+                                <option value="">Seleccione...</option>
+                                <option value="NEQUI">NEQUI</option>
+                                <option value="DAVIPLATA">DAVIPLATA</option>
+                                <option value="BANCO">BANCO</option>
+                            </select>
+                        </div>
                         <div class="form-group" style="flex:2; min-width:180px;">
                             <label for="nuevoPagoObs">Observaciones</label>
                             <input type="text" id="nuevoPagoObs">
+                        </div>
+                    </div>
+                    <div class="form-row" style="gap:12px; flex-wrap:wrap;">
+                        <div class="form-group" style="flex:2; min-width:240px;">
+                            <label for="nuevoPagoComprobanteArchivo">Adjuntar soporte</label>
+                            <input type="file" id="nuevoPagoComprobanteArchivo">
                         </div>
                     </div>
                     <div class="button-group module-actions" style="margin-top:8px;">
@@ -3156,7 +3264,7 @@
         <form id="programarAnticipoForm" enctype="multipart/form-data">
             <input type="hidden" id="anticipoClienteId">
             <div class="recent-section" style="margin-bottom:16px;">
-                <h4 style="margin-top:0;">Empresa y Fecha</h4>
+                <h4 style="margin-top:0;">Empresa y Fecha Programada</h4>
                 <div class="form-row" style="gap:12px; flex-wrap:wrap;">
                     <div class="form-group" style="flex:2; min-width:260px; position:relative;">
                         <label for="anticipoEmpresaInput">Empresa *</label>
@@ -3165,7 +3273,7 @@
                         <small id="anticipoEmpresaHint" class="form-help">Solo se muestran clientes con condiciÃ³n comercial EFECTIVO o MIXTO.</small>
                     </div>
                     <div class="form-group" style="flex:1; min-width:160px;">
-                        <label for="anticipoFechaAtencion">Fecha atenciÃ³n *</label>
+                        <label for="anticipoFechaAtencion">Fecha programada *</label>
                         <input type="date" id="anticipoFechaAtencion" required>
                     </div>
                     <div class="form-group" style="flex:1; min-width:180px;">
@@ -3206,10 +3314,10 @@
                     <table class="data-table">
                         <thead>
                             <tr>
+                                <th>Fecha</th>
                                 <th>ID Paciente</th>
                                 <th>Paciente</th>
                                 <th>Examen / Paquete</th>
-                                <th>Tipo</th>
                                 <th>Valor</th>
                                 <th>AcciÃ³n</th>
                             </tr>
