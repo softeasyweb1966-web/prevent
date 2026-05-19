@@ -22777,3 +22777,144 @@ WHERE cargue_atenciones_dia.periodo_desde IS NOT NULL AND cargue_atenciones_dia.
 2026-05-18 23:39:27,968 - werkzeug - INFO - 127.0.0.1 - - [18/May/2026 23:39:27] "GET /api/chat/conversaciones HTTP/1.1" 200 -
 2026-05-18 23:39:34,955 - werkzeug - INFO - 127.0.0.1 - - [18/May/2026 23:39:34] "GET /api/chat/conversaciones HTTP/1.1" 200 -
 2026-05-18 23:39:41,949 - werkzeug - INFO - 127.0.0.1 - - [18/May/2026 23:39:41] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:56:14,252 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-05-19 00:56:14,839 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-05-19 00:56:14,839 - app - INFO - [DB] Dialecto activo: postgresql
+2026-05-19 00:56:14,839 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-05-19 00:56:15,325 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8084
+ * Running on http://192.168.0.6:8084
+2026-05-19 00:56:15,325 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-05-19 00:56:19,659 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:19] "GET / HTTP/1.1" 200 -
+2026-05-19 00:56:19,749 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:19] "[36mGET /static/js/main.js?v=1770570564 HTTP/1.1[0m" 304 -
+2026-05-19 00:56:19,789 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:19] "[36mGET /static/css/styles.css?v=1779007167 HTTP/1.1[0m" 304 -
+2026-05-19 00:56:19,924 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:19] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-05-19 00:56:23,579 - app.routes.auth - INFO - Usuario logueado: admin
+2026-05-19 00:56:23,631 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:23] "POST /api/auth/login HTTP/1.1" 200 -
+2026-05-19 00:56:24,088 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:24] "GET /dashboard HTTP/1.1" 200 -
+2026-05-19 00:56:24,150 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:24] "[36mGET /static/css/styles.css?v=1779007167 HTTP/1.1[0m" 304 -
+2026-05-19 00:56:24,182 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:24] "[36mGET /static/js/dashboard.js?v=1779165397 HTTP/1.1[0m" 304 -
+2026-05-19 00:56:24,202 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:24] "[36mGET /static/js/servicios.js?v=1774564771 HTTP/1.1[0m" 304 -
+2026-05-19 00:56:24,214 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:24] "[36mGET /static/js/prestamos.js?v=1774564771 HTTP/1.1[0m" 304 -
+2026-05-19 00:56:24,222 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:24] "[36mGET /static/js/main.js?v=1770570564 HTTP/1.1[0m" 304 -
+2026-05-19 00:56:24,602 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:24] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:56:24,724 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:24] "GET /api/auth/me HTTP/1.1" 200 -
+2026-05-19 00:56:24,730 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:24] "GET /api/bancos/prestamos?activos=true HTTP/1.1" 200 -
+2026-05-19 00:56:24,730 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:24] "GET /api/servicios/list HTTP/1.1" 200 -
+2026-05-19 00:56:24,812 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:24] "GET /api/dashboard/bancos?anio=2026&referencia_mes=5&referencia_anio=2026 HTTP/1.1" 200 -
+2026-05-19 00:56:24,847 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:24] "GET /api/dashboard/servicios?anio=2026&referencia_mes=1&referencia_anio=2026 HTTP/1.1" 200 -
+2026-05-19 00:56:31,821 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:31] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:56:35,172 - app - ERROR - Exception on /api/comercial/cargue-atenciones/periodos [GET]
+Traceback (most recent call last):
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+psycopg2.errors.UndefinedColumn: no existe la columna cargue_atenciones_dia.periodo_desde
+LINE 1: ..._archivo AS cargue_atenciones_dia_nombre_archivo, cargue_ate...
+                                                             ^
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\python\PREVENT\.venv\Lib\site-packages\flask\app.py", line 2190, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\flask\app.py", line 1486, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\flask_cors\extension.py", line 176, in wrapped_function
+    return cors_after_request(app.make_response(f(*args, **kwargs)))
+                                                ^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\flask\app.py", line 1484, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\flask\app.py", line 1469, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\flask_login\utils.py", line 290, in decorated_view
+    return current_app.ensure_sync(func)(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\app\routes\cargue_atenciones.py", line 803, in listar_periodos_cargue_atenciones
+    for cargue in query_cargues.order_by(CargueAtencionDia.periodo_desde.desc(), CargueAtencionDia.periodo_hasta.desc()).all():
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2704, in all
+    return self._iter().all()  # type: ignore
+           ^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2857, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\orm\context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.ProgrammingError: (psycopg2.errors.UndefinedColumn) no existe la columna cargue_atenciones_dia.periodo_desde
+LINE 1: ..._archivo AS cargue_atenciones_dia_nombre_archivo, cargue_ate...
+                                                             ^
+
+[SQL: SELECT cargue_atenciones_dia.id AS cargue_atenciones_dia_id, cargue_atenciones_dia.nombre_archivo AS cargue_atenciones_dia_nombre_archivo, cargue_atenciones_dia.periodo_desde AS cargue_atenciones_dia_periodo_desde, cargue_atenciones_dia.periodo_hasta AS cargue_atenciones_dia_periodo_hasta, cargue_atenciones_dia.total_filas AS cargue_atenciones_dia_total_filas, cargue_atenciones_dia.filas_importadas AS cargue_atenciones_dia_filas_importadas, cargue_atenciones_dia.filas_duplicadas AS cargue_atenciones_dia_filas_duplicadas, cargue_atenciones_dia.filas_error AS cargue_atenciones_dia_filas_error, cargue_atenciones_dia.usuario_id AS cargue_atenciones_dia_usuario_id, cargue_atenciones_dia.created_at AS cargue_atenciones_dia_created_at 
+FROM cargue_atenciones_dia 
+WHERE cargue_atenciones_dia.periodo_desde IS NOT NULL AND cargue_atenciones_dia.periodo_hasta IS NOT NULL ORDER BY cargue_atenciones_dia.periodo_desde DESC, cargue_atenciones_dia.periodo_hasta DESC]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+2026-05-19 00:56:35,815 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:35] "[35m[1mGET /api/comercial/cargue-atenciones/periodos HTTP/1.1[0m" 500 -
+2026-05-19 00:56:38,915 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:38] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:56:42,995 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:42] "GET /api/comercial/clientes HTTP/1.1" 200 -
+2026-05-19 00:56:44,707 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:44] "GET /api/comercial/clientes HTTP/1.1" 200 -
+2026-05-19 00:56:45,943 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:45] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:56:46,325 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:46] "GET /api/comercial/clientes HTTP/1.1" 200 -
+2026-05-19 00:56:48,088 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:48] "GET /api/comercial/clientes HTTP/1.1" 200 -
+2026-05-19 00:56:52,883 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:52] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:56:59,873 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:56:59] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:57:03,847 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:57:03] "GET /api/comercial/prefacturas?empresa=INDUSTRIAS+FLIV+S.A.S.&fecha_desde=2026-04-26&fecha_hasta=2026-05-18 HTTP/1.1" 200 -
+2026-05-19 00:57:06,835 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:57:06] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:57:13,834 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:57:13] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:57:15,779 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:57:15] "GET /api/comercial/prefacturas/46 HTTP/1.1" 200 -
+2026-05-19 00:57:20,826 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:57:20] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:57:27,848 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:57:27] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:57:34,947 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:57:34] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:57:41,979 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:57:41] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:57:48,955 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:57:48] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:57:55,995 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:57:55] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:58:02,973 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:58:02] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:58:09,990 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:58:09] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:58:16,963 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:58:16] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:58:23,939 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:58:23] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:59:15,129 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:59:15] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:59:20,007 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:59:20] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:59:27,079 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:59:27] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:59:34,054 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:59:34] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:59:40,991 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:59:40] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:59:47,968 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:59:47] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 00:59:54,942 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 00:59:54] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 01:00:01,974 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 01:00:01] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 01:00:08,993 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 01:00:08] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 01:00:15,981 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 01:00:15] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 01:00:28,006 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 01:00:28] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-05-19 01:01:27,928 - werkzeug - INFO - 127.0.0.1 - - [19/May/2026 01:01:27] "GET /api/chat/conversaciones HTTP/1.1" 200 -
