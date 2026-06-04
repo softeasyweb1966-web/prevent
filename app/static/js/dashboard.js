@@ -768,23 +768,81 @@ function setupModulosPeriodoActual() {
     }
 }
 
-function actualizarEtiquetaBancosPeriodo() {
-    const label = document.getElementById('bancosMesSeleccionadoLabel');
+async function actualizarEtiquetaBancosPeriodo() {
+    const label   = document.getElementById('bancosMesSeleccionadoLabel');
     const resumen = document.getElementById('bancosMesActual');
 
+    // Intentar obtener el periodo desde el backend
+    try {
+        const res  = await fetch('/api/bancos/periodo-actual', { credentials: 'include' });
+        if (res.ok) {
+            const data = await res.json();
+            window._bancosPeriodoActual = { mes: data.mes, anio: data.anio };
+            try {
+                if (window.localStorage) {
+                    localStorage.setItem('bancosPeriodoActual', JSON.stringify(window._bancosPeriodoActual));
+                }
+            } catch (_) {}
+            const txt = `${data.nombre_mes} ${data.anio}`;
+            if (label)   label.textContent   = `Período seleccionado: ${txt}`;
+            if (resumen) resumen.textContent = `Mes en proceso: ${txt}`;
+            return;
+        }
+    } catch (_) {}
+
+    // Fallback a localStorage
     if (!window._bancosPeriodoActual) {
-        if (label) label.textContent = 'Período Préstamos (Mes/Año) · selección pendiente';
+        if (label)   label.textContent   = 'Período Préstamos (Mes/Año) · selección pendiente';
         if (resumen) resumen.textContent = 'No hay mes en proceso registrado.';
         return;
     }
-
     const { mes, anio } = window._bancosPeriodoActual;
     const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     const mesNombre = meses[mes] || mes;
-
-    if (label) label.textContent = `Período seleccionado: ${mesNombre} ${anio}`;
+    if (label)   label.textContent   = `Período seleccionado: ${mesNombre} ${anio}`;
     if (resumen) resumen.textContent = `Mes en proceso: ${mesNombre} ${anio}`;
+}
+
+async function finalizarPeriodoBancos() {
+    if (!window._bancosPeriodoActual) {
+        showToast('No hay periodo de bancos seleccionado', 'error');
+        return;
+    }
+    const { mes, anio } = window._bancosPeriodoActual;
+    const meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    if (!confirm(`¿Finalizar el mes de ${meses[mes]} ${anio} en Bancos? Se pasará automáticamente al mes siguiente.`)) return;
+
+    try {
+        const res  = await fetch('/api/bancos/periodos/finalizar', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mes, anio }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(data.error || 'Error finalizando mes', 'error'); return; }
+
+        showToast(`Mes ${meses[mes]} ${anio} finalizado en Bancos`);
+
+        // Actualizar periodo actual al siguiente
+        if (data.siguiente_periodo) {
+            window._bancosPeriodoActual = {
+                mes:  data.siguiente_periodo.mes,
+                anio: data.siguiente_periodo.anio,
+            };
+            try {
+                if (window.localStorage) {
+                    localStorage.setItem('bancosPeriodoActual', JSON.stringify(window._bancosPeriodoActual));
+                }
+            } catch (_) {}
+        }
+        await actualizarEtiquetaBancosPeriodo();
+        if (typeof loadBancosDashboardFull === 'function') loadBancosDashboardFull();
+    } catch (err) {
+        console.error('finalizarPeriodoBancos error', err);
+        showToast('Error de conexión', 'error');
+    }
 }
 
 function openBancosPeriodoSeleccion() {
@@ -2217,10 +2275,10 @@ function switchModule(moduleName) {
         displayName = 'Gestión de Préstamos';
         if (userMenu) userMenu.style.display = '';
     } else if (moduleName === 'comercial') {
-        displayName = 'GestiÃ³n de Comisiones';
+        displayName = 'Gestion Comercial';
         if (userMenu) userMenu.style.display = '';
-    } else if (moduleName === 'recepcion') {
-        displayName = 'Consulta Clientes';
+    } else if (moduleName === 'gestion_informacion') {
+        displayName = 'Gestión Información';
         if (userMenu) userMenu.style.display = '';
     } else if (moduleName === 'chat') {
         displayName = 'Chat Interno';
@@ -2240,6 +2298,9 @@ function switchModule(moduleName) {
     }
     if (moduleName === 'comercial') {
         displayName = 'Gestion Comercial';
+    }
+    if (moduleName === 'gestion_informacion') {
+        displayName = 'Gestión Información';
     }
     document.getElementById('moduleTitle').textContent = displayName;
 
@@ -2268,6 +2329,13 @@ function switchModule(moduleName) {
                 inicializarModuloComercial(window._comercialSeccionActual || 'inicio');
             } catch (e) {
                 console.error('Error inicializando modulo Comercial', e);
+            }
+        } else if (moduleName === 'gestion_informacion') {
+            // Abrir directamente el modal de Gestión Información
+            try {
+                abrirCargueAtencionDia();
+            } catch (e) {
+                console.error('Error abriendo Gestión Información', e);
             }
         } else if (moduleName === 'recepcion') {
             try {
@@ -3173,6 +3241,11 @@ async function switchComercialSection(sectionName = 'inicio', options = {}) {
     });
 
     if (normalizedSection === 'inicio') {
+        return;
+    }
+
+    if (normalizedSection === 'caja') {
+        cargarOpcionesCaja();
         return;
     }
 
@@ -4153,10 +4226,12 @@ async function consultarAtencionesDiaCargadas(page = 1) {
         }
 
         const registros = Array.isArray(data.registros) ? data.registros : [];
+        const totalOrdenes = Number(data.total_ordenes ?? data.total ?? 0);
+        const totalRegistros = Number(data.total_registros ?? registros.length ?? 0);
         window.cargueAtencionesDiaState.records = registros;
         window.cargueAtencionesDiaState.page = Number(data.page || 1);
         window.cargueAtencionesDiaState.pages = Number(data.pages || 0);
-        window.cargueAtencionesDiaState.total = Number(data.total || 0);
+        window.cargueAtencionesDiaState.total = totalOrdenes;
 
         applyCargueAtencionesDiaScopeUI(data.scope);
         updateCargueAtencionesDiaScope(data.scope);
@@ -4165,8 +4240,8 @@ async function consultarAtencionesDiaCargadas(page = 1) {
             return;
         }
 
-        resumen.textContent = data.total
-            ? `${Number(data.total)} registro(s) encontrados.`
+        resumen.textContent = totalOrdenes
+            ? `${totalOrdenes} orden(es) encontradas · ${totalRegistros} registro(s).`
             : 'No se encontraron registros con los filtros actuales.';
         pageInfo.textContent = `Pagina ${Number(data.page || 0)} de ${Number(data.pages || 0)}`;
         prevBtn.disabled = Number(data.page || 1) <= 1;
@@ -6479,6 +6554,11 @@ function formatearFormaPagoCliente(cliente) {
 const COMERCIAL_SECTION_CONFIG = {
     inicio: {
         panels: [],
+        focusId: null,
+        load: async () => {}
+    },
+    caja: {
+        panels: ['comercialCajaSection'],
         focusId: null,
         load: async () => {}
     },
@@ -14786,5 +14866,521 @@ async function regenerarPrefacturaEmpresa(nombreEmpresa, fechaDesde, fechaHasta)
         console.error('regenerarPrefacturaEmpresa error:', err);
         if (resultado) resultado.textContent = 'Error de conexión al regenerar.';
         showToast('Error de conexión', 'error');
+    }
+}
+
+// ===========================================================================
+// REGISTRO DIARIO DE CAJA — ÓRDENES DE SERVICIO
+// ===========================================================================
+
+window._cajaState = { page: 1, pages: 0, total: 0, opciones: null };
+
+async function cargarOpcionesCaja() {
+    if (window._cajaState.opciones) return;
+    try {
+        const res  = await fetch('/api/comercial/caja/opciones', { credentials: 'include' });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+            window._cajaState.opciones = data;
+            _renderCheckboxGroup('cajaTipoExamenOpciones', data.tipo_examen || [], 'radio', 'cajaTipoExamen');
+            _renderCheckboxGroup('cajaEnfasisOpciones',    data.enfasis || [],     'checkbox', 'cajaEnfasis');
+            _renderCheckboxGroup('cajaParaclinicosOpciones', data.paraclinicos || [], 'checkbox', 'cajaParaclinicos');
+            _renderCheckboxGroup('cajaLaboratorioOpciones',  data.laboratorio || [],  'checkbox', 'cajaLaboratorio');
+            _renderCheckboxGroup('cajaOtrosServiciosOpciones', data.otros_servicios || [], 'checkbox', 'cajaOtrosServicios');
+            _renderCheckboxGroup('cajaAutorizacionOpciones', data.formas_autorizacion || [], 'checkbox', 'cajaFormasAutorizacion');
+        }
+    } catch (err) {
+        console.error('cargarOpcionesCaja error', err);
+    }
+}
+
+function _renderCheckboxGroup(containerId, opciones, tipo, name) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = opciones.map(op => `
+        <label class="caja-choice-card">
+            <input type="${tipo}" name="${name}" value="${escapeHtml(op)}"
+                style="width:16px; height:16px; cursor:pointer;">
+            <span>${escapeHtml(_humanizeCajaOption(op))}</span>
+        </label>
+    `).join('');
+}
+
+function _humanizeCajaOption(value) {
+    return String(value || '')
+        .replaceAll('_', ' ')
+        .toLowerCase()
+        .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function _getCheckedValues(name) {
+    return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`))
+        .map(el => el.value);
+}
+
+function _setCheckedValues(name, values, tipo) {
+    const arr = Array.isArray(values) ? values : (values ? [values] : []);
+    document.querySelectorAll(`input[name="${name}"]`).forEach(el => {
+        el.checked = arr.includes(el.value);
+    });
+}
+
+function _renderCajaAdjuntos(adjuntos = []) {
+    const container = document.getElementById('cajaTransferenciaAdjuntosExistentes');
+    if (!container) return;
+    container.dataset.count = Array.isArray(adjuntos) ? String(adjuntos.length) : '0';
+    if (!Array.isArray(adjuntos) || !adjuntos.length) {
+        container.textContent = 'Sin adjuntos cargados.';
+        return;
+    }
+    container.innerHTML = adjuntos.map(adjunto => `
+        <div style="display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid rgba(148, 163, 184, 0.2);">
+            <span>${escapeHtml(adjunto.nombre_original || 'Adjunto')}</span>
+            <a href="${adjunto.download_url}" target="_blank" rel="noopener noreferrer">Descargar</a>
+        </div>
+    `).join('');
+}
+
+function _actualizarResumenAdjuntosCaja() {
+    const input = document.getElementById('cajaTransferenciaAdjuntos');
+    const resumen = document.getElementById('cajaTransferenciaAdjuntosResumen');
+    if (!resumen) return;
+    const archivos = Array.from(input?.files || []);
+    resumen.textContent = archivos.length
+        ? `${archivos.length} archivo(s) seleccionado(s): ${archivos.map(a => a.name).join(', ')}`
+        : 'No hay archivos seleccionados.';
+}
+
+function _buildCajaRequerimientos() {
+    return [
+        {
+            clave: 'GERENCIA_C',
+            nombre: 'Gerencia C',
+            seleccionado: !!document.getElementById('cajaReqGerenciaCheck')?.checked,
+            responsable: document.getElementById('cajaReqGerenciaResp')?.value.trim() || '',
+            celular: document.getElementById('cajaReqGerenciaCel')?.value.trim() || '',
+        },
+        {
+            clave: 'ASESORA_Y',
+            nombre: 'Asesora Y',
+            seleccionado: !!document.getElementById('cajaReqAsesoraCheck')?.checked,
+            responsable: document.getElementById('cajaReqAsesoraResp')?.value.trim() || '',
+            celular: document.getElementById('cajaReqAsesoraCel')?.value.trim() || '',
+        },
+        {
+            clave: 'OTRO',
+            nombre: document.getElementById('cajaReqOtroNombre')?.value.trim() || 'Otro',
+            seleccionado: !!document.getElementById('cajaReqOtroCheck')?.checked,
+            responsable: document.getElementById('cajaReqOtroResp')?.value.trim() || '',
+            celular: document.getElementById('cajaReqOtroCel')?.value.trim() || '',
+        },
+    ];
+}
+
+function _applyCajaRequerimientos(items = []) {
+    const byKey = new Map((Array.isArray(items) ? items : []).map(item => [String(item.clave || '').toUpperCase(), item]));
+    const gerencia = byKey.get('GERENCIA_C') || {};
+    const asesora = byKey.get('ASESORA_Y') || {};
+    const otro = byKey.get('OTRO') || {};
+
+    document.getElementById('cajaReqGerenciaCheck').checked = !!gerencia.seleccionado;
+    document.getElementById('cajaReqGerenciaResp').value = gerencia.responsable || '';
+    document.getElementById('cajaReqGerenciaCel').value = gerencia.celular || '';
+
+    document.getElementById('cajaReqAsesoraCheck').checked = !!asesora.seleccionado;
+    document.getElementById('cajaReqAsesoraResp').value = asesora.responsable || '';
+    document.getElementById('cajaReqAsesoraCel').value = asesora.celular || '';
+
+    document.getElementById('cajaReqOtroNombre').value = otro.nombre && otro.nombre !== 'Otro' ? otro.nombre : '';
+    document.getElementById('cajaReqOtroCheck').checked = !!otro.seleccionado;
+    document.getElementById('cajaReqOtroResp').value = otro.responsable || '';
+    document.getElementById('cajaReqOtroCel').value = otro.celular || '';
+}
+
+function toggleMixtoCaja() {
+    const forma = document.getElementById('cajaFormaPago')?.value;
+    const panel = document.getElementById('cajaMixtoPanel');
+    if (panel) panel.style.display = forma === 'MIXTO' ? '' : 'none';
+    const transferenciaPanel = document.getElementById('cajaTransferenciaPanel');
+    const valorTransferencia = Number(document.getElementById('cajaMixtoTransferencia')?.value || 0);
+    const requiereSoporte = forma === 'TRANSFERENCIA' || (forma === 'MIXTO' && valorTransferencia > 0);
+    if (transferenciaPanel) transferenciaPanel.style.display = requiereSoporte ? '' : 'none';
+    _actualizarResumenAdjuntosCaja();
+}
+
+function _resetFormularioCaja() {
+    ['cajaNroOrden','cajaFechaOrden','cajaNroDoc','cajaNombrePaciente',
+     'cajaCargo','cajaEmpresa','cajaEmpresaMision','cajaTotalCosto',
+     'cajaTipoExamenOtro','cajaEnfasisOtro','cajaParaclinicosOtro',
+     'cajaLaboratorioOtro','cajaOtrosServiciosOtro','cajaObservaciones',
+     'cajaMixtoEfectivo','cajaMixtoTransferencia','cajaMixtoCredito',
+     'cajaNumeroTurno','cajaAutorizacionObservaciones',
+     'cajaReqGerenciaResp','cajaReqGerenciaCel','cajaReqAsesoraResp','cajaReqAsesoraCel',
+     'cajaReqOtroNombre','cajaReqOtroResp','cajaReqOtroCel'
+    ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    document.getElementById('cajaTipoDoc').value     = 'CC';
+    document.getElementById('cajaTipoCliente').value = '';
+    document.getElementById('cajaFormaPago').value   = '';
+    document.getElementById('cajaMixtoPanel').style.display = 'none';
+    document.getElementById('cajaTransferenciaPanel').style.display = 'none';
+    document.getElementById('cajaOrdenId').value     = '';
+    document.getElementById('cajaOrdenMsg').textContent = '';
+    if (document.getElementById('cajaTransferenciaAdjuntos')) {
+        document.getElementById('cajaTransferenciaAdjuntos').value = '';
+    }
+    _renderCajaAdjuntos([]);
+    _actualizarResumenAdjuntosCaja();
+    // Limpiar checkboxes
+    ['cajaTipoExamen','cajaEnfasis','cajaParaclinicos','cajaLaboratorio','cajaOtrosServicios','cajaFormasAutorizacion']
+        .forEach(name => {
+            document.querySelectorAll(`input[name="${name}"]`).forEach(el => el.checked = false);
+        });
+    ['cajaReqGerenciaCheck','cajaReqAsesoraCheck','cajaReqOtroCheck'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.checked = false;
+    });
+}
+
+function abrirFormularioCaja() {
+    cargarOpcionesCaja();
+    _resetFormularioCaja();
+    document.getElementById('cajaOrdenModalTitulo').textContent = 'Nueva Orden de Servicio';
+    // Prefijar fecha de hoy
+    document.getElementById('cajaFechaOrden').value = new Date().toISOString().slice(0, 10);
+    if (document.getElementById('cajaTransferenciaAdjuntos')) {
+        document.getElementById('cajaTransferenciaAdjuntos').onchange = _actualizarResumenAdjuntosCaja;
+    }
+    document.getElementById('cajaOrdenModal').classList.add('active');
+}
+
+function cerrarFormularioCaja() {
+    document.getElementById('cajaOrdenModal').classList.remove('active');
+}
+
+async function abrirEditarOrdenCaja(ordenId) {
+    cargarOpcionesCaja();
+    try {
+        const res  = await fetch(`/api/comercial/caja/${ordenId}`, { credentials: 'include' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(data.error || 'Error cargando orden', 'error'); return; }
+        const o = data.orden;
+
+        _resetFormularioCaja();
+        document.getElementById('cajaOrdenId').value          = o.id;
+        document.getElementById('cajaNroOrden').value         = o.nro_orden || '';
+        document.getElementById('cajaFechaOrden').value       = o.fecha_orden || '';
+        document.getElementById('cajaTipoDoc').value          = o.tipo_documento || 'CC';
+        document.getElementById('cajaNroDoc').value           = o.nro_documento || '';
+        document.getElementById('cajaNombrePaciente').value   = o.nombre_paciente || '';
+        document.getElementById('cajaCargo').value            = o.cargo_paciente || '';
+        document.getElementById('cajaNumeroTurno').value      = o.numero_turno || '';
+        document.getElementById('cajaEmpresa').value          = o.empresa || '';
+        document.getElementById('cajaEmpresaMision').value    = o.empresa_mision || '';
+        document.getElementById('cajaTotalCosto').value       = o.total_costo || '';
+        document.getElementById('cajaTipoCliente').value      = o.tipo_cliente || '';
+        document.getElementById('cajaFormaPago').value        = o.forma_pago || '';
+        document.getElementById('cajaObservaciones').value    = o.observaciones || '';
+        document.getElementById('cajaAutorizacionObservaciones').value = o.autorizacion_observaciones || '';
+        document.getElementById('cajaTipoExamenOtro').value   = o.tipo_examen_otro || '';
+        document.getElementById('cajaEnfasisOtro').value      = o.enfasis_otro || '';
+        document.getElementById('cajaParaclinicosOtro').value = o.paraclinicos_otro || '';
+        document.getElementById('cajaLaboratorioOtro').value  = o.laboratorio_otro || '';
+        document.getElementById('cajaOtrosServiciosOtro').value = o.otros_servicios_otro || '';
+
+        if (o.forma_pago === 'MIXTO') {
+            document.getElementById('cajaMixtoPanel').style.display = '';
+            document.getElementById('cajaMixtoEfectivo').value     = o.mixto_efectivo || '';
+            document.getElementById('cajaMixtoTransferencia').value = o.mixto_transferencia || '';
+            document.getElementById('cajaMixtoCredito').value      = o.mixto_credito || '';
+        }
+
+        // Checkboxes — esperar a que las opciones estén renderizadas
+        await cargarOpcionesCaja();
+        _setCheckedValues('cajaTipoExamen',      o.tipo_examen,    'radio');
+        _setCheckedValues('cajaEnfasis',         o.enfasis,        'checkbox');
+        _setCheckedValues('cajaParaclinicos',     o.paraclinicos,   'checkbox');
+        _setCheckedValues('cajaLaboratorio',      o.laboratorio,    'checkbox');
+        _setCheckedValues('cajaOtrosServicios',   o.otros_servicios,'checkbox');
+        _setCheckedValues('cajaFormasAutorizacion', o.formas_autorizacion, 'checkbox');
+        _applyCajaRequerimientos(o.grupo_requerimientos || []);
+        _renderCajaAdjuntos(o.adjuntos_transferencia || []);
+        if (document.getElementById('cajaTransferenciaAdjuntos')) {
+            document.getElementById('cajaTransferenciaAdjuntos').onchange = _actualizarResumenAdjuntosCaja;
+        }
+        toggleMixtoCaja();
+
+        document.getElementById('cajaOrdenModalTitulo').textContent = `Editar Orden ${o.nro_orden}`;
+        document.getElementById('cajaOrdenModal').classList.add('active');
+    } catch (err) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+async function guardarOrdenCaja() {
+    const msg     = document.getElementById('cajaOrdenMsg');
+    const ordenId = document.getElementById('cajaOrdenId').value;
+    if (msg) msg.textContent = '';
+
+    const tipoExamenChecked = _getCheckedValues('cajaTipoExamen');
+    const comprobantes = Array.from(document.getElementById('cajaTransferenciaAdjuntos')?.files || []);
+
+    const payload = {
+        nro_orden:            document.getElementById('cajaNroOrden').value.trim(),
+        fecha_orden:          document.getElementById('cajaFechaOrden').value,
+        tipo_documento:       document.getElementById('cajaTipoDoc').value,
+        nro_documento:        document.getElementById('cajaNroDoc').value.trim(),
+        nombre_paciente:      document.getElementById('cajaNombrePaciente').value.trim(),
+        cargo_paciente:       document.getElementById('cajaCargo').value.trim(),
+        empresa:              document.getElementById('cajaEmpresa').value.trim(),
+        empresa_mision:       document.getElementById('cajaEmpresaMision').value.trim(),
+        tipo_examen:          tipoExamenChecked[0] || null,
+        tipo_examen_otro:     document.getElementById('cajaTipoExamenOtro').value.trim(),
+        enfasis:              _getCheckedValues('cajaEnfasis'),
+        enfasis_otro:         document.getElementById('cajaEnfasisOtro').value.trim(),
+        paraclinicos:         _getCheckedValues('cajaParaclinicos'),
+        paraclinicos_otro:    document.getElementById('cajaParaclinicosOtro').value.trim(),
+        laboratorio:          _getCheckedValues('cajaLaboratorio'),
+        laboratorio_otro:     document.getElementById('cajaLaboratorioOtro').value.trim(),
+        otros_servicios:      _getCheckedValues('cajaOtrosServicios'),
+        otros_servicios_otro: document.getElementById('cajaOtrosServiciosOtro').value.trim(),
+        total_costo:          document.getElementById('cajaTotalCosto').value || 0,
+        tipo_cliente:         document.getElementById('cajaTipoCliente').value,
+        forma_pago:           document.getElementById('cajaFormaPago').value,
+        mixto_efectivo:       document.getElementById('cajaMixtoEfectivo').value || 0,
+        mixto_transferencia:  document.getElementById('cajaMixtoTransferencia').value || 0,
+        mixto_credito:        document.getElementById('cajaMixtoCredito').value || 0,
+        formas_autorizacion:  _getCheckedValues('cajaFormasAutorizacion'),
+        autorizacion_observaciones: document.getElementById('cajaAutorizacionObservaciones').value.trim(),
+        grupo_requerimientos: _buildCajaRequerimientos(),
+        numero_turno:         document.getElementById('cajaNumeroTurno').value.trim(),
+        observaciones:        document.getElementById('cajaObservaciones').value.trim(),
+    };
+
+    const tieneAdjuntosActuales = Number(document.getElementById('cajaTransferenciaAdjuntosExistentes')?.dataset?.count || 0) > 0;
+    const requiereSoporte = payload.forma_pago === 'TRANSFERENCIA'
+        || (payload.forma_pago === 'MIXTO' && Number(payload.mixto_transferencia || 0) > 0);
+    if (requiereSoporte && !comprobantes.length && !tieneAdjuntosActuales) {
+        if (msg) msg.textContent = 'Debe adjuntar al menos un recibo cuando la orden incluye transferencia.';
+        return;
+    }
+
+    const url    = ordenId ? `/api/comercial/caja/${ordenId}` : '/api/comercial/caja';
+    const method = ordenId ? 'PUT' : 'POST';
+    const formData = new FormData();
+    Object.entries(payload).forEach(([key, value]) => {
+        if (Array.isArray(value) || (value && typeof value === 'object')) {
+            formData.append(key, JSON.stringify(value));
+        } else {
+            formData.append(key, value ?? '');
+        }
+    });
+    comprobantes.forEach(file => formData.append('transferencia_adjuntos', file));
+
+    try {
+        const res  = await fetch(url, {
+            method, credentials: 'include',
+            body: formData,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { if (msg) msg.textContent = data.error || 'Error guardando.'; return; }
+        showToast(ordenId ? 'Orden actualizada' : 'Orden registrada');
+        cerrarFormularioCaja();
+        consultarOrdenesCaja(1);
+    } catch (err) {
+        if (msg) msg.textContent = 'Error de conexión.';
+    }
+}
+
+// --- Consulta ---
+function abrirConsultaCaja() {
+    const panel = document.getElementById('cajaPanelConsulta');
+    const gaps  = document.getElementById('cajaPanelGaps');
+    if (gaps)  gaps.style.display  = 'none';
+    if (panel) panel.style.display = panel.style.display === 'none' ? '' : 'none';
+}
+
+function limpiarFiltroCaja() {
+    ['cajaFiltroEmpresa','cajaFiltroNroOrden','cajaFiltroFechaDesde','cajaFiltroFechaHasta'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    document.getElementById('cajaFiltroEstado').value = '';
+    const tabla = document.getElementById('cajaTablaResultados');
+    if (tabla) tabla.style.display = 'none';
+    const res = document.getElementById('cajaConsultaResumen');
+    if (res) res.textContent = '';
+}
+
+async function consultarOrdenesCaja(page = 1) {
+    page = Math.max(1, page);
+    if (page > window._cajaState.pages && window._cajaState.pages > 0) return;
+
+    const resumen = document.getElementById('cajaConsultaResumen');
+    const tabla   = document.getElementById('cajaTablaResultados');
+    const tbody   = document.getElementById('cajaTablaBody');
+    if (resumen) resumen.textContent = 'Consultando…';
+
+    const params = new URLSearchParams({ page, per_page: 50 });
+    const empresa = document.getElementById('cajaFiltroEmpresa')?.value.trim();
+    const nroOrden = document.getElementById('cajaFiltroNroOrden')?.value.trim();
+    const estado  = document.getElementById('cajaFiltroEstado')?.value;
+    const fd      = document.getElementById('cajaFiltroFechaDesde')?.value;
+    const fh      = document.getElementById('cajaFiltroFechaHasta')?.value;
+    if (empresa)  params.set('empresa', empresa);
+    if (nroOrden) params.set('nro_orden', nroOrden);
+    if (estado)   params.set('estado', estado);
+    if (fd)       params.set('fecha_desde', fd);
+    if (fh)       params.set('fecha_hasta', fh);
+
+    try {
+        const res  = await fetch('/api/comercial/caja?' + params, { credentials: 'include' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { if (resumen) resumen.textContent = data.error || 'Error consultando.'; return; }
+
+        window._cajaState.page  = data.page  || 1;
+        window._cajaState.pages = data.pages || 0;
+        window._cajaState.total = data.total || 0;
+
+        if (resumen) resumen.textContent = `${data.total} orden(es) encontrada(s).`;
+
+        const pageInfo = document.getElementById('cajaPageInfo');
+        if (pageInfo) pageInfo.textContent = `Página ${data.page} de ${data.pages}`;
+        const prevBtn = document.getElementById('cajaPrevBtn');
+        const nextBtn = document.getElementById('cajaNextBtn');
+        if (prevBtn) prevBtn.disabled = data.page <= 1;
+        if (nextBtn) nextBtn.disabled = data.page >= data.pages;
+
+        const ordenes = data.ordenes || [];
+        if (!ordenes.length) {
+            if (tabla) tabla.style.display = 'none';
+            return;
+        }
+
+        const _estadoBadge = (e) => {
+            const colores = { INGRESADO: '#e67e22', APROBADO: '#27ae60', TERMINADO: '#2980b9', ANULADO: '#c0392b' };
+            return `<span style="font-weight:bold; color:${colores[e] || '#555'};">${e}</span>`;
+        };
+
+        tbody.innerHTML = '';
+        ordenes.forEach(o => {
+            const esIngresado = o.estado === 'INGRESADO';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${escapeHtml(o.nro_orden)}</td>
+                <td>${o.fecha_orden || ''}</td>
+                <td>${escapeHtml(o.nombre_paciente)}</td>
+                <td style="font-size:0.85em;">${escapeHtml(o.empresa || o.empresa_mision || '')}</td>
+                <td>${escapeHtml(o.forma_pago)}</td>
+                <td style="text-align:right;">$${_fmtMoney(o.total_costo)}</td>
+                <td style="text-align:center;">${_estadoBadge(o.estado)}</td>
+                <td style="white-space:nowrap;">
+                    <button class="action-btn action-btn-edit" onclick="verDetalleCaja(${o.id})" title="Ver detalle">Ver</button>
+                    ${esIngresado ? `<button class="action-btn action-btn-edit" style="background:#6c757d;" onclick="abrirEditarOrdenCaja(${o.id})" title="Editar">Editar</button>` : ''}
+                    ${o.estado === 'INGRESADO' ? `<button class="action-btn action-btn-edit" style="background:#27ae60;" onclick="abrirCambiarEstadoCaja(${o.id},'APROBADO')">Aprobar</button>` : ''}
+                    ${o.estado === 'APROBADO'  ? `<button class="action-btn action-btn-edit" style="background:#2980b9;" onclick="abrirCambiarEstadoCaja(${o.id},'TERMINADO')">Terminar</button>` : ''}
+                    ${o.estado !== 'ANULADO' && o.estado !== 'TERMINADO' ? `<button class="action-btn action-btn-delete" onclick="abrirCambiarEstadoCaja(${o.id},'ANULADO')">Anular</button>` : ''}
+                </td>`;
+            tbody.appendChild(tr);
+        });
+        if (tabla) tabla.style.display = '';
+    } catch (err) {
+        console.error('consultarOrdenesCaja error', err);
+        if (resumen) resumen.textContent = 'Error de conexión.';
+    }
+}
+
+async function verDetalleCaja(ordenId) {
+    try {
+        const res  = await fetch(`/api/comercial/caja/${ordenId}`, { credentials: 'include' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(data.error || 'Error', 'error'); return; }
+        const o = data.orden;
+        const servicios = [
+            o.tipo_examen ? `Tipo: ${o.tipo_examen}` : '',
+            (o.enfasis?.length)       ? `Énfasis: ${o.enfasis.join(', ')}` : '',
+            (o.paraclinicos?.length)  ? `Paraclínicos: ${o.paraclinicos.join(', ')}` : '',
+            (o.laboratorio?.length)   ? `Laboratorio: ${o.laboratorio.join(', ')}` : '',
+            (o.otros_servicios?.length) ? `Otros: ${o.otros_servicios.join(', ')}` : '',
+        ].filter(Boolean).join('\n');
+        alert(`Orden: ${o.nro_orden} | ${o.fecha_orden}\nPaciente: ${o.nombre_paciente} (${o.tipo_documento} ${o.nro_documento})\nEmpresa: ${o.empresa || ''} | Misión: ${o.empresa_mision || ''}\nCargo: ${o.cargo_paciente || ''}\n\nServicios:\n${servicios}\n\nTotal: $${_fmtMoney(o.total_costo)} | Pago: ${o.forma_pago}\nEstado: ${o.estado}\nObservaciones: ${o.observaciones || ''}`);
+    } catch (err) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+// --- Cambiar estado ---
+function abrirCambiarEstadoCaja(ordenId, nuevoEstado) {
+    document.getElementById('cajaCambiarEstadoId').value    = ordenId;
+    document.getElementById('cajaCambiarEstadoNuevo').value = nuevoEstado;
+    document.getElementById('cajaMotivoAnulacion').value    = '';
+    document.getElementById('cajaMotivoAnulacionWrap').style.display = nuevoEstado === 'ANULADO' ? '' : 'none';
+    document.getElementById('cajaCambiarEstadoTitulo').textContent = `Cambiar a ${nuevoEstado}`;
+    document.getElementById('cajaCambiarEstadoModal').classList.add('active');
+}
+
+function cerrarCambiarEstadoCaja() {
+    document.getElementById('cajaCambiarEstadoModal').classList.remove('active');
+}
+
+async function confirmarCambioEstadoCaja() {
+    const ordenId    = document.getElementById('cajaCambiarEstadoId').value;
+    const nuevoEstado = document.getElementById('cajaCambiarEstadoNuevo').value;
+    const motivo     = document.getElementById('cajaMotivoAnulacion').value.trim();
+
+    if (nuevoEstado === 'ANULADO' && !motivo) {
+        showToast('El motivo de anulación es obligatorio', 'error'); return;
+    }
+
+    try {
+        const res  = await fetch(`/api/comercial/caja/${ordenId}/cambiar-estado`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ estado: nuevoEstado, motivo }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(data.error || 'Error cambiando estado', 'error'); return; }
+        showToast(`Orden ${nuevoEstado.toLowerCase()} correctamente`);
+        cerrarCambiarEstadoCaja();
+        consultarOrdenesCaja(window._cajaState.page);
+    } catch (err) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+// --- Verificar gaps de numeración ---
+function verificarGapsCaja() {
+    const panel   = document.getElementById('cajaPanelGaps');
+    const consulta = document.getElementById('cajaPanelConsulta');
+    if (consulta) consulta.style.display = 'none';
+    if (panel) panel.style.display = panel.style.display === 'none' ? '' : 'none';
+}
+
+async function ejecutarVerificacionGaps() {
+    const resultado = document.getElementById('cajaGapsResultado');
+    if (resultado) resultado.innerHTML = 'Verificando…';
+
+    const params = new URLSearchParams();
+    const fd = document.getElementById('cajaGapsFechaDesde')?.value;
+    const fh = document.getElementById('cajaGapsFechaHasta')?.value;
+    if (fd) params.set('fecha_desde', fd);
+    if (fh) params.set('fecha_hasta', fh);
+
+    try {
+        const res  = await fetch('/api/comercial/caja/gaps?' + params, { credentials: 'include' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { if (resultado) resultado.textContent = data.error || 'Error.'; return; }
+
+        if (!data.tiene_gaps) {
+            resultado.innerHTML = `<span style="color:#27ae60;">✔ Sin saltos en la numeración. Total órdenes verificadas: ${data.total_ordenes}</span>`;
+            return;
+        }
+
+        let html = `<span style="color:#c0392b;">⚠ Se encontraron ${data.gaps.length} salto(s) en la numeración (${data.total_ordenes} órdenes verificadas):</span><ul style="margin-top:8px;">`;
+        data.gaps.forEach(g => {
+            html += `<li>Entre <strong>${escapeHtml(g.entre)}</strong> — faltan ${g.cantidad} número(s): ${g.faltantes.join(', ')}${g.cantidad > 20 ? '…' : ''}</li>`;
+        });
+        html += '</ul>';
+        resultado.innerHTML = html;
+    } catch (err) {
+        if (resultado) resultado.textContent = 'Error de conexión.';
     }
 }

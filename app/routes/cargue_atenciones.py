@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import types
 import unicodedata
 import uuid
 import zipfile
@@ -17,7 +18,7 @@ from xml.etree import ElementTree as ET
 
 from flask import current_app, jsonify, request, send_file
 from flask_login import current_user, login_required
-from sqlalchemy import BigInteger, cast, func, or_
+from sqlalchemy import BigInteger, String, and_, cast, func, or_, text
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from werkzeug.utils import secure_filename
 
@@ -27,6 +28,8 @@ from app.models import (
     CargueAtencionDia,
     ClienteComercial,
     ComercialCatalogoItem,
+    OrdenServicioCaja,
+    OrdenServicioCajaAdjunto,
     PrefacturaComercial,
     PrefacturaComercialDetalle,
     Vendedor,
@@ -47,6 +50,127 @@ def _mensaje_error_estado_gestion_atenciones(exc: Exception) -> str | None:
         'Aplica la migracion pendiente con "flask db upgrade".'
     )
 
+
+def _mensaje_error_esquema_prefacturas(exc: Exception) -> str | None:
+    detalle = f'{exc} {getattr(exc, "orig", "")}'.lower()
+    if 'prefacturas_comerciales' not in detalle:
+        return None
+    columnas_clave = (
+        'origen',
+        'fecha_programada',
+        'bloqueada_por_pago',
+        'fecha_bloqueo_pago',
+    )
+    if not any(columna in detalle for columna in columnas_clave):
+        return None
+    return (
+        'La base de datos aun no tiene los nuevos campos de Prefacturas Comerciales. '
+        'La sabana se genero, pero no se pudo sincronizar el registro en BD. '
+        'Aplica la migracion pendiente con "flask db upgrade".'
+    )
+
+
+def _columnas_periodo_cargue_disponibles() -> bool:
+    try:
+        rows = db.session.execute(text("""
+            select column_name
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'cargue_atenciones_dia'
+              and column_name in ('periodo_desde', 'periodo_hasta')
+        """)).fetchall()
+    except Exception:
+        return True
+    columnas = {row[0] for row in rows}
+    return {'periodo_desde', 'periodo_hasta'}.issubset(columnas)
+
+
+def _columnas_prefactura_avanzadas_disponibles() -> bool:
+    try:
+        rows = db.session.execute(text("""
+            select column_name
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'prefacturas_comerciales'
+              and column_name in ('origen', 'fecha_programada', 'bloqueada_por_pago', 'fecha_bloqueo_pago')
+        """)).fetchall()
+    except Exception:
+        return True
+    columnas = {row[0] for row in rows}
+    return {'origen', 'fecha_programada', 'bloqueada_por_pago', 'fecha_bloqueo_pago'}.issubset(columnas)
+
+
+def _detalle_prefactura_manual_disponible() -> bool:
+    try:
+        rows = db.session.execute(text("""
+            select table_name
+            from information_schema.tables
+            where table_schema = 'public'
+              and table_name = 'prefacturas_comerciales_detalle'
+        """)).fetchall()
+    except Exception:
+        return True
+    return bool(rows) and _columnas_prefactura_avanzadas_disponibles()
+
+
+def _crear_cargue_atenciones(nombre_archivo, total_filas, usuario_id, periodo_desde, periodo_hasta):
+    if _columnas_periodo_cargue_disponibles():
+        cargue = CargueAtencionDia(
+            nombre_archivo=nombre_archivo,
+            periodo_desde=periodo_desde,
+            periodo_hasta=periodo_hasta,
+            total_filas=total_filas,
+            usuario_id=usuario_id,
+        )
+        db.session.add(cargue)
+        db.session.flush()
+        return cargue, False
+
+    created_at = datetime.utcnow()
+    row = db.session.execute(text("""
+        insert into cargue_atenciones_dia
+            (nombre_archivo, total_filas, filas_importadas, filas_duplicadas, filas_error, usuario_id, created_at)
+        values
+            (:nombre_archivo, :total_filas, 0, 0, 0, :usuario_id, :created_at)
+        returning id
+    """), {
+        'nombre_archivo': nombre_archivo,
+        'total_filas': total_filas,
+        'usuario_id': usuario_id,
+        'created_at': created_at,
+    }).first()
+    cargue = types.SimpleNamespace(
+        id=row.id,
+        nombre_archivo=nombre_archivo,
+        periodo_desde=None,
+        periodo_hasta=None,
+        total_filas=total_filas,
+        filas_importadas=0,
+        filas_duplicadas=0,
+        filas_error=0,
+        created_at=created_at,
+    )
+    return cargue, True
+
+
+def _actualizar_resumen_cargue(cargue, importadas, duplicadas, errores, legacy_mode=False):
+    cargue.filas_importadas = importadas
+    cargue.filas_duplicadas = duplicadas
+    cargue.filas_error = errores
+    if legacy_mode:
+        db.session.execute(text("""
+            update cargue_atenciones_dia
+            set filas_importadas = :importadas,
+                filas_duplicadas = :duplicadas,
+                filas_error = :errores
+            where id = :cargue_id
+        """), {
+            'importadas': importadas,
+            'duplicadas': duplicadas,
+            'errores': errores,
+            'cargue_id': cargue.id,
+        })
+
 COLUMNAS_ESPERADAS = [
     'NÃâÃÂ°. Orden Servicio',
     'NÃâÃÂ°. Factura',
@@ -65,6 +189,61 @@ COLUMNAS_ESPERADAS = [
     'Estado de la Orden Servicio',
     'Fecha de AnulaciÃÆÃÂ³n Orden Servicio',
 ]
+
+COL_ORDEN_SERVICIO = 'Nro Orden Servicio'
+COL_FACTURA = 'Nro Factura'
+COL_FECHA_FACTURA = 'Fecha de Factura'
+COL_PRECIO = 'Precio'
+COL_FORMA_PAGO = 'FormaPago'
+COL_PRODUCTO_SERVICIO = 'Nombre del Producto o Servicio'
+COL_IDENTIFICACION = 'Nro de Identificacion'
+COL_PACIENTE = 'Nombre del Paciente'
+COL_ACUERDO_COMERCIAL = 'Nombre del Acuerdo Comercial'
+COL_EMPRESA_MISION = 'Empresa en Mision'
+COL_SEDE = 'Sede'
+COL_VENDEDOR = 'Nombre del Vendedor'
+COL_FECHA_CREACION_ORDEN = 'Fecha de Creacion Orden Servicio'
+COL_USUARIO_CREACION = 'Usuario de Creacion Orden Servicio'
+COL_ESTADO_ORDEN = 'Estado de la Orden Servicio'
+COL_FECHA_ANULACION = 'Fecha de Anulacion Orden Servicio'
+
+COLUMNAS_ESPERADAS_CANONICAS = {
+    COL_ORDEN_SERVICIO: ['Nro Orden Servicio', 'Nro. Orden Servicio', 'N°. Orden Servicio', 'Nº. Orden Servicio', 'No. Orden Servicio'],
+    COL_FACTURA: ['Nro Factura', 'Nro. Factura', 'N°. Factura', 'Nº. Factura', 'No. Factura'],
+    COL_FECHA_FACTURA: ['Fecha de Factura'],
+    COL_PRECIO: ['Precio'],
+    COL_FORMA_PAGO: ['FormaPago', 'Forma Pago'],
+    COL_PRODUCTO_SERVICIO: ['Nombre del Producto o Servicio'],
+    COL_IDENTIFICACION: ['Nro de Identificacion', 'Nro. de Identificacion', 'N°. de Identificacion', 'N°. de Identificación', 'Nº. de Identificacion', 'Nº. de Identificación', 'No. de Identificacion'],
+    COL_PACIENTE: ['Nombre del Paciente'],
+    COL_ACUERDO_COMERCIAL: ['Nombre del Acuerdo Comercial'],
+    COL_EMPRESA_MISION: ['Empresa en Mision', 'Empresa en Misión'],
+    COL_SEDE: ['Sede'],
+    COL_VENDEDOR: ['Nombre del Vendedor'],
+    COL_FECHA_CREACION_ORDEN: ['Fecha de Creacion Orden Servicio', 'Fecha de Creación Orden Servicio'],
+    COL_USUARIO_CREACION: ['Usuario de Creacion Orden Servicio', 'Usuario de Creación Orden Servicio'],
+    COL_ESTADO_ORDEN: ['Estado de la Orden Servicio'],
+    COL_FECHA_ANULACION: ['Fecha de Anulacion Orden Servicio', 'Fecha de Anulación Orden Servicio'],
+}
+
+COLUMNAS_ESPERADAS_LEGACY = {
+    COL_ORDEN_SERVICIO: COLUMNAS_ESPERADAS[0],
+    COL_FACTURA: COLUMNAS_ESPERADAS[1],
+    COL_FECHA_FACTURA: COLUMNAS_ESPERADAS[2],
+    COL_PRECIO: COLUMNAS_ESPERADAS[3],
+    COL_FORMA_PAGO: COLUMNAS_ESPERADAS[4],
+    COL_PRODUCTO_SERVICIO: COLUMNAS_ESPERADAS[5],
+    COL_IDENTIFICACION: COLUMNAS_ESPERADAS[6],
+    COL_PACIENTE: COLUMNAS_ESPERADAS[7],
+    COL_ACUERDO_COMERCIAL: COLUMNAS_ESPERADAS[8],
+    COL_EMPRESA_MISION: COLUMNAS_ESPERADAS[9],
+    COL_SEDE: COLUMNAS_ESPERADAS[10],
+    COL_VENDEDOR: COLUMNAS_ESPERADAS[11],
+    COL_FECHA_CREACION_ORDEN: COLUMNAS_ESPERADAS[12],
+    COL_USUARIO_CREACION: COLUMNAS_ESPERADAS[13],
+    COL_ESTADO_ORDEN: COLUMNAS_ESPERADAS[14],
+    COL_FECHA_ANULACION: COLUMNAS_ESPERADAS[15],
+}
 
 PERMISO_CARGUE_ATENCIONES = 'comercial_atenciones_create'
 PERMISO_CONSULTA_ATENCIONES = 'comercial_atenciones_read'
@@ -124,6 +303,27 @@ def _normalizar_match(valor):
     texto = texto.lower()
     texto = re.sub(r'[^a-z0-9]+', ' ', texto)
     return re.sub(r'\s+', ' ', texto).strip()
+
+
+def _normalizar_encabezado_atencion(valor):
+    texto = _normalizar(valor) or ''
+    reemplazos = {
+        'N°': 'Nro ',
+        'Nº': 'Nro ',
+        'No.': 'Nro ',
+        'No ': 'Nro ',
+    }
+    for origen, destino in reemplazos.items():
+        texto = texto.replace(origen, destino)
+    normalizado = _normalizar_match(texto)
+    normalizado = re.sub(r'^n (?=orden servicio\b)', 'nro ', normalizado)
+    normalizado = re.sub(r'^n (?=factura\b)', 'nro ', normalizado)
+    normalizado = re.sub(r'^n (?=de identific)', 'nro ', normalizado)
+    normalizado = normalizado.replace('identificaci n', 'identificacion')
+    normalizado = normalizado.replace('misi n', 'mision')
+    normalizado = normalizado.replace('creaci n', 'creacion')
+    normalizado = normalizado.replace('anulaci n', 'anulacion')
+    return normalizado
 
 
 def _parse_fecha(valor):
@@ -276,10 +476,25 @@ def _extraer_registros_excel(filas):
         raise ValueError('El archivo estÃÆÃÂ¡ vacÃÆÃÂ­o')
 
     encabezados = [str(valor).strip() if valor is not None else '' for valor in filas[0]]
-    headers_norm = {_normalizar_etiqueta(valor): index for index, valor in enumerate(encabezados) if _normalizar_etiqueta(valor)}
+    headers_norm = {
+        _normalizar_encabezado_atencion(valor): index
+        for index, valor in enumerate(encabezados)
+        if _normalizar_encabezado_atencion(valor)
+    }
 
-    required_map = {_normalizar_etiqueta(columna): columna for columna in COLUMNAS_ESPERADAS}
-    faltantes = [columna for key, columna in required_map.items() if key not in headers_norm]
+    required_map = {}
+    faltantes = []
+    for columna_canonica, aliases in COLUMNAS_ESPERADAS_CANONICAS.items():
+        encontrado = None
+        for alias in aliases:
+            alias_norm = _normalizar_encabezado_atencion(alias)
+            if alias_norm in headers_norm:
+                encontrado = alias_norm
+                break
+        if encontrado is None:
+            faltantes.append(columna_canonica)
+        else:
+            required_map[encontrado] = columna_canonica
     if faltantes:
         raise ValueError(
             f'Columnas requeridas no encontradas: {", ".join(faltantes)}. '
@@ -294,7 +509,11 @@ def _extraer_registros_excel(filas):
         registro = {}
         for normalized_name, original_name in required_map.items():
             index = headers_norm[normalized_name]
-            registro[original_name] = fila[index] if index < len(fila) else None
+            valor = fila[index] if index < len(fila) else None
+            registro[original_name] = valor
+            legacy_name = COLUMNAS_ESPERADAS_LEGACY.get(original_name)
+            if legacy_name:
+                registro[legacy_name] = valor
         registros.append(registro)
 
     return registros
@@ -432,6 +651,32 @@ def _serialize_atencion_dia(registro):
     }
 
 
+def _orden_num_expr_atenciones():
+    return cast(
+        func.nullif(
+            func.regexp_replace(
+                func.coalesce(AtencionDiaDetalle.nro_orden, ''),
+                r'[^0-9]',
+                '',
+                'g',
+            ),
+            '',
+        ),
+        BigInteger,
+    )
+
+
+def _claves_grupo_orden_atenciones():
+    return {
+        'cliente_group': func.coalesce(AtencionDiaDetalle.cliente_id, 0),
+        'vendedor_group': func.coalesce(AtencionDiaDetalle.vendedor_id, 0),
+        'orden_group': func.coalesce(
+            func.nullif(AtencionDiaDetalle.nro_orden, ''),
+            func.concat('__sin_orden__', cast(AtencionDiaDetalle.id, String)),
+        ),
+    }
+
+
 def _coincide_detalle_prefactura_con_atencion(detalle: PrefacturaComercialDetalle, registro: AtencionDiaDetalle) -> bool:
     if detalle is None or registro is None:
         return False
@@ -451,21 +696,26 @@ def _coincide_detalle_prefactura_con_atencion(detalle: PrefacturaComercialDetall
 def _sincronizar_cruce_prefacturas_con_atencion(registro: AtencionDiaDetalle) -> None:
     if registro is None or registro.id is None or registro.cliente_id is None:
         return
+    if not _detalle_prefactura_manual_disponible():
+        return
 
-    candidatos = (
-        PrefacturaComercialDetalle.query
-        .join(PrefacturaComercial, PrefacturaComercial.id == PrefacturaComercialDetalle.prefactura_id)
-        .filter(
-            PrefacturaComercial.origen == PREF_ORIGEN_MANUAL,
-            PrefacturaComercial.cliente_id == registro.cliente_id,
-            PrefacturaComercialDetalle.atencion_dia_id.is_(None),
+    try:
+        candidatos = (
+            PrefacturaComercialDetalle.query
+            .join(PrefacturaComercial, PrefacturaComercial.id == PrefacturaComercialDetalle.prefactura_id)
+            .filter(
+                PrefacturaComercial.origen == PREF_ORIGEN_MANUAL,
+                PrefacturaComercial.cliente_id == registro.cliente_id,
+                PrefacturaComercialDetalle.atencion_dia_id.is_(None),
+            )
+            .order_by(
+                PrefacturaComercialDetalle.fecha_programada.asc(),
+                PrefacturaComercialDetalle.id.asc(),
+            )
+            .all()
         )
-        .order_by(
-            PrefacturaComercialDetalle.fecha_programada.asc(),
-            PrefacturaComercialDetalle.id.asc(),
-        )
-        .all()
-    )
+    except (ProgrammingError, OperationalError):
+        return
 
     for detalle in candidatos:
         if not _coincide_detalle_prefactura_con_atencion(detalle, registro):
@@ -479,8 +729,13 @@ def _sincronizar_cruce_prefacturas_con_atencion(registro: AtencionDiaDetalle) ->
 def _desvincular_prefacturas_de_atencion(registro: AtencionDiaDetalle) -> None:
     if registro is None or registro.id is None:
         return
+    if not _detalle_prefactura_manual_disponible():
+        return
 
-    detalles = PrefacturaComercialDetalle.query.filter_by(atencion_dia_id=registro.id).all()
+    try:
+        detalles = PrefacturaComercialDetalle.query.filter_by(atencion_dia_id=registro.id).all()
+    except (ProgrammingError, OperationalError):
+        return
     for detalle in detalles:
         detalle.atencion_dia_id = None
         detalle.estado_cruce = PREF_DETALLE_CRUCE_PENDIENTE
@@ -490,13 +745,18 @@ def _desvincular_prefacturas_de_atencion(registro: AtencionDiaDetalle) -> None:
 def _intentar_cruzar_prefactura_manual(prefactura: PrefacturaComercial | None) -> None:
     if prefactura is None or (prefactura.origen or PREF_ORIGEN_ATENCIONES).upper() != PREF_ORIGEN_MANUAL:
         return
+    if not _detalle_prefactura_manual_disponible():
+        return
 
-    detalles = (
-        prefactura.detalles
-        .filter(PrefacturaComercialDetalle.atencion_dia_id.is_(None))
-        .order_by(PrefacturaComercialDetalle.id.asc())
-        .all()
-    )
+    try:
+        detalles = (
+            prefactura.detalles
+            .filter(PrefacturaComercialDetalle.atencion_dia_id.is_(None))
+            .order_by(PrefacturaComercialDetalle.id.asc())
+            .all()
+        )
+    except (ProgrammingError, OperationalError):
+        return
     if not detalles:
         return
 
@@ -722,15 +982,17 @@ def cargar_atenciones_dia():
         ).all()
     )
 
-    cargue = CargueAtencionDia(
-        nombre_archivo=nombre,
-        periodo_desde=periodo_desde,
-        periodo_hasta=periodo_hasta,
-        total_filas=len(registros),
-        usuario_id=current_user.id,
-    )
-    db.session.add(cargue)
-    db.session.flush()
+    try:
+        cargue, legacy_cargue = _crear_cargue_atenciones(
+            nombre,
+            len(registros),
+            current_user.id,
+            periodo_desde,
+            periodo_hasta,
+        )
+    except (ProgrammingError, OperationalError) as exc:
+        db.session.rollback()
+        return jsonify({'error': f'No se pudo iniciar el cargue en base de datos: {exc}'}), 500
 
     importadas = 0
     duplicadas = 0
@@ -788,13 +1050,22 @@ def cargar_atenciones_dia():
             logger.warning('Error procesando fila de atenciones: %s', exc)
             errores += 1
 
-    cargue.filas_importadas = importadas
-    cargue.filas_duplicadas = duplicadas
-    cargue.filas_error = errores
-    db.session.flush()
-    for detalle in registros_nuevos:
-        _sincronizar_cruce_prefacturas_con_atencion(detalle)
-    db.session.commit()
+    try:
+        _actualizar_resumen_cargue(cargue, importadas, duplicadas, errores, legacy_mode=legacy_cargue)
+        db.session.flush()
+        for detalle in registros_nuevos:
+            _sincronizar_cruce_prefacturas_con_atencion(detalle)
+        db.session.commit()
+    except (ProgrammingError, OperationalError) as exc:
+        db.session.rollback()
+        mensaje_estado = _mensaje_error_estado_gestion_atenciones(exc)
+        if mensaje_estado:
+            return jsonify({'error': mensaje_estado}), 500
+        return jsonify({'error': f'No se pudo guardar el cargue en base de datos: {exc}'}), 500
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('Error finalizando cargue de atenciones: %s', exc)
+        return jsonify({'error': 'No se pudo completar el cargue de atenciones'}), 500
 
     logger.info(
         'Cargue atenciones: archivo=%s importadas=%d duplicadas=%d errores=%d relacionadas_cliente=%d relacionadas_vendedor=%d',
@@ -817,7 +1088,7 @@ def cargar_atenciones_dia():
         'sin_cliente': max(importadas - relacionadas_cliente, 0),
         'relacionadas_vendedor': relacionadas_vendedor,
         'sin_vendedor': max(importadas - relacionadas_vendedor, 0),
-        'periodo': _serializar_periodo_cargue(cargue.periodo_desde, cargue.periodo_hasta),
+        'periodo': _serializar_periodo_cargue(periodo_desde, periodo_hasta),
     }), 201
 
 
@@ -835,6 +1106,53 @@ def historial_cargues_atenciones():
 
     if not _is_admin_user() and vendedor_scope is None:
         return jsonify({'scope': scope, 'registros': []}), 200
+
+    if not _columnas_periodo_cargue_disponibles():
+        if _is_admin_user():
+            rows = db.session.execute(text("""
+                select c.id, c.nombre_archivo, c.total_filas, c.filas_importadas,
+                       c.filas_duplicadas, c.filas_error, c.created_at, u.usuario
+                from cargue_atenciones_dia c
+                left join usuarios u on u.id = c.usuario_id
+                order by c.created_at desc
+                limit 20
+            """)).fetchall()
+            registros = [{
+                'id': row.id,
+                'nombre_archivo': row.nombre_archivo,
+                'total_filas': row.total_filas,
+                'importadas': row.filas_importadas,
+                'duplicadas': row.filas_duplicadas,
+                'errores': row.filas_error,
+                'usuario': row.usuario or 'Sistema',
+                'fecha': row.created_at.strftime('%Y-%m-%d %H:%M') if row.created_at else None,
+                'periodo': None,
+            } for row in rows]
+            return jsonify({'scope': scope, 'registros': registros}), 200
+
+        rows = db.session.execute(text("""
+            select c.id, c.nombre_archivo, c.created_at, u.usuario,
+                   count(d.id) as visibles
+            from cargue_atenciones_dia c
+            join atenciones_dia_detalle d on d.cargue_id = c.id
+            left join usuarios u on u.id = c.usuario_id
+            where d.vendedor_id = :vendedor_id
+            group by c.id, c.nombre_archivo, c.created_at, u.usuario
+            order by c.created_at desc
+            limit 20
+        """), {'vendedor_id': vendedor_scope.id}).fetchall()
+        registros = [{
+            'id': row.id,
+            'nombre_archivo': row.nombre_archivo,
+            'total_filas': int(row.visibles or 0),
+            'importadas': int(row.visibles or 0),
+            'duplicadas': None,
+            'errores': None,
+            'usuario': row.usuario or 'Sistema',
+            'fecha': row.created_at.strftime('%Y-%m-%d %H:%M') if row.created_at else None,
+            'periodo': None,
+        } for row in rows]
+        return jsonify({'scope': scope, 'registros': registros}), 200
 
     if _is_admin_user():
         cargues = CargueAtencionDia.query.order_by(CargueAtencionDia.created_at.desc()).limit(20).all()
@@ -895,39 +1213,68 @@ def listar_periodos_cargue_atenciones():
     periodos = []
     vistos = set()
 
-    query_cargues = CargueAtencionDia.query.filter(
-        CargueAtencionDia.periodo_desde.isnot(None),
-        CargueAtencionDia.periodo_hasta.isnot(None),
-    )
-    if not _is_admin_user():
-        query_cargues = (
-            query_cargues
-            .join(AtencionDiaDetalle, AtencionDiaDetalle.cargue_id == CargueAtencionDia.id)
-            .filter(AtencionDiaDetalle.vendedor_id == vendedor_scope.id)
+    if _columnas_periodo_cargue_disponibles():
+        query_cargues = CargueAtencionDia.query.filter(
+            CargueAtencionDia.periodo_desde.isnot(None),
+            CargueAtencionDia.periodo_hasta.isnot(None),
         )
+        if not _is_admin_user():
+            query_cargues = (
+                query_cargues
+                .join(AtencionDiaDetalle, AtencionDiaDetalle.cargue_id == CargueAtencionDia.id)
+                .filter(AtencionDiaDetalle.vendedor_id == vendedor_scope.id)
+            )
 
-    for cargue in query_cargues.order_by(CargueAtencionDia.periodo_desde.desc(), CargueAtencionDia.periodo_hasta.desc()).all():
-        periodo = _serializar_periodo_cargue(cargue.periodo_desde, cargue.periodo_hasta, source='CARGUE')
-        if not periodo:
-            continue
-        key = (periodo['fecha_desde'], periodo['fecha_hasta'])
-        if key in vistos:
-            continue
-        vistos.add(key)
-        periodos.append(periodo)
+        for cargue in query_cargues.order_by(CargueAtencionDia.periodo_desde.desc(), CargueAtencionDia.periodo_hasta.desc()).all():
+            periodo = _serializar_periodo_cargue(cargue.periodo_desde, cargue.periodo_hasta, source='CARGUE')
+            if not periodo:
+                continue
+            key = (periodo['fecha_desde'], periodo['fecha_hasta'])
+            if key in vistos:
+                continue
+            vistos.add(key)
+            periodos.append(periodo)
 
-    query_prefacturas = PrefacturaComercial.query.filter(
-        PrefacturaComercial.fecha_desde.isnot(None),
-        PrefacturaComercial.fecha_hasta.isnot(None),
-    )
-    if not _is_admin_user():
-        cliente_ids = [c.id for c in ClienteComercial.query.filter_by(vendedor_id=vendedor_scope.id).all()]
-        if not cliente_ids:
-            return jsonify({'scope': scope, 'periodos': periodos}), 200
-        query_prefacturas = query_prefacturas.filter(PrefacturaComercial.cliente_id.in_(cliente_ids))
+    if _columnas_prefactura_avanzadas_disponibles():
+        query_prefacturas = PrefacturaComercial.query.filter(
+            PrefacturaComercial.fecha_desde.isnot(None),
+            PrefacturaComercial.fecha_hasta.isnot(None),
+        )
+        if not _is_admin_user():
+            cliente_ids = [c.id for c in ClienteComercial.query.filter_by(vendedor_id=vendedor_scope.id).all()]
+            if not cliente_ids:
+                return jsonify({'scope': scope, 'periodos': periodos}), 200
+            query_prefacturas = query_prefacturas.filter(PrefacturaComercial.cliente_id.in_(cliente_ids))
 
-    for pref in query_prefacturas.order_by(PrefacturaComercial.fecha_desde.desc(), PrefacturaComercial.fecha_hasta.desc()).all():
-        periodo = _serializar_periodo_cargue(pref.fecha_desde, pref.fecha_hasta, source='PREFACTURA')
+        pref_rows = [
+            {
+                'fecha_desde': pref.fecha_desde,
+                'fecha_hasta': pref.fecha_hasta,
+            }
+            for pref in query_prefacturas.order_by(PrefacturaComercial.fecha_desde.desc(), PrefacturaComercial.fecha_hasta.desc()).all()
+        ]
+    else:
+        pref_rows = [
+            {
+                'fecha_desde': row.fecha_desde,
+                'fecha_hasta': row.fecha_hasta,
+                'cliente_id': row.cliente_id,
+            }
+            for row in db.session.execute(text("""
+                select cliente_id, fecha_desde, fecha_hasta
+                from prefacturas_comerciales
+                where fecha_desde is not null and fecha_hasta is not null
+                order by fecha_desde desc, fecha_hasta desc
+            """)).fetchall()
+        ]
+        if not _is_admin_user():
+            cliente_ids = {c.id for c in ClienteComercial.query.filter_by(vendedor_id=vendedor_scope.id).all()}
+            if not cliente_ids:
+                return jsonify({'scope': scope, 'periodos': periodos}), 200
+            pref_rows = [row for row in pref_rows if row.get('cliente_id') in cliente_ids]
+
+    for pref in pref_rows:
+        periodo = _serializar_periodo_cargue(pref['fecha_desde'], pref['fecha_hasta'], source='PREFACTURA')
         if not periodo:
             continue
         key = (periodo['fecha_desde'], periodo['fecha_hasta'])
@@ -1086,28 +1433,61 @@ def consultar_atenciones_dia():
             pass
 
     try:
-        total = query.count()
-        orden_num_expr = cast(
-            func.nullif(
-                func.regexp_replace(
-                    func.coalesce(AtencionDiaDetalle.nro_orden, ''),
-                    r'[^0-9]',
-                    '',
-                    'g',
-                ),
-                '',
-            ),
-            BigInteger,
+        total_registros = query.count()
+        orden_num_expr = _orden_num_expr_atenciones()
+        group_exprs = _claves_grupo_orden_atenciones()
+        fecha_orden_expr = func.min(AtencionDiaDetalle.fecha_creacion_orden)
+
+        grupos_subquery = (
+            query.with_entities(
+                group_exprs['cliente_group'].label('cliente_group'),
+                group_exprs['vendedor_group'].label('vendedor_group'),
+                group_exprs['orden_group'].label('orden_group'),
+                orden_num_expr.label('orden_num'),
+                fecha_orden_expr.label('fecha_orden'),
+            )
+            .group_by(
+                group_exprs['cliente_group'],
+                group_exprs['vendedor_group'],
+                group_exprs['orden_group'],
+                orden_num_expr,
+            )
+            .subquery()
         )
-        registros = (
-            query.order_by(
-                orden_num_expr.asc().nullslast(),
-                AtencionDiaDetalle.nro_orden.asc().nullslast(),
-                AtencionDiaDetalle.fecha_creacion_orden.asc().nullslast(),
-                AtencionDiaDetalle.id.asc(),
+
+        total_ordenes = db.session.query(func.count()).select_from(grupos_subquery).scalar() or 0
+        grupos_paginados = (
+            db.session.query(grupos_subquery)
+            .order_by(
+                grupos_subquery.c.orden_num.asc().nullslast(),
+                grupos_subquery.c.orden_group.asc().nullslast(),
+                grupos_subquery.c.fecha_orden.asc().nullslast(),
+                grupos_subquery.c.cliente_group.asc(),
+                grupos_subquery.c.vendedor_group.asc(),
             )
             .offset((page - 1) * per_page)
             .limit(per_page)
+            .subquery()
+        )
+
+        registros = (
+            query.join(
+                grupos_paginados,
+                and_(
+                    group_exprs['cliente_group'] == grupos_paginados.c.cliente_group,
+                    group_exprs['vendedor_group'] == grupos_paginados.c.vendedor_group,
+                    group_exprs['orden_group'] == grupos_paginados.c.orden_group,
+                ),
+            )
+            .order_by(
+                grupos_paginados.c.orden_num.asc().nullslast(),
+                grupos_paginados.c.orden_group.asc().nullslast(),
+                grupos_paginados.c.fecha_orden.asc().nullslast(),
+                AtencionDiaDetalle.nro_identificacion.asc().nullslast(),
+                AtencionDiaDetalle.nombre_paciente.asc().nullslast(),
+                AtencionDiaDetalle.servicio.asc().nullslast(),
+                AtencionDiaDetalle.id.asc(),
+            )
             .all()
         )
     except (ProgrammingError, OperationalError) as exc:
@@ -1120,10 +1500,12 @@ def consultar_atenciones_dia():
         'scope': scope,
         'search_required': False,
         'vendedor_scope_id': vendedor_scope.id if vendedor_scope else None,
-        'total': total,
+        'total': total_ordenes,
+        'total_ordenes': total_ordenes,
+        'total_registros': total_registros,
         'page': page,
         'per_page': per_page,
-        'pages': (total + per_page - 1) // per_page,
+        'pages': (total_ordenes + per_page - 1) // per_page,
         'registros': [_serialize_atencion_dia(registro) for registro in registros],
     }), 200
 
@@ -2216,55 +2598,62 @@ def generar_prefacturas():
     # Persistir / actualizar prefacturas en BD (estado BORRADOR)
     # Solo se actualizan las que están en BORRADOR; las CERRADAS no se tocan.
     # -----------------------------------------------------------------------
-    for nombre_empresa, buckets in empresa_buckets.items():
-        tiene_cred = bool(buckets.get('CREDITO'))
-        tiene_efec = bool(buckets.get('EFECTIVO'))
+    try:
+        for nombre_empresa, buckets in empresa_buckets.items():
+            tiene_cred = bool(buckets.get('CREDITO'))
+            tiene_efec = bool(buckets.get('EFECTIVO'))
 
-        if tiene_cred and tiene_efec:
-            formas_guardar = [('MIXTO', buckets['CREDITO'] + buckets['EFECTIVO'])]
-        elif tiene_cred:
-            formas_guardar = [('CREDITO', buckets['CREDITO'])]
-        else:
-            formas_guardar = [('EFECTIVO', buckets['EFECTIVO'])]
+            if tiene_cred and tiene_efec:
+                formas_guardar = [('MIXTO', buckets['CREDITO'] + buckets['EFECTIVO'])]
+            elif tiene_cred:
+                formas_guardar = [('CREDITO', buckets['CREDITO'])]
+            else:
+                formas_guardar = [('EFECTIVO', buckets['EFECTIVO'])]
 
-        for forma_bd, regs_bd in formas_guardar:
-            pacs_bd = len({
-                (r.nro_identificacion or '', r.nombre_paciente or '')
-                for r in regs_bd
-            })
-            val_bd = sum(float(r.precio) for r in regs_bd if r.precio is not None)
+            for forma_bd, regs_bd in formas_guardar:
+                pacs_bd = len({
+                    (r.nro_identificacion or '', r.nombre_paciente or '')
+                    for r in regs_bd
+                })
+                val_bd = sum(float(r.precio) for r in regs_bd if r.precio is not None)
 
-            cliente_bd = next(
-                (r.cliente for r in regs_bd if r.cliente is not None), None
-            )
+                cliente_bd = next(
+                    (r.cliente for r in regs_bd if r.cliente is not None), None
+                )
 
-            pref = PrefacturaComercial.query.filter_by(
-                nombre_empresa=nombre_empresa,
-                fecha_desde=fecha_desde,
-                fecha_hasta=fecha_hasta,
-                forma_pago=forma_bd,
-            ).first()
-
-            if pref is None:
-                pref = PrefacturaComercial(
+                pref = PrefacturaComercial.query.filter_by(
                     nombre_empresa=nombre_empresa,
                     fecha_desde=fecha_desde,
                     fecha_hasta=fecha_hasta,
                     forma_pago=forma_bd,
-                    estado='BORRADOR',
-                    usuario_genera_id=current_user.id,
-                )
-                db.session.add(pref)
+                ).first()
 
-            # Solo actualizar si sigue en BORRADOR
-            if pref.estado == 'BORRADOR':
-                pref.cliente_id      = cliente_bd.id if cliente_bd else pref.cliente_id
-                pref.cant_pacientes  = pacs_bd
-                pref.valor_total     = val_bd
-                pref.usuario_genera_id = current_user.id
+                if pref is None:
+                    pref = PrefacturaComercial(
+                        nombre_empresa=nombre_empresa,
+                        fecha_desde=fecha_desde,
+                        fecha_hasta=fecha_hasta,
+                        forma_pago=forma_bd,
+                        estado='BORRADOR',
+                        usuario_genera_id=current_user.id,
+                    )
+                    db.session.add(pref)
 
-    try:
+                # Solo actualizar si sigue en BORRADOR
+                if pref.estado == 'BORRADOR':
+                    pref.cliente_id = cliente_bd.id if cliente_bd else pref.cliente_id
+                    pref.cant_pacientes = pacs_bd
+                    pref.valor_total = val_bd
+                    pref.usuario_genera_id = current_user.id
+
         db.session.commit()
+    except (ProgrammingError, OperationalError) as exc_bd:
+        db.session.rollback()
+        mensaje_pref = _mensaje_error_esquema_prefacturas(exc_bd)
+        if mensaje_pref:
+            logger.warning(mensaje_pref)
+        else:
+            logger.warning('No se pudo guardar prefacturas en BD: %s', exc_bd)
     except Exception as exc_bd:
         db.session.rollback()
         logger.warning('No se pudo guardar prefacturas en BD: %s', exc_bd)
@@ -3393,3 +3782,666 @@ def descargar_comprobante_cartera_prefactura(pago_id):
     except Exception as exc:
         logger.error('Error descargando comprobante de cartera %s: %s', pago_id, exc)
         return jsonify({'error': 'Error al descargar el comprobante del pago'}), 500
+
+
+# ===========================================================================
+# REGISTRO DIARIO DE CAJA — ÓRDENES DE SERVICIO
+# ===========================================================================
+
+_ESTADOS_ORDEN_CAJA   = {'INGRESADO', 'APROBADO', 'TERMINADO', 'ANULADO'}
+_TIPOS_DOCUMENTO_CAJA = {'CC', 'CE', 'PT'}
+_FORMAS_PAGO_CAJA     = {'EFECTIVO', 'TRANSFERENCIA', 'CREDITO', 'MIXTO'}
+_TIPOS_CLIENTE_CAJA   = {'EMPRESA', 'PERSONA_NATURAL'}
+
+_OPCIONES_TIPO_EXAMEN  = ['Ingreso', 'Periódico', 'Egreso', 'Post-incapacidad',
+                          'Control y seguimiento', 'Reubicación']
+_OPCIONES_ENFASIS      = ['Osteomuscular', 'Alturas', 'Manipulación de Alimentos',
+                          'Espacios Confinados', 'Cardiovascular', 'Neurológico',
+                          'Respiratorio', 'Dermatológico', 'Piel y Faneras',
+                          'Manejo de alta tensión eléctrica']
+_OPCIONES_PARACLINICOS = ['Audiometría', 'Visiometría', 'Optometría', 'Espirometría',
+                          'Prueba Psicológica', 'Prueba Motriz', 'Electrocardiograma',
+                          'Tamizaje de voz (Voximetría)']
+_OPCIONES_LABORATORIO  = ['Triglicéridos', 'Glicemia Basal', 'Colesterol Total',
+                          'Perfil Lipídico', 'Cuadro Hemático', 'Frótis de uñas y garganta',
+                          'Coprológico', 'Hemoclasificación']
+_OPCIONES_OTROS        = ['Curso de Manipulación de Alimentos', 'Curso de Alturas',
+                          'Radiografía', 'Vacuna']
+
+
+_OPCIONES_AUTORIZACION = ['PLATAFORMA', 'CORREO', 'ORDEN_FISICA', 'WHATSAPP_ADMISIONES']
+_GRUPOS_REQUERIMIENTO = [
+    {'clave': 'GERENCIA_C', 'nombre': 'Gerencia C'},
+    {'clave': 'ASESORA_Y', 'nombre': 'Asesora Y'},
+    {'clave': 'OTRO', 'nombre': 'Otro'},
+]
+
+
+def _coerce_string_list(value):
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            parsed = None
+        if isinstance(parsed, (list, tuple)):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+        return [raw]
+    return [str(value).strip()]
+
+
+def _coerce_json_payload(value, default):
+    if value is None:
+        return default
+    if isinstance(value, (list, dict)):
+        return value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return default
+        try:
+            return json.loads(raw)
+        except Exception:
+            return default
+    return default
+
+
+def _normalizar_grupo_requerimientos(value):
+    parsed = _coerce_json_payload(value, [])
+    if not isinstance(parsed, list):
+        return []
+
+    filas = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        fila = {
+            'clave': (str(item.get('clave') or item.get('key') or '').strip().upper() or None),
+            'nombre': (str(item.get('nombre') or item.get('label') or '').strip() or None),
+            'seleccionado': bool(item.get('seleccionado')),
+            'responsable': (str(item.get('responsable') or '').strip() or None),
+            'celular': (str(item.get('celular') or '').strip() or None),
+        }
+        if any([fila['clave'], fila['nombre'], fila['seleccionado'], fila['responsable'], fila['celular']]):
+            filas.append(fila)
+    return filas
+
+
+def _orden_caja_requiere_soporte(forma_pago, mixto_transferencia=None):
+    forma = (forma_pago or '').strip().upper()
+    if forma == 'TRANSFERENCIA':
+        return True
+    if forma != 'MIXTO':
+        return False
+    try:
+        return Decimal(str(mixto_transferencia or 0)) > 0
+    except Exception:
+        return False
+
+
+def _load_orden_caja_request_data():
+    if request.is_json:
+        return request.get_json(silent=True) or {}
+
+    data = request.form.to_dict(flat=True)
+    for field in (
+        'enfasis',
+        'paraclinicos',
+        'laboratorio',
+        'otros_servicios',
+        'formas_autorizacion',
+        'grupo_requerimientos',
+    ):
+        if field in request.form:
+            data[field] = request.form.get(field)
+    return data
+
+
+def _serialize_orden_caja_adjunto(adjunto):
+    return {
+        'id': adjunto.id,
+        'nombre_original': adjunto.nombre_original,
+        'mime_type': adjunto.mime_type,
+        'tamano_bytes': adjunto.tamano_bytes,
+        'download_url': f'/api/comercial/caja/{adjunto.orden_id}/adjuntos/{adjunto.id}',
+        'created_at': adjunto.created_at.strftime('%Y-%m-%d %H:%M:%S') if adjunto.created_at else None,
+    }
+
+
+def _guardar_adjunto_orden_caja(orden, archivo):
+    if not archivo or not getattr(archivo, 'filename', ''):
+        return
+
+    nombre_original = secure_filename(os.path.basename(archivo.filename)) or f'adjunto_{uuid.uuid4().hex}'
+    upload_root = current_app.config['UPLOAD_FOLDER']
+    orden_dir = os.path.join(upload_root, 'comercial', 'caja', str(orden.id), 'transferencias')
+    os.makedirs(orden_dir, exist_ok=True)
+
+    nombre_guardado = f'{uuid.uuid4().hex}_{nombre_original}'
+    ruta_absoluta = os.path.join(orden_dir, nombre_guardado)
+    archivo.save(ruta_absoluta)
+
+    db.session.add(OrdenServicioCajaAdjunto(
+        orden_id=orden.id,
+        nombre_original=nombre_original,
+        ruta_relativa=os.path.relpath(ruta_absoluta, upload_root),
+        mime_type=archivo.mimetype,
+        tamano_bytes=os.path.getsize(ruta_absoluta) if os.path.exists(ruta_absoluta) else None,
+    ))
+
+
+def _eliminar_adjunto_orden_caja(adjunto):
+    if not adjunto or not adjunto.ruta_relativa:
+        return
+
+    upload_root = os.path.abspath(current_app.config['UPLOAD_FOLDER'])
+    ruta = os.path.abspath(os.path.join(upload_root, adjunto.ruta_relativa))
+    if ruta.startswith(upload_root) and os.path.exists(ruta):
+        try:
+            os.remove(ruta)
+        except OSError:
+            logger.warning('No se pudo eliminar el adjunto de orden caja %s', ruta)
+
+
+def _eliminar_adjuntos_orden_caja(orden):
+    for adjunto in orden.adjuntos.all():
+        _eliminar_adjunto_orden_caja(adjunto)
+        db.session.delete(adjunto)
+
+
+def _get_adjunto_orden_caja_path(adjunto):
+    if not adjunto.ruta_relativa:
+        raise FileNotFoundError('Adjunto no disponible')
+
+    upload_root = os.path.abspath(current_app.config['UPLOAD_FOLDER'])
+    ruta = os.path.abspath(os.path.join(upload_root, adjunto.ruta_relativa))
+    if not ruta.startswith(upload_root):
+        raise FileNotFoundError('Ruta de adjunto invalida')
+    if not os.path.exists(ruta):
+        raise FileNotFoundError('El archivo adjunto no existe en disco')
+    return ruta
+
+
+def _orden_caja_to_dict(o):
+    """Serializa una OrdenServicioCaja a dict."""
+    return {
+        'id':                   o.id,
+        'nro_orden':            o.nro_orden,
+        'fecha_orden':          o.fecha_orden.strftime('%Y-%m-%d') if o.fecha_orden else None,
+        'tipo_documento':       o.tipo_documento,
+        'nro_documento':        o.nro_documento,
+        'nombre_paciente':      o.nombre_paciente,
+        'cargo_paciente':       o.cargo_paciente,
+        'empresa':              o.empresa,
+        'empresa_mision':       o.empresa_mision,
+        'tipo_examen':          o.tipo_examen,
+        'tipo_examen_otro':     o.tipo_examen_otro,
+        'enfasis':              o.enfasis or [],
+        'enfasis_otro':         o.enfasis_otro,
+        'paraclinicos':         o.paraclinicos or [],
+        'paraclinicos_otro':    o.paraclinicos_otro,
+        'laboratorio':          o.laboratorio or [],
+        'laboratorio_otro':     o.laboratorio_otro,
+        'otros_servicios':      o.otros_servicios or [],
+        'otros_servicios_otro': o.otros_servicios_otro,
+        'total_costo':          float(o.total_costo or 0),
+        'tipo_cliente':         o.tipo_cliente,
+        'forma_pago':           o.forma_pago,
+        'mixto_efectivo':       float(o.mixto_efectivo) if o.mixto_efectivo is not None else None,
+        'mixto_transferencia':  float(o.mixto_transferencia) if o.mixto_transferencia is not None else None,
+        'mixto_credito':        float(o.mixto_credito) if o.mixto_credito is not None else None,
+        'formas_autorizacion':  o.formas_autorizacion or [],
+        'autorizacion_observaciones': o.autorizacion_observaciones,
+        'grupo_requerimientos': o.grupo_requerimientos or [],
+        'numero_turno':         o.numero_turno,
+        'estado':               o.estado,
+        'motivo_anulacion':     o.motivo_anulacion,
+        'observaciones':        o.observaciones,
+        'cliente_id':           o.cliente_id,
+        'adjuntos_transferencia': [
+            _serialize_orden_caja_adjunto(adjunto)
+            for adjunto in o.adjuntos.order_by(OrdenServicioCajaAdjunto.created_at.desc(), OrdenServicioCajaAdjunto.id.desc()).all()
+        ],
+        'usuario':              o.usuario.usuario if o.usuario else None,
+        'created_at':           o.created_at.strftime('%Y-%m-%d %H:%M') if o.created_at else None,
+        'updated_at':           o.updated_at.strftime('%Y-%m-%d %H:%M') if o.updated_at else None,
+    }
+
+
+def _parse_orden_caja_payload(data, *, es_nuevo=True, orden_actual=None):
+    """Valida y construye el payload de una orden de caja."""
+    errores = []
+
+    nro_orden = (data.get('nro_orden') or '').strip()
+    if not nro_orden:
+        errores.append('El número de orden es obligatorio')
+
+    fecha_str = (data.get('fecha_orden') or '').strip()
+    fecha_orden = None
+    if not fecha_str:
+        errores.append('La fecha de la orden es obligatoria')
+    else:
+        try:
+            fecha_orden = datetime.strptime(fecha_str, '%Y-%m-%d')
+        except ValueError:
+            errores.append('Formato de fecha inválido (YYYY-MM-DD)')
+
+    tipo_doc = (data.get('tipo_documento') or '').strip().upper()
+    if tipo_doc not in _TIPOS_DOCUMENTO_CAJA:
+        errores.append('Tipo de documento debe ser CC, CE o PT')
+
+    nro_doc = (data.get('nro_documento') or '').strip()
+    if not nro_doc:
+        errores.append('El número de documento es obligatorio')
+
+    nombre = (data.get('nombre_paciente') or '').strip()
+    if not nombre:
+        errores.append('El nombre del paciente es obligatorio')
+
+    forma_pago = (data.get('forma_pago') or '').strip().upper()
+    if forma_pago not in _FORMAS_PAGO_CAJA:
+        errores.append('Forma de pago inválida')
+
+    try:
+        total_costo = Decimal(str(data.get('total_costo') or 0))
+    except Exception:
+        total_costo = Decimal('0')
+        errores.append('El total del costo es invalido')
+
+    mixto_efectivo = mixto_transferencia = mixto_credito = None
+    if forma_pago == 'MIXTO':
+        try:
+            mixto_efectivo     = Decimal(str(data.get('mixto_efectivo') or 0))
+            mixto_transferencia = Decimal(str(data.get('mixto_transferencia') or 0))
+            mixto_credito      = Decimal(str(data.get('mixto_credito') or 0))
+            suma_mixto = mixto_efectivo + mixto_transferencia + mixto_credito
+            if suma_mixto <= 0:
+                errores.append('Para pago MIXTO debe indicar al menos un valor mayor a cero')
+        except Exception:
+            errores.append('Valores de pago MIXTO inválidos')
+
+    formas_autorizacion = []
+    for valor in _coerce_string_list(data.get('formas_autorizacion')):
+        normalizado = valor.strip().upper()
+        if normalizado in _OPCIONES_AUTORIZACION:
+            formas_autorizacion.append(normalizado)
+
+    grupo_requerimientos = _normalizar_grupo_requerimientos(data.get('grupo_requerimientos'))
+
+    if errores:
+        raise ValueError(' | '.join(errores))
+
+    return {
+        'nro_orden':            nro_orden,
+        'fecha_orden':          fecha_orden,
+        'tipo_documento':       tipo_doc,
+        'nro_documento':        nro_doc,
+        'nombre_paciente':      nombre,
+        'cargo_paciente':       (data.get('cargo_paciente') or '').strip() or None,
+        'empresa':              (data.get('empresa') or '').strip() or None,
+        'empresa_mision':       (data.get('empresa_mision') or '').strip() or None,
+        'tipo_examen':          (data.get('tipo_examen') or '').strip() or None,
+        'tipo_examen_otro':     (data.get('tipo_examen_otro') or '').strip() or None,
+        'enfasis':              _coerce_string_list(data.get('enfasis')),
+        'enfasis_otro':         (data.get('enfasis_otro') or '').strip() or None,
+        'paraclinicos':         _coerce_string_list(data.get('paraclinicos')),
+        'paraclinicos_otro':    (data.get('paraclinicos_otro') or '').strip() or None,
+        'laboratorio':          _coerce_string_list(data.get('laboratorio')),
+        'laboratorio_otro':     (data.get('laboratorio_otro') or '').strip() or None,
+        'otros_servicios':      _coerce_string_list(data.get('otros_servicios')),
+        'otros_servicios_otro': (data.get('otros_servicios_otro') or '').strip() or None,
+        'total_costo':          total_costo,
+        'tipo_cliente':         (data.get('tipo_cliente') or '').strip().upper() or None,
+        'forma_pago':           forma_pago,
+        'mixto_efectivo':       mixto_efectivo,
+        'mixto_transferencia':  mixto_transferencia,
+        'mixto_credito':        mixto_credito,
+        'formas_autorizacion':  formas_autorizacion,
+        'autorizacion_observaciones': (data.get('autorizacion_observaciones') or '').strip() or None,
+        'grupo_requerimientos': grupo_requerimientos,
+        'numero_turno':         (data.get('numero_turno') or '').strip() or None,
+        'observaciones':        (data.get('observaciones') or '').strip() or None,
+        'cliente_id':           data.get('cliente_id') or None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/comercial/caja/opciones  — catálogo de opciones del formulario
+# ---------------------------------------------------------------------------
+@comercial_bp.route('/caja/opciones', methods=['GET'])
+@login_required
+def opciones_orden_caja():
+    return jsonify({
+        'tipo_examen':   _OPCIONES_TIPO_EXAMEN,
+        'enfasis':       _OPCIONES_ENFASIS,
+        'paraclinicos':  _OPCIONES_PARACLINICOS,
+        'laboratorio':   _OPCIONES_LABORATORIO,
+        'otros_servicios': _OPCIONES_OTROS,
+        'formas_autorizacion': _OPCIONES_AUTORIZACION,
+        'grupos_requerimiento': _GRUPOS_REQUERIMIENTO,
+        'tipos_documento': list(_TIPOS_DOCUMENTO_CAJA),
+        'formas_pago':   list(_FORMAS_PAGO_CAJA),
+        'tipos_cliente': list(_TIPOS_CLIENTE_CAJA),
+        'estados':       list(_ESTADOS_ORDEN_CAJA),
+    }), 200
+
+
+# ---------------------------------------------------------------------------
+# GET /api/comercial/caja  — consulta con filtros
+# ---------------------------------------------------------------------------
+@comercial_bp.route('/caja', methods=['GET'])
+@login_required
+def listar_ordenes_caja():
+    try:
+        _require_commercial_permission(PERMISO_CONSULTA_ATENCIONES)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+
+    empresa    = (request.args.get('empresa') or '').strip()
+    nro_orden  = (request.args.get('nro_orden') or '').strip()
+    nro_doc    = (request.args.get('nro_documento') or '').strip()
+    estado     = (request.args.get('estado') or '').strip().upper()
+    fd_str     = (request.args.get('fecha_desde') or '').strip()
+    fh_str     = (request.args.get('fecha_hasta') or '').strip()
+    page       = max(1, int(request.args.get('page', 1)))
+    per_page   = min(100, max(10, int(request.args.get('per_page', 50))))
+
+    q = OrdenServicioCaja.query
+
+    if empresa:
+        q = q.filter(or_(
+            OrdenServicioCaja.empresa.ilike(f'%{empresa}%'),
+            OrdenServicioCaja.empresa_mision.ilike(f'%{empresa}%'),
+        ))
+    if nro_orden:
+        q = q.filter(OrdenServicioCaja.nro_orden.ilike(f'%{nro_orden}%'))
+    if nro_doc:
+        q = q.filter(OrdenServicioCaja.nro_documento.ilike(f'%{nro_doc}%'))
+    if estado and estado in _ESTADOS_ORDEN_CAJA:
+        q = q.filter(OrdenServicioCaja.estado == estado)
+    if fd_str:
+        try:
+            q = q.filter(OrdenServicioCaja.fecha_orden >= datetime.strptime(fd_str, '%Y-%m-%d'))
+        except ValueError:
+            pass
+    if fh_str:
+        try:
+            q = q.filter(OrdenServicioCaja.fecha_orden <= datetime.strptime(f'{fh_str} 23:59:59', '%Y-%m-%d %H:%M:%S'))
+        except ValueError:
+            pass
+
+    total   = q.count()
+    ordenes = q.order_by(
+        OrdenServicioCaja.fecha_orden.desc(),
+        OrdenServicioCaja.nro_orden.asc(),
+    ).offset((page - 1) * per_page).limit(per_page).all()
+
+    return jsonify({
+        'total':    total,
+        'page':     page,
+        'per_page': per_page,
+        'pages':    (total + per_page - 1) // per_page,
+        'ordenes':  [_orden_caja_to_dict(o) for o in ordenes],
+    }), 200
+
+
+# ---------------------------------------------------------------------------
+# GET /api/comercial/caja/gaps  — detectar saltos en numeración
+# ---------------------------------------------------------------------------
+@comercial_bp.route('/caja/gaps', methods=['GET'])
+@login_required
+def detectar_gaps_ordenes_caja():
+    """Detecta saltos en la numeración de órdenes para un rango de fechas."""
+    try:
+        _require_commercial_permission(PERMISO_CONSULTA_ATENCIONES)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+
+    fd_str = (request.args.get('fecha_desde') or '').strip()
+    fh_str = (request.args.get('fecha_hasta') or '').strip()
+
+    q = OrdenServicioCaja.query.filter(
+        OrdenServicioCaja.estado != 'ANULADO'
+    )
+    if fd_str:
+        try:
+            q = q.filter(OrdenServicioCaja.fecha_orden >= datetime.strptime(fd_str, '%Y-%m-%d'))
+        except ValueError:
+            pass
+    if fh_str:
+        try:
+            q = q.filter(OrdenServicioCaja.fecha_orden <= datetime.strptime(f'{fh_str} 23:59:59', '%Y-%m-%d %H:%M:%S'))
+        except ValueError:
+            pass
+
+    ordenes = q.order_by(OrdenServicioCaja.nro_orden.asc()).all()
+
+    # Extraer números de las órdenes (solo la parte numérica)
+    import re as _re
+    numeros = []
+    for o in ordenes:
+        m = _re.search(r'\d+', o.nro_orden or '')
+        if m:
+            numeros.append((int(m.group()), o.nro_orden))
+
+    numeros.sort(key=lambda x: x[0])
+    gaps = []
+    for i in range(1, len(numeros)):
+        prev_num, prev_nro = numeros[i - 1]
+        curr_num, curr_nro = numeros[i]
+        if curr_num - prev_num > 1:
+            faltantes = list(range(prev_num + 1, curr_num))
+            gaps.append({
+                'entre':     f'{prev_nro} y {curr_nro}',
+                'faltantes': faltantes[:20],  # máximo 20 por gap
+                'cantidad':  len(faltantes),
+            })
+
+    return jsonify({
+        'total_ordenes': len(ordenes),
+        'gaps':          gaps,
+        'tiene_gaps':    len(gaps) > 0,
+    }), 200
+
+
+# ---------------------------------------------------------------------------
+# POST /api/comercial/caja  — crear orden
+# ---------------------------------------------------------------------------
+@comercial_bp.route('/caja', methods=['POST'])
+@login_required
+def crear_orden_caja():
+    try:
+        _require_commercial_permission(PERMISO_CARGUE_ATENCIONES)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+
+    data = _load_orden_caja_request_data()
+    archivos = [archivo for archivo in request.files.getlist('transferencia_adjuntos') if getattr(archivo, 'filename', '')]
+    try:
+        payload = _parse_orden_caja_payload(data)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    if _orden_caja_requiere_soporte(payload['forma_pago'], payload['mixto_transferencia']) and not archivos:
+        return jsonify({'error': 'Debes adjuntar al menos un recibo cuando la orden incluye transferencia'}), 400
+
+    orden = OrdenServicioCaja(
+        **payload,
+        estado     = 'INGRESADO',
+        usuario_id = current_user.id,
+    )
+    db.session.add(orden)
+    try:
+        db.session.flush()
+        for archivo in archivos:
+            _guardar_adjunto_orden_caja(orden, archivo)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('Error creando orden caja: %s', exc)
+        return jsonify({'error': 'No se pudo guardar la orden'}), 500
+
+    return jsonify({'orden': _orden_caja_to_dict(orden)}), 201
+
+
+# ---------------------------------------------------------------------------
+# GET /api/comercial/caja/<id>  — detalle
+# ---------------------------------------------------------------------------
+@comercial_bp.route('/caja/<int:orden_id>', methods=['GET'])
+@login_required
+def obtener_orden_caja(orden_id):
+    try:
+        _require_commercial_permission(PERMISO_CONSULTA_ATENCIONES)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+
+    orden = OrdenServicioCaja.query.get_or_404(orden_id)
+    return jsonify({'orden': _orden_caja_to_dict(orden)}), 200
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/comercial/caja/<id>  — editar (solo INGRESADO)
+# ---------------------------------------------------------------------------
+@comercial_bp.route('/caja/<int:orden_id>', methods=['PUT'])
+@login_required
+def editar_orden_caja(orden_id):
+    try:
+        _require_commercial_permission(PERMISO_CARGUE_ATENCIONES)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+
+    orden = OrdenServicioCaja.query.get_or_404(orden_id)
+    if orden.estado != 'INGRESADO':
+        return jsonify({'error': f'Solo se pueden editar órdenes en estado INGRESADO. Esta está en {orden.estado}'}), 409
+
+    data = _load_orden_caja_request_data()
+    archivos = [archivo for archivo in request.files.getlist('transferencia_adjuntos') if getattr(archivo, 'filename', '')]
+    try:
+        payload = _parse_orden_caja_payload(data, es_nuevo=False, orden_actual=orden)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    for campo, valor in payload.items():
+        setattr(orden, campo, valor)
+
+    requiere_soporte = _orden_caja_requiere_soporte(payload['forma_pago'], payload['mixto_transferencia'])
+    if requiere_soporte and not archivos and not orden.adjuntos.count():
+        return jsonify({'error': 'Debes adjuntar al menos un recibo cuando la orden incluye transferencia'}), 400
+
+    try:
+        if not requiere_soporte:
+            _eliminar_adjuntos_orden_caja(orden)
+        else:
+            for archivo in archivos:
+                _guardar_adjunto_orden_caja(orden, archivo)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': 'No se pudo actualizar la orden'}), 500
+
+    return jsonify({'orden': _orden_caja_to_dict(orden)}), 200
+
+
+# ---------------------------------------------------------------------------
+# POST /api/comercial/caja/<id>/cambiar-estado  — aprobar / terminar / anular
+# ---------------------------------------------------------------------------
+@comercial_bp.route('/caja/<int:orden_id>/cambiar-estado', methods=['POST'])
+@login_required
+def cambiar_estado_orden_caja(orden_id):
+    try:
+        _require_commercial_permission(PERMISO_CARGUE_ATENCIONES)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+
+    orden  = OrdenServicioCaja.query.get_or_404(orden_id)
+    data   = request.get_json() or {}
+    nuevo  = (data.get('estado') or '').strip().upper()
+
+    if nuevo not in _ESTADOS_ORDEN_CAJA:
+        return jsonify({'error': f'Estado inválido. Use: {", ".join(_ESTADOS_ORDEN_CAJA)}'}), 400
+
+    # Validar transiciones permitidas
+    transiciones = {
+        'INGRESADO': {'APROBADO', 'ANULADO'},
+        'APROBADO':  {'TERMINADO', 'ANULADO'},
+        'TERMINADO': set(),
+        'ANULADO':   set(),
+    }
+    if nuevo not in transiciones.get(orden.estado, set()):
+        return jsonify({'error': f'No se puede pasar de {orden.estado} a {nuevo}'}), 409
+
+    if nuevo == 'ANULADO':
+        motivo = (data.get('motivo') or '').strip()
+        if not motivo:
+            return jsonify({'error': 'El motivo de anulación es obligatorio'}), 400
+        orden.motivo_anulacion  = motivo
+        orden.usuario_anula_id  = current_user.id
+        orden.fecha_anulacion   = datetime.utcnow()
+
+    elif nuevo == 'APROBADO':
+        orden.usuario_aprueba_id = current_user.id
+        orden.fecha_aprobacion   = datetime.utcnow()
+
+    elif nuevo == 'TERMINADO':
+        orden.usuario_termina_id = current_user.id
+        orden.fecha_terminacion  = datetime.utcnow()
+
+    orden.estado = nuevo
+
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': 'No se pudo cambiar el estado'}), 500
+
+    return jsonify({'orden': _orden_caja_to_dict(orden)}), 200
+
+
+@comercial_bp.route('/caja/<int:orden_id>/adjuntos/<int:adjunto_id>', methods=['GET'])
+@login_required
+def descargar_adjunto_orden_caja(orden_id, adjunto_id):
+    try:
+        _require_commercial_permission(PERMISO_CONSULTA_ATENCIONES)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+
+    orden = OrdenServicioCaja.query.get_or_404(orden_id)
+    adjunto = OrdenServicioCajaAdjunto.query.filter_by(id=adjunto_id, orden_id=orden.id).first_or_404()
+    try:
+        ruta = _get_adjunto_orden_caja_path(adjunto)
+        return send_file(ruta, as_attachment=True, download_name=adjunto.nombre_original)
+    except FileNotFoundError as exc:
+        return jsonify({'error': str(exc)}), 404
+    except Exception as exc:
+        logger.error('Error descargando adjunto de orden caja %s: %s', adjunto_id, exc)
+        return jsonify({'error': 'No se pudo descargar el adjunto'}), 500
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/comercial/caja/<id>  — eliminar (solo INGRESADO, solo admin)
+# ---------------------------------------------------------------------------
+@comercial_bp.route('/caja/<int:orden_id>', methods=['DELETE'])
+@login_required
+def eliminar_orden_caja(orden_id):
+    if not _is_admin_user():
+        return jsonify({'error': 'Solo el administrador puede eliminar órdenes'}), 403
+
+    orden = OrdenServicioCaja.query.get_or_404(orden_id)
+    if orden.estado != 'INGRESADO':
+        return jsonify({'error': 'Solo se pueden eliminar órdenes en estado INGRESADO'}), 409
+
+    try:
+        _eliminar_adjuntos_orden_caja(orden)
+        db.session.delete(orden)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': 'No se pudo eliminar la orden'}), 500
+
+    return jsonify({'ok': True}), 200

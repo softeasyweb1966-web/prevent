@@ -989,6 +989,32 @@ class ServicioPeriodo(db.Model):
 # ==================== MODELOS DE PRÉSTAMOS (BANCOS) ====================
 
 
+class BancoPeriodo(db.Model):
+    """Control de periodos mensuales del módulo de bancos/préstamos.
+
+    Igual patrón que ServicioPeriodo: un registro por mes/año,
+    en_proceso=True indica el mes activo, finalizado=True los cerrados.
+    """
+    __tablename__ = 'bancos_periodos'
+
+    id               = db.Column(db.Integer, primary_key=True)
+    mes              = db.Column(db.Integer, nullable=False)
+    anio             = db.Column(db.Integer, nullable=False)
+    en_proceso       = db.Column(db.Boolean, default=False)
+    finalizado       = db.Column(db.Boolean, default=False)
+    fecha_inicio     = db.Column(db.DateTime)
+    fecha_finalizacion = db.Column(db.DateTime)
+    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at       = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('mes', 'anio', name='uq_bancos_periodo_mes_anio'),
+    )
+
+    def __repr__(self):
+        return f'<BancoPeriodo {self.mes}/{self.anio} en_proceso={self.en_proceso}>'
+
+
 class PrestamoEmpresa(db.Model):
     """Catálogo / encabezados de préstamos de la empresa (bancos o personas)."""
     __tablename__ = 'prestamos_empresa'
@@ -1312,3 +1338,114 @@ class CarteraPrefactura(db.Model):
     def __repr__(self):
         return (f'<CarteraPrefactura pref={self.prefactura_id} '
                 f'{self.tipo_movimiento} {self.valor_pago}>')
+
+
+# ==================== REGISTRO DIARIO DE CAJA (ÓRDENES DE SERVICIO) ====================
+
+class OrdenServicioCaja(db.Model):
+    """Registro inmutable de órdenes de servicio verificadas en caja.
+
+    Una vez en estado APROBADO o TERMINADO no puede modificarse.
+    Sirve como control de auditoría contra el sistema de salud.
+    Estados: INGRESADO → APROBADO → TERMINADO | ANULADO
+    """
+    __tablename__ = 'ordenes_servicio_caja'
+
+    id                  = db.Column(db.Integer, primary_key=True)
+
+    # Identificación de la orden
+    nro_orden           = db.Column(db.String(50), nullable=False, index=True)
+    fecha_orden         = db.Column(db.DateTime, nullable=False, index=True)
+
+    # Datos del paciente
+    tipo_documento      = db.Column(db.String(10), nullable=False)   # CC, CE, PT
+    nro_documento       = db.Column(db.String(30), nullable=False, index=True)
+    nombre_paciente     = db.Column(db.String(200), nullable=False)
+    cargo_paciente      = db.Column(db.String(150))
+    empresa             = db.Column(db.String(200), index=True)
+    empresa_mision      = db.Column(db.String(200), index=True)
+
+    # Servicios prestados (checkboxes almacenados como JSON)
+    tipo_examen         = db.Column(db.String(50))    # Ingreso, Periódico, Egreso, etc.
+    tipo_examen_otro    = db.Column(db.String(100))
+    enfasis             = db.Column(db.JSON)           # lista de énfasis seleccionados
+    enfasis_otro        = db.Column(db.String(100))
+    paraclinicos        = db.Column(db.JSON)           # lista de paraclínicos
+    paraclinicos_otro   = db.Column(db.String(100))
+    laboratorio         = db.Column(db.JSON)           # lista de laboratorios
+    laboratorio_otro    = db.Column(db.String(100))
+    otros_servicios     = db.Column(db.JSON)           # lista de otros servicios
+    otros_servicios_otro = db.Column(db.String(100))
+
+    # Pago
+    total_costo         = db.Column(Numeric(15, 2), default=0, nullable=False)
+    tipo_cliente        = db.Column(db.String(20))     # EMPRESA, PERSONA_NATURAL
+    forma_pago          = db.Column(db.String(20), nullable=False, index=True)
+    # Para pago MIXTO: discriminación por forma
+    mixto_efectivo      = db.Column(Numeric(15, 2))
+    mixto_transferencia = db.Column(Numeric(15, 2))
+    mixto_credito       = db.Column(Numeric(15, 2))
+
+    # Autorizacion y control operativo
+    formas_autorizacion = db.Column(db.JSON)
+    autorizacion_observaciones = db.Column(db.Text)
+    grupo_requerimientos = db.Column(db.JSON)
+    numero_turno        = db.Column(db.String(50))
+
+    # Estado del registro
+    estado              = db.Column(db.String(20), nullable=False, default='INGRESADO', index=True)
+    motivo_anulacion    = db.Column(db.Text)
+
+    # Observaciones
+    observaciones       = db.Column(db.Text)
+
+    # Auditoría
+    usuario_id          = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    usuario_aprueba_id  = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    fecha_aprobacion    = db.Column(db.DateTime)
+    usuario_termina_id  = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    fecha_terminacion   = db.Column(db.DateTime)
+    usuario_anula_id    = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    fecha_anulacion     = db.Column(db.DateTime)
+
+    # Relación con cliente comercial (opcional, si se puede relacionar)
+    cliente_id          = db.Column(db.Integer, db.ForeignKey('clientes_comerciales.id'), index=True)
+
+    created_at          = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at          = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relaciones
+    usuario         = db.relationship('Usuario', foreign_keys=[usuario_id])
+    usuario_aprueba = db.relationship('Usuario', foreign_keys=[usuario_aprueba_id])
+    usuario_termina = db.relationship('Usuario', foreign_keys=[usuario_termina_id])
+    usuario_anula   = db.relationship('Usuario', foreign_keys=[usuario_anula_id])
+    cliente         = db.relationship('ClienteComercial',
+                                      backref=db.backref('ordenes_caja', lazy='dynamic'))
+    adjuntos        = db.relationship(
+        'OrdenServicioCajaAdjunto',
+        backref='orden',
+        lazy='dynamic',
+        cascade='all, delete-orphan',
+    )
+
+    __table_args__ = (
+        db.Index('ix_orden_caja_nro_fecha', 'nro_orden', 'fecha_orden'),
+    )
+
+    def __repr__(self):
+        return f'<OrdenServicioCaja {self.nro_orden} {self.nombre_paciente} [{self.estado}]>'
+
+
+class OrdenServicioCajaAdjunto(db.Model):
+    __tablename__ = 'ordenes_servicio_caja_adjuntos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    orden_id = db.Column(db.Integer, db.ForeignKey('ordenes_servicio_caja.id'), nullable=False, index=True)
+    nombre_original = db.Column(db.String(255), nullable=False)
+    ruta_relativa = db.Column(db.String(500), nullable=False)
+    mime_type = db.Column(db.String(120))
+    tamano_bytes = db.Column(db.Integer)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f'<OrdenServicioCajaAdjunto orden={self.orden_id} archivo={self.nombre_original}>'

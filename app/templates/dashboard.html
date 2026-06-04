@@ -21,15 +21,6 @@
             <li><a href="#" class="menu-item" data-module="bancos">
                 <span class="icon">🏦</span> Bancos
             </a></li>
-            <li><a href="#" class="menu-item" data-module="comercial">
-                <span class="icon">CM</span> Comercial
-            </a></li>
-            <li><a href="#" class="menu-item" data-module="recepcion">
-                <span class="icon">RP</span> Consulta Clientes
-            </a></li>
-            <li><a href="#" class="menu-item" data-module="chat">
-                <span class="icon">CI</span> Chat Interno
-            </a></li>
             <li><a href="#" class="menu-item" data-module="impuestos">
                 <span class="icon">📋</span> Impuestos
             </a></li>
@@ -39,6 +30,9 @@
             <li><a href="#" class="menu-item" data-module="ventas">
                 <span class="icon">💵</span> Ventas
             </a></li>
+            <li><a href="#" class="menu-item" data-module="gestion_informacion">
+                <span class="icon">GI</span> Gestión Información
+            </a></li>
             <li><a href="#" class="menu-item" data-module="informes">
                 <span class="icon">📈</span> Informes
             </a></li>
@@ -47,6 +41,9 @@
             </a></li>
             <li><a href="#" class="menu-item" data-module="tablas">
                 <span class="icon">⚙️</span> Tablas
+            </a></li>
+            <li><a href="#" class="menu-item" data-module="gestion_informacion">
+                <span class="icon">GI</span> Gestión Información
             </a></li>
             <li>
                 <button id="logoutMenuBtn" type="button" class="menu-item menu-item-button" data-action="logout">
@@ -75,6 +72,13 @@
                 </div>
                 <div class="placeholder" style="margin-top:18px; max-width:900px;">
                     Seleccione una opción del menú lateral para ver su dashboard específico.
+                </div>
+            </div>
+
+            <!-- Vista Gestión Información -->
+            <div id="gestion_informacionView" class="module-view">
+                <div class="placeholder" style="margin-top:18px; max-width:900px;">
+                    Abriendo Gestión Información...
                 </div>
             </div>
 
@@ -1640,7 +1644,7 @@
                             </div>
                             <div class="period-workflow-actions">
                                 <button id="btnBancosFinalizarNovedadesPanel" type="button" class="btn btn-outline btn-step" style="display:none;" onclick="notImplemented('Bancos: FINALIZAR NOVEDADES mes')">Finalizar Novedades</button>
-                                <button id="btnBancosFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="notImplemented('Bancos: FINALIZAR PAGO mes')">Finalizar Pago Mes</button>
+                                <button id="btnBancosFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="finalizarPeriodoBancos()">Finalizar Pago Mes</button>
                             </div>
                         </div>
                     </div>
@@ -1830,6 +1834,9 @@
                         <button id="comercialNavCargue" type="button" class="btn btn-secondary" onclick="abrirCargueAtencionDia()">
                             <span class="btn-label">Gestión Información</span>
                         </button>
+                        <button id="comercialNavCaja" type="button" class="btn btn-secondary" data-comercial-section="caja" onclick="switchComercialSection('caja')">
+                            <span class="btn-label">Registro Caja</span>
+                        </button>
                         <button id="comercialNavMes" type="button" class="btn btn-secondary" data-comercial-section="mes" onclick="switchComercialSection('mes')">
                             <span class="btn-label">Mes</span>
                         </button>
@@ -1900,6 +1907,341 @@
                                 <button id="btnComercialFinalizarNovedadesPanel" type="button" class="btn btn-outline btn-step" style="display:none;" onclick="notImplemented('Comercial: FINALIZAR CARTERA mes')">Finalizar Cartera</button>
                                 <button id="btnComercialFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="notImplemented('Comercial: FINALIZAR COMISIONES mes')">Finalizar Mes</button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="comercialCajaSection" class="comercial-section-panels">
+                    <!-- Barra de acciones -->
+                    <div class="recent-section comercial-section-entry" style="margin-bottom:16px;">
+                        <h3 style="margin-top:0;">Registro Diario de Caja</h3>
+                        <p style="margin-top:0; color:#555;">Registra las órdenes de servicio verificadas. Una vez aprobadas son inmutables y sirven como control de auditoría.</p>
+                        <div class="button-group module-actions">
+                            <button class="btn btn-secondary" onclick="abrirFormularioCaja()">
+                                <span class="btn-icon">+</span><span class="btn-label">Nueva Orden</span>
+                            </button>
+                            <button class="btn btn-secondary" onclick="abrirConsultaCaja()">
+                                <span class="btn-icon">?</span><span class="btn-label">Consultar</span>
+                            </button>
+                            <button class="btn btn-secondary" onclick="verificarGapsCaja()">
+                                <span class="btn-icon">⚠</span><span class="btn-label">Verificar Numeración</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Panel consulta -->
+                    <div id="cajaPanelConsulta" class="recent-section" style="display:none; margin-bottom:16px;">
+                        <h4 style="margin-top:0;">Consultar Órdenes</h4>
+                        <div class="consulta-toolbar-grid" style="grid-template-columns: repeat(4, minmax(150px,1fr));">
+                            <div class="form-group">
+                                <label for="cajaFiltroEmpresa">Empresa</label>
+                                <input type="text" id="cajaFiltroEmpresa" placeholder="Empresa o empresa misión">
+                            </div>
+                            <div class="form-group">
+                                <label for="cajaFiltroNroOrden">Nro Orden</label>
+                                <input type="text" id="cajaFiltroNroOrden" placeholder="Número de orden">
+                            </div>
+                            <div class="form-group">
+                                <label for="cajaFiltroEstado">Estado</label>
+                                <select id="cajaFiltroEstado">
+                                    <option value="">Todos</option>
+                                    <option value="INGRESADO">Ingresado</option>
+                                    <option value="APROBADO">Aprobado</option>
+                                    <option value="TERMINADO">Terminado</option>
+                                    <option value="ANULADO">Anulado</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="cajaFiltroFechaDesde">Fecha desde</label>
+                                <input type="date" id="cajaFiltroFechaDesde">
+                            </div>
+                            <div class="form-group">
+                                <label for="cajaFiltroFechaHasta">Fecha hasta</label>
+                                <input type="date" id="cajaFiltroFechaHasta">
+                            </div>
+                        </div>
+                        <div class="button-group module-actions" style="margin-top:8px;">
+                            <button type="button" class="btn btn-secondary" onclick="consultarOrdenesCaja(1)">Consultar</button>
+                            <button type="button" class="btn btn-secondary" onclick="limpiarFiltroCaja()">Limpiar</button>
+                        </div>
+                        <div id="cajaConsultaResumen" style="margin-top:10px; color:#555;"></div>
+                        <div class="table-container" style="margin-top:12px; overflow-x:auto;">
+                            <table class="data-table" id="cajaTablaResultados" style="display:none; min-width:900px;">
+                                <thead><tr>
+                                    <th>Nro Orden</th><th>Fecha</th><th>Paciente</th>
+                                    <th>Empresa</th><th>Forma Pago</th><th>Total</th>
+                                    <th>Estado</th><th>Acciones</th>
+                                </tr></thead>
+                                <tbody id="cajaTablaBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="button-group module-actions" style="margin-top:8px; justify-content:space-between;">
+                            <button type="button" class="btn btn-secondary" id="cajaPrevBtn" onclick="consultarOrdenesCaja(window._cajaState.page - 1)">Anterior</button>
+                            <span id="cajaPageInfo" style="align-self:center; color:#555;">Página 0 de 0</span>
+                            <button type="button" class="btn btn-secondary" id="cajaNextBtn" onclick="consultarOrdenesCaja(window._cajaState.page + 1)">Siguiente</button>
+                        </div>
+                    </div>
+
+                    <!-- Panel gaps de numeración -->
+                    <div id="cajaPanelGaps" class="recent-section" style="display:none; margin-bottom:16px;">
+                        <h4 style="margin-top:0;">Verificación de Numeración</h4>
+                        <div class="form-row" style="gap:12px; align-items:flex-end;">
+                            <div class="form-group">
+                                <label for="cajaGapsFechaDesde">Fecha desde</label>
+                                <input type="date" id="cajaGapsFechaDesde">
+                            </div>
+                            <div class="form-group">
+                                <label for="cajaGapsFechaHasta">Fecha hasta</label>
+                                <input type="date" id="cajaGapsFechaHasta">
+                            </div>
+                            <div class="form-group" style="display:flex; align-items:flex-end;">
+                                <button type="button" class="btn btn-secondary" onclick="ejecutarVerificacionGaps()">Verificar</button>
+                            </div>
+                        </div>
+                        <div id="cajaGapsResultado" style="margin-top:12px;"></div>
+                    </div>
+                </div>
+
+                <!-- MODAL ORDEN DE SERVICIO CAJA -->
+                <div id="cajaOrdenModal" class="modal" style="z-index:1050;">
+                    <div class="modal-content caja-orden-modal" style="max-width:960px; width:96%; max-height:92vh; overflow-y:auto;">
+                        <div class="modal-header">
+                            <div>
+                                <h2 id="cajaOrdenModalTitulo">Nueva Orden de Servicio</h2>
+                                <p class="caja-modal-subtitle">Formato inspirado en la orden fisica, con seleccion agil y control de soportes.</p>
+                            </div>
+                            <span class="close" onclick="cerrarFormularioCaja()">&times;</span>
+                        </div>
+                        <input type="hidden" id="cajaOrdenId">
+                        <div class="caja-paper-hero">
+                            <div class="caja-paper-brand">
+                                <div class="caja-paper-brand-mark">PS</div>
+                                <div>
+                                    <strong>Preventsalud IPS SAS</strong>
+                                    <span>Orden de servicio · Control de calidad</span>
+                                </div>
+                            </div>
+                            <div class="caja-paper-hero-copy">
+                                <span>ORDEN DE SERVICIO</span>
+                                <small>CONTROL DE CALIDAD</small>
+                            </div>
+                        </div>
+
+                        <!-- Datos del paciente -->
+                        <div class="recent-section" style="margin-bottom:12px;">
+                            <h4 style="margin-top:0; color:#1F4E79;">📋 Datos del Paciente</h4>
+                            <div class="form-row" style="gap:12px; flex-wrap:wrap;">
+                                <div class="form-group" style="flex:1; min-width:120px;">
+                                    <label for="cajaFechaOrden">Fecha *</label>
+                                    <input type="date" id="cajaFechaOrden" required>
+                                </div>
+                                <div class="form-group" style="flex:1; min-width:120px;">
+                                    <label for="cajaNroOrden">Nro Orden *</label>
+                                    <input type="text" id="cajaNroOrden" placeholder="Ej: 64500" required>
+                                </div>
+                                <div class="form-group" style="flex:1; min-width:100px;">
+                                    <label for="cajaTipoDoc">Tipo Doc *</label>
+                                    <select id="cajaTipoDoc">
+                                        <option value="CC">CC</option>
+                                        <option value="CE">CE</option>
+                                        <option value="PT">PT</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="flex:1; min-width:130px;">
+                                    <label for="cajaNroDoc">Nro Documento *</label>
+                                    <input type="text" id="cajaNroDoc" required>
+                                </div>
+                                <div class="form-group" style="flex:2; min-width:200px;">
+                                    <label for="cajaNombrePaciente">Nombre Paciente *</label>
+                                    <input type="text" id="cajaNombrePaciente" required>
+                                </div>
+                                <div class="form-group" style="flex:1; min-width:150px;">
+                                    <label for="cajaCargo">Cargo</label>
+                                    <input type="text" id="cajaCargo" placeholder="Cargo del paciente">
+                                </div>
+                                <div class="form-group" style="flex:1; min-width:150px;">
+                                    <label for="cajaNumeroTurno">Numero de Turno</label>
+                                    <input type="text" id="cajaNumeroTurno" placeholder="Turno o consecutivo">
+                                </div>
+                                <div class="form-group" style="flex:2; min-width:180px;">
+                                    <label for="cajaEmpresa">Empresa</label>
+                                    <input type="text" id="cajaEmpresa" placeholder="Empresa contratante">
+                                </div>
+                                <div class="form-group" style="flex:2; min-width:180px;">
+                                    <label for="cajaEmpresaMision">Empresa Misión</label>
+                                    <input type="text" id="cajaEmpresaMision" placeholder="Empresa en misión">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tipo de examen -->
+                        <div class="recent-section" style="margin-bottom:12px;">
+                            <h4 style="margin-top:0; color:#1F4E79;">① Tipo de Examen</h4>
+                            <div id="cajaTipoExamenOpciones" class="caja-option-grid single" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+                            <div class="form-group" style="margin-top:8px; max-width:300px;">
+                                <label for="cajaTipoExamenOtro">Otro:</label>
+                                <input type="text" id="cajaTipoExamenOtro" placeholder="Especifique">
+                            </div>
+                        </div>
+
+                        <!-- Servicios en grid de 4 columnas -->
+                        <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:12px; margin-bottom:12px;">
+                            <div class="recent-section">
+                                <h4 style="margin-top:0; color:#1F4E79;">② Énfasis</h4>
+                                <div id="cajaEnfasisOpciones" class="caja-option-grid" style="display:flex; flex-direction:column; gap:4px;"></div>
+                                <div class="form-group" style="margin-top:8px;">
+                                    <label for="cajaEnfasisOtro">Otro:</label>
+                                    <input type="text" id="cajaEnfasisOtro" placeholder="Especifique">
+                                </div>
+                            </div>
+                            <div class="recent-section">
+                                <h4 style="margin-top:0; color:#1F4E79;">③ Paraclínicos</h4>
+                                <div id="cajaParaclinicosOpciones" class="caja-option-grid" style="display:flex; flex-direction:column; gap:4px;"></div>
+                                <div class="form-group" style="margin-top:8px;">
+                                    <label for="cajaParaclinicosOtro">Otro:</label>
+                                    <input type="text" id="cajaParaclinicosOtro" placeholder="Especifique">
+                                </div>
+                            </div>
+                            <div class="recent-section">
+                                <h4 style="margin-top:0; color:#1F4E79;">④ Laboratorio Clínico</h4>
+                                <div id="cajaLaboratorioOpciones" class="caja-option-grid" style="display:flex; flex-direction:column; gap:4px;"></div>
+                                <div class="form-group" style="margin-top:8px;">
+                                    <label for="cajaLaboratorioOtro">Otro:</label>
+                                    <input type="text" id="cajaLaboratorioOtro" placeholder="Especifique">
+                                </div>
+                            </div>
+                            <div class="recent-section">
+                                <h4 style="margin-top:0; color:#1F4E79;">⑤ Otros Servicios</h4>
+                                <div id="cajaOtrosServiciosOpciones" class="caja-option-grid" style="display:flex; flex-direction:column; gap:4px;"></div>
+                                <div class="form-group" style="margin-top:8px;">
+                                    <label for="cajaOtrosServiciosOtro">Otro:</label>
+                                    <input type="text" id="cajaOtrosServiciosOtro" placeholder="Especifique">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Pago y observaciones -->
+                        <div class="recent-section" style="margin-bottom:12px;">
+                            <h4 style="margin-top:0; color:#1F4E79;">💰 Pago</h4>
+                            <div class="form-row" style="gap:12px; flex-wrap:wrap; align-items:flex-end;">
+                                <div class="form-group" style="flex:1; min-width:140px;">
+                                    <label for="cajaTotalCosto">Total Costo *</label>
+                                    <input type="number" id="cajaTotalCosto" min="0" step="0.01" placeholder="0.00">
+                                </div>
+                                <div class="form-group" style="flex:1; min-width:140px;">
+                                    <label for="cajaTipoCliente">Tipo Cliente</label>
+                                    <select id="cajaTipoCliente">
+                                        <option value="">Seleccione...</option>
+                                        <option value="EMPRESA">Empresa</option>
+                                        <option value="PERSONA_NATURAL">Persona Natural</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="flex:1; min-width:140px;">
+                                    <label for="cajaFormaPago">Forma de Pago *</label>
+                                    <select id="cajaFormaPago" onchange="toggleMixtoCaja()">
+                                        <option value="">Seleccione...</option>
+                                        <option value="EFECTIVO">Efectivo</option>
+                                        <option value="TRANSFERENCIA">Transferencia</option>
+                                        <option value="CREDITO">Crédito</option>
+                                        <option value="MIXTO">Mixto</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <!-- Discriminación MIXTO -->
+                            <div id="cajaMixtoPanel" style="display:none; margin-top:8px;">
+                                <p style="margin:0 0 8px; color:#555; font-size:0.9rem;">Discrimine el pago mixto:</p>
+                                <div class="form-row" style="gap:12px; flex-wrap:wrap;">
+                                    <div class="form-group" style="flex:1; min-width:130px;">
+                                        <label for="cajaMixtoEfectivo">Efectivo</label>
+                                        <input type="number" id="cajaMixtoEfectivo" min="0" step="0.01" placeholder="0.00" oninput="toggleMixtoCaja()">
+                                    </div>
+                                    <div class="form-group" style="flex:1; min-width:130px;">
+                                        <label for="cajaMixtoTransferencia">Transferencia</label>
+                                        <input type="number" id="cajaMixtoTransferencia" min="0" step="0.01" placeholder="0.00" oninput="toggleMixtoCaja()">
+                                    </div>
+                                    <div class="form-group" style="flex:1; min-width:130px;">
+                                        <label for="cajaMixtoCredito">Crédito</label>
+                                        <input type="number" id="cajaMixtoCredito" min="0" step="0.01" placeholder="0.00">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="recent-section" style="margin-bottom:12px;">
+                            <h4 style="margin-top:0; color:#1F4E79;">📝 Observaciones</h4>
+                            <textarea id="cajaObservaciones" rows="2" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px;" placeholder="Observaciones adicionales..."></textarea>
+                        </div>
+
+                        <div class="recent-section caja-extra-grid" style="margin-bottom:12px;">
+                            <div>
+                                <h4 style="margin-top:0; color:#1F4E79;">Forma de Autorizacion</h4>
+                                <div id="cajaAutorizacionOpciones" class="caja-option-grid dual"></div>
+                                <div class="form-group" style="margin-top:8px;">
+                                    <label for="cajaAutorizacionObservaciones">Observaciones de autorizacion</label>
+                                    <textarea id="cajaAutorizacionObservaciones" rows="2" class="caja-textarea" placeholder="Plataforma, correo o detalle adicional"></textarea>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 style="margin-top:0; color:#1F4E79;">Grupo de Requerimientos</h4>
+                                <div class="caja-requirements-list">
+                                    <div class="caja-requirement-row">
+                                        <label class="caja-inline-check"><input type="checkbox" id="cajaReqGerenciaCheck"> Gerencia C</label>
+                                        <input type="text" id="cajaReqGerenciaResp" placeholder="Responsable">
+                                        <input type="text" id="cajaReqGerenciaCel" placeholder="# Cel">
+                                    </div>
+                                    <div class="caja-requirement-row">
+                                        <label class="caja-inline-check"><input type="checkbox" id="cajaReqAsesoraCheck"> Asesora Y</label>
+                                        <input type="text" id="cajaReqAsesoraResp" placeholder="Responsable">
+                                        <input type="text" id="cajaReqAsesoraCel" placeholder="# Cel">
+                                    </div>
+                                    <div class="caja-requirement-row">
+                                        <input type="text" id="cajaReqOtroNombre" placeholder="Otro grupo">
+                                        <label class="caja-inline-check"><input type="checkbox" id="cajaReqOtroCheck"> Activo</label>
+                                        <input type="text" id="cajaReqOtroResp" placeholder="Responsable">
+                                        <input type="text" id="cajaReqOtroCel" placeholder="# Cel">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="cajaTransferenciaPanel" class="recent-section" style="display:none; margin-bottom:12px;">
+                            <h4 style="margin-top:0; color:#1F4E79;">Recibos de Pago por Transferencia</h4>
+                            <div class="form-group">
+                                <label for="cajaTransferenciaAdjuntos">Adjuntar recibos</label>
+                                <input type="file" id="cajaTransferenciaAdjuntos" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx">
+                                <div class="form-help" style="margin-top:6px;">Puede cargar varios soportes si el pago entra por transferencia o si el pago mixto incluye transferencia.</div>
+                            </div>
+                            <div id="cajaTransferenciaAdjuntosResumen" class="form-help" style="margin-top:6px;">No hay archivos seleccionados.</div>
+                            <div id="cajaTransferenciaAdjuntosExistentes" class="recent-section" style="margin-top:10px; padding:12px;">Sin adjuntos cargados.</div>
+                        </div>
+
+                        <div class="button-group module-actions caja-modal-actions" style="gap:8px;">
+                            <button type="button" class="btn btn-primary" onclick="guardarOrdenCaja()">Guardar</button>
+                            <button type="button" class="btn btn-secondary" onclick="cerrarFormularioCaja()">Cancelar</button>
+                        </div>
+                        <div id="cajaOrdenMsg" style="margin-top:8px; color:#555;"></div>
+                    </div>
+                </div>
+
+                <!-- MODAL CAMBIAR ESTADO CAJA -->
+                <div id="cajaCambiarEstadoModal" class="modal" style="z-index:1060;">
+                    <div class="modal-content" style="max-width:480px; width:95%;">
+                        <div class="modal-header">
+                            <h2 id="cajaCambiarEstadoTitulo">Cambiar Estado</h2>
+                            <span class="close" onclick="cerrarCambiarEstadoCaja()">&times;</span>
+                        </div>
+                        <input type="hidden" id="cajaCambiarEstadoId">
+                        <input type="hidden" id="cajaCambiarEstadoNuevo">
+                        <div id="cajaMotivoAnulacionWrap" style="display:none;">
+                            <div class="form-group">
+                                <label for="cajaMotivoAnulacion">Motivo de anulación *</label>
+                                <textarea id="cajaMotivoAnulacion" rows="3" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:4px;" placeholder="Indique el motivo..."></textarea>
+                            </div>
+                        </div>
+                        <p id="cajaCambiarEstadoMsg" style="color:#555;"></p>
+                        <div class="button-group module-actions" style="gap:8px; margin-top:12px;">
+                            <button type="button" class="btn btn-primary" onclick="confirmarCambioEstadoCaja()">Confirmar</button>
+                            <button type="button" class="btn btn-secondary" onclick="cerrarCambiarEstadoCaja()">Cancelar</button>
                         </div>
                     </div>
                 </div>
@@ -3217,7 +3559,6 @@
             <div class="button-group module-actions" style="margin-top: 8px;">
                 <button type="button" class="btn btn-secondary" onclick="consultarAtencionesDiaCargadas(1)">Consultar</button>
                 <button type="button" class="btn btn-secondary" onclick="limpiarFiltrosCargueAtencionDia()">Limpiar</button>
-                <button type="button" class="btn btn-primary" onclick="abrirNuevaAtencionGestionInformacion()">Nueva atencion</button>
             </div>
             <div id="cargueAtencionesDiaResumen" style="margin-top: 12px; color:#555;">Sin consulta realizada aún.</div>
             <div id="cargueAtencionesDiaResults" class="cargue-atenciones-results" style="margin-top: 12px;">

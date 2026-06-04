@@ -530,6 +530,194 @@ body {
     padding: 18px 20px 20px;
 }
 
+.caja-orden-modal {
+    background:
+        linear-gradient(180deg, rgba(250, 250, 248, 0.98) 0%, rgba(244, 241, 234, 0.98) 100%),
+        repeating-linear-gradient(0deg, rgba(15, 23, 42, 0.03) 0px, rgba(15, 23, 42, 0.03) 1px, transparent 1px, transparent 36px);
+    border: 1px solid rgba(120, 113, 108, 0.18);
+}
+
+.caja-modal-subtitle {
+    margin: 4px 0 0;
+    color: #57534e;
+    font-size: 0.92rem;
+}
+
+.caja-paper-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 14px;
+    padding: 16px 18px;
+    border: 1px solid rgba(120, 113, 108, 0.22);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.75);
+}
+
+.caja-paper-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.caja-paper-brand-mark {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, #0f766e 0%, #1d4ed8 100%);
+    color: #fff;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+
+.caja-paper-brand strong,
+.caja-paper-title span {
+    display: block;
+}
+
+.caja-paper-brand span {
+    color: #57534e;
+    font-size: 0.88rem;
+}
+
+.caja-paper-hero-copy {
+    text-align: right;
+}
+
+.caja-paper-hero-copy span {
+    display: block;
+    font-size: 1.85rem;
+    line-height: 1;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: #1c1917;
+}
+
+.caja-paper-hero-copy small {
+    color: #57534e;
+    font-size: 0.88rem;
+    letter-spacing: 0.2em;
+}
+
+.caja-option-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px;
+}
+
+.caja-option-grid.single {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.caja-option-grid.dual {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.caja-option-grid label,
+.caja-inline-card,
+.caja-inline-check {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(120, 113, 108, 0.22);
+    background: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.caja-option-grid label:hover,
+.caja-inline-card:hover,
+.caja-inline-check:hover {
+    transform: translateY(-1px);
+    border-color: rgba(29, 78, 216, 0.35);
+    box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08);
+}
+
+.caja-inline-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.caja-option-grid input[type="checkbox"],
+.caja-option-grid input[type="radio"],
+.caja-inline-card input[type="radio"],
+.caja-inline-check input[type="checkbox"],
+.caja-inline-check input[type="radio"] {
+    accent-color: #0f766e;
+}
+
+.caja-extra-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.caja-requirements-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.caja-requirement-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 1.2fr) minmax(110px, 1fr) minmax(90px, 0.8fr) minmax(90px, 0.8fr);
+    gap: 8px;
+    align-items: center;
+}
+
+.caja-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d6d3d1;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.92);
+}
+
+.caja-modal-actions {
+    justify-content: flex-end;
+}
+
+#cajaOrdenModal .recent-section {
+    border: 1px solid rgba(120, 113, 108, 0.18);
+    background: rgba(255, 255, 255, 0.78);
+}
+
+#cajaOrdenModal input[type="text"],
+#cajaOrdenModal input[type="date"],
+#cajaOrdenModal input[type="number"],
+#cajaOrdenModal input[type="file"],
+#cajaOrdenModal select,
+#cajaOrdenModal textarea {
+    border-radius: 12px;
+    border: 1px solid #d6d3d1;
+    background: rgba(255, 255, 255, 0.92);
+}
+
+@media (max-width: 900px) {
+    .caja-paper-hero {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .caja-paper-hero-copy {
+        text-align: left;
+    }
+}
+
+@media (max-width: 640px) {
+    .caja-requirement-row {
+        grid-template-columns: 1fr;
+    }
+}
+
 .comercial-search-results {
     display: flex;
     flex-direction: column;

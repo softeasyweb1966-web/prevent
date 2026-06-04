@@ -10,7 +10,8 @@ PREVENT - SISTEMA DE GESTION INTEGRAL PARA IPS
     "auth": "/api/auth",
     "dashboard": "/api/dashboard",
     "nomina": "/api/nomina",
-    "usuarios": "/api/usuarios"
+    "usuarios": "/api/usuarios",
+    "chat": "/api/chat"
   }
 }
 ============================================================
