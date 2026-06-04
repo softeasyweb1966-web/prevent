@@ -667,6 +667,7 @@ def register_blueprints(app):
         dashboard_bp,
         nomina_bp,
         parametros_bp,
+        sabor_artesanal_bp,
         servicios_bp,
         usuarios_bp,
     )
@@ -735,6 +736,7 @@ def register_blueprints(app):
     app.register_blueprint(bancos_bp)
     app.register_blueprint(comercial_bp)
     app.register_blueprint(chat_bp)
+    app.register_blueprint(sabor_artesanal_bp)
 
 
 def setup_logging():

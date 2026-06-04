@@ -33,6 +33,20 @@
             <li><a href="#" class="menu-item" data-module="gestion_informacion">
                 <span class="icon">GI</span> Gestión Información
             </a></li>
+            <li class="menu-group">
+                <a href="#" class="menu-item menu-item-parent" data-module="sabor_artesanal" data-toggle-submenu="saborArtesanalSubmenu">
+                    <span class="icon">SA</span> Sabor Artesanal
+                    <span class="submenu-caret">+</span>
+                </a>
+                <ul class="menu-submenu" id="saborArtesanalSubmenu">
+                    <li><a href="#" class="menu-subitem" data-module="sabor_artesanal" data-section="tablas">Tablas</a></li>
+                    <li><a href="#" class="menu-subitem" data-module="sabor_artesanal" data-section="menus">MenÃºs</a></li>
+                    <li><a href="#" class="menu-subitem" data-module="sabor_artesanal" data-section="compras">Compras</a></li>
+                    <li><a href="#" class="menu-subitem" data-module="sabor_artesanal" data-section="ventas_dia">Ventas DÃ­a</a></li>
+                    <li><a href="#" class="menu-subitem" data-module="sabor_artesanal" data-section="cierre_dia">Cierre dÃ­a</a></li>
+                    <li><a href="#" class="menu-subitem" data-module="sabor_artesanal" data-section="informes">Informes</a></li>
+                </ul>
+            </li>
             <li><a href="#" class="menu-item" data-module="informes">
                 <span class="icon">📈</span> Informes
             </a></li>
@@ -76,6 +90,44 @@
             <div id="gestion_informacionView" class="module-view">
                 <div class="placeholder" style="margin-top:18px; max-width:900px;">
                     Abriendo Gestión Información...
+                </div>
+            </div>
+
+            <div id="sabor_artesanalView" class="module-view">
+                <div class="recent-section">
+                    <h2 style="margin-top:0;">Sabor Artesanal</h2>
+                    <div class="button-group module-actions sabor-artesanal-top-nav" role="tablist" aria-label="MenÃº Sabor Artesanal">
+                        <button type="button" class="btn btn-secondary" id="saborArtesanalNavTablas" onclick="setSaborArtesanalSection('tablas')"><span class="btn-label">Tablas</span></button>
+                        <button type="button" class="btn btn-secondary" id="saborArtesanalNavMenus" onclick="setSaborArtesanalSection('menus')"><span class="btn-label">MenÃºs</span></button>
+                        <button type="button" class="btn btn-secondary" id="saborArtesanalNavCompras" onclick="setSaborArtesanalSection('compras')"><span class="btn-label">Compras</span></button>
+                        <button type="button" class="btn btn-secondary" id="saborArtesanalNavVentasDia" onclick="setSaborArtesanalSection('ventas_dia')"><span class="btn-label">Ventas DÃ­a</span></button>
+                        <button type="button" class="btn btn-secondary" id="saborArtesanalNavCierreDia" onclick="setSaborArtesanalSection('cierre_dia')"><span class="btn-label">Cierre dÃ­a</span></button>
+                        <button type="button" class="btn btn-secondary" id="saborArtesanalNavInformes" onclick="setSaborArtesanalSection('informes')"><span class="btn-label">Informes</span></button>
+                    </div>
+                </div>
+                <div id="saborArtesanalTablasPanel" class="recent-section sabor-artesanal-panel">
+                    <h3 style="margin-top:0;">Tablas</h3>
+                    <div class="placeholder">Espacio listo para configurar tablas maestras de Sabor Artesanal.</div>
+                </div>
+                <div id="saborArtesanalMenusPanel" class="recent-section sabor-artesanal-panel" style="display:none;">
+                    <h3 style="margin-top:0;">MenÃºs</h3>
+                    <div class="placeholder">AquÃ­ podremos administrar el catÃ¡logo de menÃºs y preparaciones.</div>
+                </div>
+                <div id="saborArtesanalComprasPanel" class="recent-section sabor-artesanal-panel" style="display:none;">
+                    <h3 style="margin-top:0;">Compras</h3>
+                    <div class="placeholder">MÃ³dulo base preparado para registrar compras e insumos.</div>
+                </div>
+                <div id="saborArtesanalVentasDiaPanel" class="recent-section sabor-artesanal-panel" style="display:none;">
+                    <h3 style="margin-top:0;">Ventas DÃ­a</h3>
+                    <div class="placeholder">Vista inicial para el registro diario de ventas.</div>
+                </div>
+                <div id="saborArtesanalCierreDiaPanel" class="recent-section sabor-artesanal-panel" style="display:none;">
+                    <h3 style="margin-top:0;">Cierre dÃ­a</h3>
+                    <div class="placeholder">SecciÃ³n lista para consolidar cierres diarios.</div>
+                </div>
+                <div id="saborArtesanalInformesPanel" class="recent-section sabor-artesanal-panel" style="display:none;">
+                    <h3 style="margin-top:0;">Informes</h3>
+                    <div class="placeholder">Panel reservado para reportes y anÃ¡lisis de Sabor Artesanal.</div>
                 </div>
             </div>
 
@@ -3019,25 +3071,185 @@
             <span class="close" onclick="closeCargueAtencionDia()">&times;</span>
         </div>
         <div class="button-group module-actions ingreso-info-top-nav" role="tablist" aria-label="Menú Gestión Información">
-            <button type="button" class="btn btn-secondary" id="ingresoInfoNavPrefacturas" onclick="setIngresoInformacionSection('prefacturas')">
-                <span class="btn-label">Generar</span>
-            </button>
-            <button type="button" class="btn btn-secondary" id="ingresoInfoNavConsultaPrefacturas" onclick="setIngresoInformacionSection('consulta_prefacturas')">
-                <span class="btn-label">Prefacturas</span>
-            </button>
-            <button type="button" class="btn btn-secondary" id="ingresoInfoNavCartera" onclick="setIngresoInformacionSection('cartera')">
-                <span class="btn-label">Cartera</span>
+            <button type="button" class="btn btn-secondary" id="ingresoInfoNavCatalogo" onclick="setIngresoInformacionSection('catalogo')">
+                <span class="btn-label">Servicios y Paquetes</span>
             </button>
             <button type="button" class="btn btn-secondary" id="ingresoInfoNavCargueAtenciones" onclick="setIngresoInformacionSection('cargue_atenciones')">
                 <span class="btn-label">Cargue Atenciones</span>
             </button>
             <button type="button" class="btn btn-secondary" id="ingresoInfoNavConsulta" onclick="setIngresoInformacionSection('consulta')">
-                <span class="btn-label">Atenciones</span>
+                <span class="btn-label">Consulta Atenciones</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="ingresoInfoNavPrefacturas" onclick="setIngresoInformacionSection('prefacturas')">
+                <span class="btn-label">Generar Prefacturas</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="ingresoInfoNavConsultaPrefacturas" onclick="setIngresoInformacionSection('consulta_prefacturas')">
+                <span class="btn-label">Consulta Prefacturas</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="ingresoInfoNavCartera" onclick="setIngresoInformacionSection('cartera')">
+                <span class="btn-label">Cartera</span>
             </button>
             <button type="button" class="btn btn-secondary" id="ingresoInfoNavInicio" onclick="setIngresoInformacionSection('inicio')">
                 <span class="btn-label">Inicio</span>
             </button>
         </div>
+        <div id="ingresoInfoCatalogoPanel" class="recent-section ingreso-info-panel" style="display:none; margin-bottom: 16px;">
+            <div id="catalogoPermisoAviso" style="display:none; margin:-4px 0 12px; padding:10px 12px; border-radius:8px; font-size:0.9em;"></div>
+            <h3 style="margin-top:0;">Servicios y Paquetes — Catálogo Comercial</h3>
+
+            <!-- Carga desde Excel -->
+            <div id="catalogoExcelCargaBox" style="background:#f4f7fb; border:1px solid #d0d7e2; border-radius:8px; padding:14px 16px; margin-bottom:16px;">
+                <h4 style="margin:0 0 8px 0; color:#2c3e50; font-size:0.97em;">📥 Carga masiva desde Excel</h4>
+                <p style="margin:0 0 10px 0; color:#666; font-size:0.88em;">
+                    Columnas: <code>codigo</code>, <code>nombre</code>, <code>tipo_item</code> (EXAMEN/PAQUETE/SERVICIO),
+                    <code>tipo_examen</code>, <code>subtipo_laboratorio</code>, <code>tarifa_base</code>, <code>activo</code>.
+                    Si el código ya existe se actualiza; si no, se crea.
+                </p>
+                <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+                    <div style="flex:2; min-width:200px;">
+                        <input type="file" id="catalogoExcelArchivo" accept=".xlsx" style="width:100%; padding:4px;">
+                    </div>
+                    <button type="button" class="btn btn-primary" id="btnCargarCatalogoExcel" onclick="cargarCatalogoDesdeExcel()">Cargar Excel</button>
+                </div>
+                <div id="catalogoExcelResultado" style="margin-top:10px; font-size:0.9em;"></div>
+            </div>
+
+            <!-- Barra de herramientas -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <select id="catalogoFiltroTipo" onchange="filtrarTablaCatalogo()" style="padding:5px 10px; border-radius:5px; border:1px solid #ccc; font-size:0.9em;">
+                        <option value="">Todos los tipos</option>
+                        <option value="EXAMEN">Examen</option>
+                        <option value="PAQUETE">Paquete</option>
+                        <option value="SERVICIO">Servicio</option>
+                    </select>
+                    <select id="catalogoFiltroActivo" onchange="filtrarTablaCatalogo()" style="padding:5px 10px; border-radius:5px; border:1px solid #ccc; font-size:0.9em;">
+                        <option value="true">Solo activos</option>
+                        <option value="">Todos</option>
+                        <option value="false">Inactivos</option>
+                    </select>
+                    <input type="text" id="catalogoBusqueda" placeholder="Buscar nombre o código..." oninput="filtrarTablaCatalogo()"
+                           style="padding:5px 10px; border-radius:5px; border:1px solid #ccc; min-width:180px; font-size:0.9em;">
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" class="btn btn-secondary" onclick="cargarTablaCatalogo()" style="font-size:0.9em;">🔄 Actualizar</button>
+                    <button type="button" class="btn btn-primary" onclick="abrirModalCatalogo(null)" style="font-size:0.9em;">＋ Nuevo</button>
+                </div>
+            </div>
+
+            <div id="catalogoTablaContenedor" style="overflow-x:auto;">
+                <p style="color:#888; text-align:center; padding:20px;">Cargando...</p>
+            </div>
+        </div>
+
+        <!-- Modal CRUD Catálogo -->
+        <div id="catalogoCrudModal" class="modal" style="display:none;">
+            <div class="modal-content" style="max-width:680px; width:96%; max-height:90vh; overflow-y:auto;">
+                <div class="modal-header">
+                    <h2 id="catalogoModalTitulo">Nuevo ítem</h2>
+                    <span class="close" onclick="cerrarModalCatalogo()">&times;</span>
+                </div>
+                <div style="padding:0 4px;">
+                    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                        <div class="form-group" style="flex:1; min-width:140px;">
+                            <label for="crudTipoItem">Tipo *</label>
+                            <select id="crudTipoItem" onchange="onCrudTipoItemChange()">
+                                <option value="EXAMEN">Examen</option>
+                                <option value="PAQUETE">Paquete</option>
+                                <option value="SERVICIO">Servicio</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="crudGrupoTipoExamen" style="flex:1; min-width:140px;">
+                            <label for="crudTipoExamen">Tipo de examen</label>
+                            <select id="crudTipoExamen" onchange="onCrudTipoExamenChange()">
+                                <option value="">— Pendiente —</option>
+                                <option value="CONSULTA">Consulta</option>
+                                <option value="LABORATORIO">Laboratorio</option>
+                                <option value="PARACLINICO">Paraclínico</option>
+                                <option value="ECOBABY">Ecobaby</option>
+                                <option value="CURSOS">Cursos</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="crudGrupoSubtipo" style="flex:1; min-width:140px; display:none;">
+                            <label for="crudSubtipo">Subtipo</label>
+                            <select id="crudSubtipo">
+                                <option value="">— Pendiente —</option>
+                                <option value="REMITIDO">Remitido</option>
+                                <option value="REALIZADO">Realizado en lab.</option>
+                                <option value="NO_REMITIDO">No remitido</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                        <div class="form-group" style="flex:2; min-width:200px;">
+                            <label for="crudNombre">Nombre *</label>
+                            <input type="text" id="crudNombre" maxlength="200" placeholder="Nombre completo del ítem">
+                        </div>
+                        <div class="form-group" style="flex:1; min-width:100px;">
+                            <label for="crudNombreCorto">Nombre corto</label>
+                            <input type="text" id="crudNombreCorto" maxlength="50" placeholder="Abreviatura">
+                        </div>
+                    </div>
+
+                    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                        <div class="form-group" style="flex:1; min-width:120px;">
+                            <label for="crudCodigo">Código</label>
+                            <input type="text" id="crudCodigo" maxlength="50" placeholder="Ej: CONS001">
+                        </div>
+                        <div class="form-group" style="flex:1; min-width:120px;">
+                            <label for="crudTarifa">Tarifa base ($)</label>
+                            <input type="number" id="crudTarifa" min="0" step="100" placeholder="0">
+                        </div>
+                        <div class="form-group" style="flex:0 0 auto; display:flex; align-items:flex-end; padding-bottom:4px;">
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:500;">
+                                <input type="checkbox" id="crudActivo" checked style="width:16px; height:16px;">
+                                Activo
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="crudDescripcion">Descripción</label>
+                        <textarea id="crudDescripcion" rows="2" style="width:100%; resize:vertical;" placeholder="Descripción opcional"></textarea>
+                    </div>
+
+                    <!-- Componentes de paquete -->
+                    <div id="crudGrupoComponentes" style="display:none;">
+                        <label style="font-weight:600; display:block; margin-bottom:6px;">Exámenes del paquete *</label>
+                        <input type="text" id="crudComponentesBusq" placeholder="Buscar examen para agregar..."
+                               oninput="buscarExamenesParaPaquete()"
+                               style="width:100%; padding:6px 10px; border-radius:5px; border:1px solid #ccc; margin-bottom:6px; font-size:0.9em;">
+                        <div id="crudComponentesSugerencias" style="background:#fff; border:1px solid #ccc; border-radius:5px; max-height:140px; overflow-y:auto; display:none; margin-bottom:8px;"></div>
+                        <div id="crudComponentesSeleccionados" style="display:flex; flex-wrap:wrap; gap:6px; min-height:32px; padding:6px; background:#f8f9fa; border-radius:5px; border:1px solid #e0e0e0;"></div>
+                    </div>
+
+                    <div id="catalogoCrudError" style="color:#c0392b; margin-top:10px; font-size:0.92em; display:none;"></div>
+
+                    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px; padding-top:12px; border-top:1px solid #eee;">
+                        <button type="button" class="btn btn-secondary" onclick="cerrarModalCatalogo()">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="btnGuardarCatalogo" onclick="guardarItemCatalogo()">Guardar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal confirmación eliminar catálogo -->
+        <div id="catalogoEliminarModal" class="modal" style="display:none;">
+            <div class="modal-content" style="max-width:420px; width:96%;">
+                <div class="modal-header">
+                    <h2>Eliminar ítem</h2>
+                    <span class="close" onclick="cerrarModalEliminarCatalogo()">&times;</span>
+                </div>
+                <p style="padding:0 4px;">¿Confirmas que deseas eliminar <strong id="catalogoEliminarNombre"></strong>? Esta acción no se puede deshacer.</p>
+                <div id="catalogoEliminarError" style="color:#c0392b; font-size:0.92em; display:none; padding:0 4px 8px;"></div>
+                <div style="display:flex; justify-content:flex-end; gap:10px; padding-top:10px;">
+                    <button type="button" class="btn btn-secondary" onclick="cerrarModalEliminarCatalogo()">Cancelar</button>
+                    <button type="button" class="btn btn-danger" id="btnConfirmarEliminarCatalogo" onclick="confirmarEliminarCatalogo()">Eliminar</button>
+                </div>
+            </div>
+        </div>
+
         <div id="ingresoInfoInicioPanel" class="recent-section ingreso-info-panel" style="margin-bottom: 16px;">
             <div class="ingreso-info-empty-state">Selecciona una opción del menú para continuar.</div>
         </div>

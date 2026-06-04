@@ -28,6 +28,20 @@ body {
     line-height: 1.6;
 }
 
+body.body-sabor-tablas-focus .sidebar {
+    display: none;
+}
+
+body.body-sabor-tablas-focus .main-content {
+    margin-left: 0;
+    width: 100%;
+}
+
+body.body-sabor-tablas-focus .top-bar {
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
 /* Login Page Styles */
 .login-container {
     min-height: 100vh;
@@ -225,6 +239,60 @@ body {
 .menu-item .icon {
     margin-right: 12px;
     font-size: 1.2rem;
+}
+
+.menu-group {
+    list-style: none;
+}
+
+.menu-item-parent {
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.menu-item-parent .icon {
+    margin-right: 0;
+}
+
+.submenu-caret {
+    margin-left: auto;
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+.menu-submenu {
+    display: none;
+    list-style: none;
+    padding: 4px 0 8px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.menu-group.open .menu-submenu {
+    display: block;
+}
+
+.menu-group.open .menu-item-parent {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+.menu-subitem {
+    display: block;
+    padding: 9px 24px 9px 62px;
+    color: rgba(255, 255, 255, 0.78);
+    text-decoration: none;
+    font-size: 0.95rem;
+    transition: all 0.3s;
+}
+
+.menu-subitem:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+.menu-subitem.active {
+    background-color: rgba(37, 99, 235, 0.35);
+    color: #fff;
 }
 
 .sidebar-footer {
@@ -931,6 +999,333 @@ body {
     padding: 24px;
 }
 
+.sabor-artesanal-top-nav {
+    margin-top: 10px;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+}
+
+.sabor-artesanal-top-nav .btn {
+    width: auto;
+    min-width: 132px;
+    max-width: 220px;
+    flex: 0 1 auto;
+    padding: 10px 16px;
+    border-radius: 999px;
+}
+
+.sabor-artesanal-top-nav .btn.active {
+    background: linear-gradient(90deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    color: #ffffff;
+}
+
+.sabor-artesanal-panel .placeholder {
+    max-width: none;
+}
+
+.sabor-artesanal-subnav {
+    margin-top: 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.sabor-artesanal-subnav .btn {
+    min-width: 0;
+    flex: 1 1 150px;
+}
+
+.sabor-artesanal-subnav .btn .btn-label {
+    white-space: nowrap;
+}
+
+.sabor-artesanal-subnav .btn.active {
+    background: linear-gradient(90deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    color: #ffffff;
+}
+
+.sabor-artesanal-subpanel {
+    margin-top: 18px;
+}
+
+.sabor-tabla-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.sabor-tablas-menu-view,
+.sabor-tabla-editor,
+.sabor-tabla-list-panel,
+.sabor-tabla-shell {
+    background: #ffffff;
+    border: 1px solid #dbe3ef;
+    border-radius: 14px;
+    padding: 12px;
+}
+
+.sabor-tabla-shell {
+    padding: 12px;
+}
+
+.sabor-tablas-menu-head,
+.sabor-tabla-crumbs {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+}
+
+.sabor-tabla-back-btn {
+    width: auto;
+    min-width: 180px;
+}
+
+.sabor-tablas-menu-text p,
+.sabor-tabla-selected-label,
+.sabor-tabla-resumen {
+    color: #64748b;
+    font-size: 0.88rem;
+}
+
+.sabor-tablas-option-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.sabor-tablas-option {
+    width: auto;
+    min-width: 180px;
+    max-width: 240px;
+    flex: 0 1 220px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #0f172a;
+    font-size: 0.98rem;
+    font-weight: 600;
+    text-align: left;
+    padding: 10px 14px;
+    cursor: pointer;
+}
+
+.sabor-tablas-option.active,
+.sabor-tablas-option:hover {
+    background: #e8f0ff;
+    border-color: #2563eb;
+    color: #1d4ed8;
+}
+
+.sabor-tabla-crumbs strong {
+    font-size: 1.05rem;
+    color: #0f172a;
+}
+
+.sabor-tabla-crumbs .btn {
+    width: auto;
+}
+
+.sabor-tabla-header-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.sabor-tabla-header-line .btn,
+.sabor-tabla-variants-header .btn,
+.sabor-tabla-mini-btn,
+.sabor-tabla-save-btn {
+    width: auto;
+    min-width: 0;
+    padding: 8px 12px;
+    font-size: 0.92rem;
+}
+
+.sabor-tabla-header-line input,
+.sabor-tabla-header-line select,
+.sabor-tabla-capture-grid input,
+.sabor-tabla-variant-row input {
+    min-height: 38px;
+    padding: 7px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.sabor-tabla-capture-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: end;
+}
+
+.sabor-tabla-inline-check {
+    min-width: 90px;
+}
+
+.sabor-tabla-inline-check label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0;
+    white-space: nowrap;
+}
+
+.sabor-tabla-variants-box {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #e5edf6;
+}
+
+.sabor-tabla-variants-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.sabor-tabla-variants-header h6 {
+    margin: 0;
+    font-size: 0.96rem;
+    color: #0f172a;
+}
+
+.sabor-tabla-variant-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto auto;
+    gap: 8px;
+    align-items: end;
+    padding: 8px 0;
+    border-top: 1px solid #eef2f7;
+}
+
+.sabor-tabla-variant-row:first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+
+.sabor-tabla-capture-actions {
+    display: flex;
+    justify-content: flex-start;
+    gap: 10px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.sabor-tabla-error {
+    margin-top: 8px;
+    color: #c0392b;
+    font-size: 0.92rem;
+}
+
+.sabor-tabla-editor-head,
+.sabor-tabla-list-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.sabor-tabla-editor-head {
+    margin-bottom: 8px;
+}
+
+.sabor-tabla-editor-head span {
+    color: #64748b;
+    font-size: 0.84rem;
+}
+
+.sabor-tabla-list-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+}
+
+.sabor-tabla-list-title {
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 8px;
+}
+
+.sabor-tabla-listbox {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sabor-list-item {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 10px;
+    align-items: center;
+    text-align: left;
+    border: 1px solid #dbe3ef;
+    border-radius: 10px;
+    background: #f8fafc;
+    padding: 10px 12px;
+    cursor: pointer;
+}
+
+.sabor-list-item.is-selected {
+    background: #e8f0ff;
+    border-color: #2563eb;
+}
+
+.sabor-list-item.is-compact {
+    cursor: default;
+}
+
+.sabor-list-item-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.sabor-list-item-main small {
+    margin-top: 2px;
+    color: #64748b;
+    font-size: 0.84rem;
+    line-height: 1.4;
+}
+
+.sabor-list-item-meta,
+.sabor-list-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.sabor-tabla-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 84px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.sabor-tabla-status.is-active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.sabor-tabla-status.is-inactive {
+    background: #e5e7eb;
+    color: #475569;
+}
+
 .cargue-atenciones-suggestions {
     position: absolute;
     top: calc(100% + 4px);
@@ -1265,6 +1660,20 @@ body {
     margin-left: 260px;
     margin-right: 16px;
     margin-top: 4px;
+}
+
+#cargueAtencionesDiaModal.active {
+    justify-content: flex-start;
+    align-items: flex-start;
+}
+
+#cargueAtencionesDiaModal > .modal-content {
+    width: min(1220px, calc(100vw - 360px));
+    max-width: none;
+    margin-left: 300px;
+    margin-right: 24px;
+    margin-top: 18px;
+    max-height: calc(100vh - 36px);
 }
 
 #clienteComercialModal .modal-content-workspace {
@@ -2272,6 +2681,47 @@ body {
     #clienteComercialModal .cliente-comercial-header-main {
         width: 100%;
     }
+
+    .sabor-tabla-list-layout,
+    .sabor-tabla-capture-grid,
+    .sabor-tabla-variant-row,
+    .sabor-list-item {
+        grid-template-columns: 1fr;
+    }
+
+    .sabor-tabla-capture-actions,
+    .sabor-tablas-menu-head,
+    .sabor-tabla-crumbs,
+    .sabor-tabla-list-title-row,
+    .sabor-tabla-header-line,
+    .sabor-tabla-variants-header,
+    .sabor-list-item-meta,
+    .sabor-list-item-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .sabor-tabla-back-btn,
+    .sabor-tabla-capture-actions .btn,
+    .sabor-tabla-mini-btn,
+    .sabor-tabla-save-btn {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .sabor-tablas-option,
+    .sabor-artesanal-top-nav .btn {
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+    }
+
+    .sabor-tabla-header-line input,
+    .sabor-tabla-header-line select,
+    .sabor-tabla-capture-grid input,
+    .sabor-tabla-variant-row input {
+        width: 100%;
+    }
 }
 
 .badge-info {
@@ -2303,7 +2753,8 @@ body {
 
     #catalogoComercialModal.active,
     #clienteComercialModal.active,
-    #clienteSeguimientoModal.active {
+    #clienteSeguimientoModal.active,
+    #cargueAtencionesDiaModal.active {
         justify-content: center;
         align-items: center;
     }
@@ -2313,6 +2764,15 @@ body {
         max-width: 96%;
         margin-left: 0;
         margin-right: 0;
+        margin-top: 0;
+        max-height: 92vh;
+    }
+
+    #cargueAtencionesDiaModal > .modal-content {
+        width: 96%;
+        max-width: 96%;
+        margin-left: auto;
+        margin-right: auto;
         margin-top: 0;
         max-height: 92vh;
     }

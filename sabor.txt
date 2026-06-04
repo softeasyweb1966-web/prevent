@@ -1,0 +1,7 @@
+Sabor Artesanal es un restaurante, la idea es controlar los inventarios, las ventas, las compras, caja diaria, la rentabilidad
+Necesitamos un aplicativo que permita controlar los insumos de los productos desde las ventas. Para eso se fracciono un almuerzo 
+en Entradas - Principios - Proteínas - Base - Acompañamiento - Ensalada. La idea es que en cada una de estas opciones podamos
+manejar tablas por cada item que se ingrese y que el sistema vaya alimentando la segunda tabla desde el ingreso. Le explico por ejemplo Proteínas el usuario ingresa Pierna Pernil el sistema pide otro item y el usuario coloca Frita, y luego puede colocar al vapor, luego al ajillo..etc y se guarda una tabla con una relación de uno a muchos así con todos y cada uno de los items, si en algún momento las dos tablas tienen el mismo nombre quiere decir que la segunda tabla no va.
+
+Una vez tengamos lo anterior funcionando con su respectivo CRUD, la idea es implementar la segunda opción llamada Menú, aqui la 
+idea es que se pueda seleccionar un día y se pueda diseñar un menú por proteina en el que va :  Entrada - Proteina - Principio - Base - Acompañamiento - Ensalada, cada opción viene con la ayuda de acuerdo a la información definida en TABLAS.

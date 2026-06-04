@@ -1449,3 +1449,44 @@ class OrdenServicioCajaAdjunto(db.Model):
 
     def __repr__(self):
         return f'<OrdenServicioCajaAdjunto orden={self.orden_id} archivo={self.nombre_original}>'
+
+
+class SaborArtesanalTablaItem(db.Model):
+    __tablename__ = 'sabor_artesanal_tabla_items'
+
+    id = db.Column(db.Integer, primary_key=True)
+    categoria = db.Column(db.String(40), nullable=False, index=True)
+    nombre = db.Column(db.String(150), nullable=False)
+    descripcion = db.Column(db.Text)
+    parent_id = db.Column(
+        db.Integer,
+        db.ForeignKey('sabor_artesanal_tabla_items.id', ondelete='CASCADE'),
+        index=True,
+    )
+    activo = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    parent = db.relationship(
+        'SaborArtesanalTablaItem',
+        remote_side=[id],
+        backref=db.backref(
+            'children',
+            lazy='selectin',
+            cascade='all, delete-orphan',
+            single_parent=True,
+            order_by='SaborArtesanalTablaItem.nombre',
+        ),
+    )
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+
+    __table_args__ = (
+        db.Index('ix_sabor_artesanal_categoria_parent', 'categoria', 'parent_id'),
+    )
+
+    def __repr__(self):
+        return (
+            f'<SaborArtesanalTablaItem categoria={self.categoria} '
+            f'nombre={self.nombre} parent={self.parent_id}>'
+        )

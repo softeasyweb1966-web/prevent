@@ -88,6 +88,13 @@ MENU_OPTION_DEFINITIONS = [
         'descripcion': 'Acceso al módulo de tablas de configuración',
         'orden': 120,
     },
+    {
+        'module': 'sabor_artesanal',
+        'permiso': 'menu_sabor_artesanal',
+        'nombre': 'Sabor Artesanal',
+        'descripcion': 'Acceso al mÃ³dulo de Sabor Artesanal',
+        'orden': 125,
+    },
 ]
 
 

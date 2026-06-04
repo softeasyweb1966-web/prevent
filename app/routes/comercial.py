@@ -1605,6 +1605,7 @@ def actualizar_catalogo_comercial(item_id):
         item = ComercialCatalogoItem.query.get_or_404(item_id)
         _require_commercial_permission(_get_catalog_permission_entity(item.tipo_item), 'update')
         payload = _build_catalogo_item_payload(data)
+        _require_commercial_permission(_get_catalog_permission_entity(payload.get('tipo_item')), 'update')
         componentes_ids = _build_paquete_componentes_payload(
             data,
             item_id=item_id,
@@ -1618,6 +1619,15 @@ def actualizar_catalogo_comercial(item_id):
             ).first()
             if existente:
                 return jsonify({'error': 'Ya existe un item comercial con ese código'}), 409
+
+        if (
+            item.tipo_item == 'EXAMEN'
+            and payload['tipo_item'] != 'EXAMEN'
+            and item.examen_en_paquetes.count() > 0
+        ):
+            raise ValueError(
+                'No puedes cambiar este examen a paquete o servicio porque ya hace parte de uno o mÃ¡s paquetes.'
+            )
 
         for field, value in payload.items():
             setattr(item, field, value)
@@ -1641,11 +1651,16 @@ def eliminar_catalogo_comercial(item_id):
     try:
         item = ComercialCatalogoItem.query.get_or_404(item_id)
         _require_commercial_permission(_get_catalog_permission_entity(item.tipo_item), 'delete')
+        soft_delete = _parse_bool(request.args.get('soft'), False)
         tarifas_count = item.tarifas_cliente.count()
         atenciones_count = item.atenciones_detalle.count()
         usado_en_paquetes_count = item.examen_en_paquetes.count()
 
         if any([tarifas_count, atenciones_count, usado_en_paquetes_count]):
+            if soft_delete:
+                item.activo = False
+                db.session.commit()
+                return jsonify({'mensaje': 'Item comercial inactivado'}), 200
             return jsonify({
                 'error': 'No se puede eliminar el item porque ya tiene uso comercial registrado.',
                 'details': {
@@ -2513,3 +2528,165 @@ def descargar_adjunto_cliente(cliente_id, adjunto_id):
     except Exception as exc:
         logger.error("Error descargando adjunto comercial: %s", exc)
         return jsonify({'error': 'Error al descargar adjunto'}), 500
+
+
+# ---------------------------------------------------------------------------
+# POST /api/comercial/catalogo/cargar-excel
+# Carga masiva de servicios y paquetes desde un archivo .xlsx
+# Columnas requeridas: codigo, nombre, tipo_item, tipo_examen,
+#                      subtipo_laboratorio, tarifa_base, activo
+# ---------------------------------------------------------------------------
+@comercial_bp.route('/catalogo/cargar-excel', methods=['POST'])
+@login_required
+def cargar_catalogo_excel():
+    """Importa o actualiza items del catálogo comercial desde un archivo Excel."""
+    try:
+        _require_commercial_permission('examenes', 'create')
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+
+    if 'archivo' not in request.files:
+        return jsonify({'error': 'No se envió ningún archivo'}), 400
+
+    archivo = request.files['archivo']
+    nombre = archivo.filename or ''
+    if not nombre.lower().endswith('.xlsx'):
+        return jsonify({'error': 'Solo se aceptan archivos .xlsx'}), 400
+
+    try:
+        import openpyxl
+        contenido = archivo.read()
+        import io
+        wb = openpyxl.load_workbook(io.BytesIO(contenido), read_only=True, data_only=True)
+        ws = wb.active
+        filas = list(ws.iter_rows(values_only=True))
+        wb.close()
+    except Exception as exc:
+        logger.error("Error leyendo Excel de catálogo: %s", exc)
+        return jsonify({'error': f'No se pudo leer el archivo: {exc}'}), 400
+
+    if not filas:
+        return jsonify({'error': 'El archivo está vacío'}), 400
+
+    # Normalizar encabezados
+    encabezados = [str(c).strip().lower() if c is not None else '' for c in filas[0]]
+
+    COLS_REQUERIDAS = {'codigo', 'nombre', 'tipo_item'}
+    faltantes = COLS_REQUERIDAS - set(encabezados)
+    if faltantes:
+        return jsonify({
+            'error': f'Faltan columnas requeridas: {", ".join(sorted(faltantes))}. '
+                     'El archivo debe tener al menos: codigo, nombre, tipo_item'
+        }), 400
+
+    def _col(fila, nombre_col):
+        try:
+            idx = encabezados.index(nombre_col)
+            val = fila[idx]
+            return str(val).strip() if val is not None else ''
+        except (ValueError, IndexError):
+            return ''
+
+    def _flag(fila, nombre_col, default=True):
+        val = _col(fila, nombre_col).lower()
+        if val in ('1', 'true', 'si', 'sí', 'yes', 'activo'):
+            return True
+        if val in ('0', 'false', 'no', 'inactivo'):
+            return False
+        return default
+
+    TIPOS_VALIDOS = {'EXAMEN', 'PAQUETE', 'SERVICIO'}
+    TIPOS_EXAMEN_VALIDOS = {'CONSULTA', 'LABORATORIO', 'PARACLINICO', 'ECOBABY', 'CURSOS', ''}
+    SUBTIPOS_VALIDOS = {'REMITIDO', 'REALIZADO', 'NO_REMITIDO', ''}
+
+    creados = 0
+    actualizados = 0
+    errores = []
+
+    for idx, fila in enumerate(filas[1:], start=2):
+        if all(c is None for c in fila):
+            continue  # saltar filas vacías
+
+        codigo = _col(fila, 'codigo')
+        nombre_item = _col(fila, 'nombre')
+        tipo_item = _col(fila, 'tipo_item').upper()
+        tipo_examen = _col(fila, 'tipo_examen').upper() if 'tipo_examen' in encabezados else ''
+        subtipo_lab = _col(fila, 'subtipo_laboratorio').upper() if 'subtipo_laboratorio' in encabezados else ''
+        nombre_corto = _col(fila, 'nombre_corto') if 'nombre_corto' in encabezados else ''
+        descripcion = _col(fila, 'descripcion') if 'descripcion' in encabezados else ''
+        activo = _flag(fila, 'activo') if 'activo' in encabezados else True
+
+        tarifa_raw = _col(fila, 'tarifa_base') if 'tarifa_base' in encabezados else '0'
+        try:
+            tarifa_base = Decimal(tarifa_raw.replace(',', '.') or '0')
+        except InvalidOperation:
+            errores.append(f'Fila {idx}: tarifa_base inválida ("{tarifa_raw}")')
+            continue
+
+        if not codigo:
+            errores.append(f'Fila {idx}: código vacío, se omite')
+            continue
+        if not nombre_item:
+            errores.append(f'Fila {idx}: nombre vacío, se omite')
+            continue
+        if tipo_item not in TIPOS_VALIDOS:
+            errores.append(f'Fila {idx}: tipo_item "{tipo_item}" inválido (valores: EXAMEN, PAQUETE, SERVICIO)')
+            continue
+        if tipo_examen and tipo_examen not in TIPOS_EXAMEN_VALIDOS:
+            errores.append(f'Fila {idx}: tipo_examen "{tipo_examen}" inválido')
+            continue
+        if subtipo_lab and subtipo_lab not in SUBTIPOS_VALIDOS:
+            errores.append(f'Fila {idx}: subtipo_laboratorio "{subtipo_lab}" inválido')
+            continue
+
+        # clasificacion_completa: True si tipo_examen definido; y subtipo solo cuando aplica
+        necesita_subtipo = tipo_examen in ('LABORATORIO', 'CURSOS')
+        clasificacion_completa = bool(tipo_examen) and (not necesita_subtipo or bool(subtipo_lab))
+
+        try:
+            item = ComercialCatalogoItem.query.filter_by(codigo=codigo).first()
+            if item is None:
+                item = ComercialCatalogoItem(
+                    codigo=codigo,
+                    nombre=nombre_item,
+                    nombre_corto=nombre_corto or None,
+                    tipo_item=tipo_item,
+                    tipo_examen=tipo_examen or None,
+                    subtipo_laboratorio=subtipo_lab or None,
+                    clasificacion_completa=clasificacion_completa,
+                    descripcion=descripcion or None,
+                    tarifa_base=tarifa_base,
+                    activo=activo,
+                )
+                db.session.add(item)
+                creados += 1
+            else:
+                item.nombre = nombre_item
+                item.nombre_corto = nombre_corto or item.nombre_corto
+                item.tipo_item = tipo_item
+                item.tipo_examen = tipo_examen or None
+                item.subtipo_laboratorio = subtipo_lab or None
+                item.clasificacion_completa = clasificacion_completa
+                item.descripcion = descripcion or item.descripcion
+                item.tarifa_base = tarifa_base
+                item.activo = activo
+                actualizados += 1
+        except Exception as exc:
+            db.session.rollback()
+            errores.append(f'Fila {idx}: error guardando "{codigo}" — {exc}')
+            continue
+
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error en commit de carga Excel catálogo: %s", exc)
+        return jsonify({'error': f'Error al guardar en base de datos: {exc}'}), 500
+
+    return jsonify({
+        'mensaje': f'Carga completada: {creados} creados, {actualizados} actualizados.',
+        'creados': creados,
+        'actualizados': actualizados,
+        'errores': errores,
+        'total_errores': len(errores),
+    }), 200

@@ -28,6 +28,9 @@ window._comercialSeccionActual = window._comercialSeccionActual || 'inicio';
 window._impuestosPeriodoActual = window._impuestosPeriodoActual || null;
 window._comprasPeriodoActual = window._comprasPeriodoActual || null;
 window._ventasPeriodoActual = window._ventasPeriodoActual || null;
+window._saborArtesanalSeccionActual = window._saborArtesanalSeccionActual || 'tablas';
+window._saborArtesanalTablasSeccionActual = window._saborArtesanalTablasSeccionActual || '';
+window._saborArtesanalTablasState = window._saborArtesanalTablasState || {};
 
 (function initNominaPeriodoFromStorage() {
     try {
@@ -79,7 +82,7 @@ function updateCurrentUserDisplay() {
 }
 
 function applySidebarAccess() {
-    const menuItems = document.querySelectorAll('.menu-item');
+    const menuItems = document.querySelectorAll('.menu-item, .menu-subitem');
     const allowedModules = Array.isArray(currentUser?.menu_modules) ? currentUser.menu_modules : [];
     const isAdminUser = currentUser?.role === 'Administrador';
 
@@ -89,6 +92,35 @@ function applySidebarAccess() {
         const container = item.closest('li') || item;
         container.style.display = visible ? '' : 'none';
     });
+}
+
+function setSidebarGroupOpen(moduleName, isOpen) {
+    if (moduleName !== 'sabor_artesanal') return;
+    const parent = document.querySelector('.menu-item-parent[data-module="sabor_artesanal"]');
+    const group = parent ? parent.closest('.menu-group') : null;
+    if (group) {
+        group.classList.toggle('open', Boolean(isOpen));
+    }
+}
+
+function markSidebarModuleActive(moduleName, section = '') {
+    document.querySelectorAll('.menu-item').forEach(item => item.classList.remove('active'));
+    document.querySelectorAll('.menu-subitem').forEach(item => item.classList.remove('active'));
+
+    if (moduleName === 'sabor_artesanal') {
+        const parent = document.querySelector('.menu-item-parent[data-module="sabor_artesanal"]');
+        if (parent) parent.classList.add('active');
+        setSidebarGroupOpen('sabor_artesanal', true);
+        const subItem = section
+            ? document.querySelector(`.menu-subitem[data-module="sabor_artesanal"][data-section="${section}"]`)
+            : null;
+        if (subItem) subItem.classList.add('active');
+        return;
+    }
+
+    setSidebarGroupOpen('sabor_artesanal', false);
+    const item = document.querySelector(`.menu-item[data-module="${moduleName}"]`);
+    if (item) item.classList.add('active');
 }
 
 function getCurrentPermissionNames() {
@@ -2226,7 +2258,7 @@ function clearHistFilter() {
 
 
 function setupMenuNavigation() {
-    const menuItems = document.querySelectorAll('.menu-item');
+    const menuItems = document.querySelectorAll('.menu-item, .menu-subitem');
     
     menuItems.forEach(item => {
         item.addEventListener('click', (e) => {
@@ -2240,22 +2272,857 @@ function setupMenuNavigation() {
             if (!module) {
                 return;
             }
+            const section = item.dataset.section || '';
+            if (module === 'sabor_artesanal') {
+                if (section) {
+                    window._saborArtesanalSeccionActual = section;
+                } else {
+                    setSidebarGroupOpen('sabor_artesanal', true);
+                }
+            }
             switchModule(module);
-            
-            // Update active state
-            menuItems.forEach(mi => mi.classList.remove('active'));
-            item.classList.add('active');
         });
     });
 }
 
+function normalizeSaborArtesanalLabels() {
+    const textMap = {
+        '.menu-subitem[data-module="sabor_artesanal"][data-section="menus"]': 'Menus',
+        '.menu-subitem[data-module="sabor_artesanal"][data-section="ventas_dia"]': 'Ventas Dia',
+        '.menu-subitem[data-module="sabor_artesanal"][data-section="cierre_dia"]': 'Cierre Dia',
+        '#saborArtesanalNavMenus .btn-label': 'Menus',
+        '#saborArtesanalNavVentasDia .btn-label': 'Ventas Dia',
+        '#saborArtesanalNavCierreDia .btn-label': 'Cierre Dia',
+        '#saborArtesanalMenusPanel h3': 'Menus',
+        '#saborArtesanalComprasPanel h3': 'Compras',
+        '#saborArtesanalVentasDiaPanel h3': 'Ventas Dia',
+        '#saborArtesanalCierreDiaPanel h3': 'Cierre Dia',
+        '#saborArtesanalInformesPanel h3': 'Informes',
+    };
+
+    Object.entries(textMap).forEach(([selector, text]) => {
+        const node = document.querySelector(selector);
+        if (node) node.textContent = text;
+    });
+
+    const topNav = document.querySelector('.sabor-artesanal-top-nav');
+    if (topNav) topNav.setAttribute('aria-label', 'Menu Sabor Artesanal');
+
+    const menusPlaceholder = document.querySelector('#saborArtesanalMenusPanel .placeholder');
+    if (menusPlaceholder) menusPlaceholder.textContent = 'Aqui podremos administrar el catalogo de menus y preparaciones.';
+    const comprasPlaceholder = document.querySelector('#saborArtesanalComprasPanel .placeholder');
+    if (comprasPlaceholder) comprasPlaceholder.textContent = 'Modulo base preparado para registrar compras e insumos.';
+    const ventasPlaceholder = document.querySelector('#saborArtesanalVentasDiaPanel .placeholder');
+    if (ventasPlaceholder) ventasPlaceholder.textContent = 'Vista inicial para el registro diario de ventas.';
+    const cierrePlaceholder = document.querySelector('#saborArtesanalCierreDiaPanel .placeholder');
+    if (cierrePlaceholder) cierrePlaceholder.textContent = 'Seccion lista para consolidar cierres diarios.';
+    const informesPlaceholder = document.querySelector('#saborArtesanalInformesPanel .placeholder');
+    if (informesPlaceholder) informesPlaceholder.textContent = 'Panel reservado para reportes y analisis de Sabor Artesanal.';
+}
+
+const SABOR_ARTESANAL_TABLAS_CONFIG = {
+    entradas: { key: 'entradas', label: 'Entradas' },
+    principios: { key: 'principios', label: 'Principios' },
+    proteinas: { key: 'proteinas', label: 'Proteinas' },
+    basicos: { key: 'basicos', label: 'Basicos' },
+    acompanamientos: { key: 'acompanamientos', label: 'Acompanamientos' },
+    ensaladas: { key: 'ensaladas', label: 'Ensaladas' },
+};
+
+let _saborTablaCrudModalState = null;
+let _saborTablaDeleteState = null;
+
+function updateSaborArtesanalLayout(isFocus = false) {
+    if (!document?.body) return;
+    document.body.classList.toggle('body-sabor-tablas-focus', Boolean(isFocus));
+}
+
+function volverMenuPrincipalDesdeSaborArtesanal() {
+    updateSaborArtesanalLayout(false);
+    switchModule('appBanner');
+}
+
+function volverATablasSaborArtesanal() {
+    setSaborArtesanalTablasSection('');
+}
+
+function _normalizarSaborTablaCategoria(section = 'entradas') {
+    const normalized = String(section || 'entradas').toLowerCase();
+    if (normalized === 'poroteinas') return 'proteinas';
+    return SABOR_ARTESANAL_TABLAS_CONFIG[normalized] ? normalized : 'entradas';
+}
+
+function _getSaborTablaConfig(section = 'entradas') {
+    return SABOR_ARTESANAL_TABLAS_CONFIG[_normalizarSaborTablaCategoria(section)];
+}
+
+function _getSaborTablaDomKey(section = 'entradas') {
+    const config = _getSaborTablaConfig(section);
+    return config.key.charAt(0).toUpperCase() + config.key.slice(1);
+}
+
+function _getSaborTablaState(section = 'entradas') {
+    const key = _normalizarSaborTablaCategoria(section);
+    if (!window._saborArtesanalTablasState[key]) {
+        window._saborArtesanalTablasState[key] = {
+            items: [],
+            loaded: false,
+            selectedParentId: null,
+        };
+    }
+    return window._saborArtesanalTablasState[key];
+}
+
+function _getSaborTablaDraft(section = 'entradas') {
+    const state = _getSaborTablaState(section);
+    if (!state.draft) {
+        state.draft = {
+            nombre: '',
+            descripcion: '',
+            activo: true,
+            variantes: [{ nombre: '', descripcion: '', activo: true }],
+        };
+    }
+    return state.draft;
+}
+
+function ensureSaborArtesanalTablaModals() {
+    if (document.getElementById('saborTablaCrudModal')) return;
+
+    const host = document.getElementById('sabor_artesanalView') || document.body;
+    host.insertAdjacentHTML('beforeend', `
+        <div id="saborTablaCrudModal" class="modal" style="display:none;">
+            <div class="modal-content" style="max-width:560px; width:96%; max-height:90vh; overflow-y:auto;">
+                <div class="modal-header">
+                    <h2 id="saborTablaCrudTitulo">Nuevo item</h2>
+                    <span class="close" onclick="cerrarModalSaborTabla()">&times;</span>
+                </div>
+                <div style="padding:0 4px;">
+                    <div id="saborTablaCrudContexto" style="margin-bottom:12px; color:#64748b; font-size:0.92em;"></div>
+                    <div class="form-group">
+                        <label for="saborTablaCrudNombre">Nombre *</label>
+                        <input type="text" id="saborTablaCrudNombre" maxlength="150" placeholder="Nombre del item">
+                    </div>
+                    <div class="form-group">
+                        <label for="saborTablaCrudDescripcion">Descripcion</label>
+                        <textarea id="saborTablaCrudDescripcion" rows="3" style="width:100%; resize:vertical;" placeholder="Detalle opcional"></textarea>
+                    </div>
+                    <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:500;">
+                            <input type="checkbox" id="saborTablaCrudActivo" checked style="width:16px; height:16px;">
+                            Activo
+                        </label>
+                    </div>
+                    <div id="saborTablaCrudError" style="display:none; color:#c0392b; font-size:0.92em; margin-top:10px;"></div>
+                    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:18px; padding-top:12px; border-top:1px solid #eee;">
+                        <button type="button" class="btn btn-secondary" onclick="cerrarModalSaborTabla()">Cancelar</button>
+                        <button type="button" class="btn btn-primary" onclick="guardarSaborTablaItem()">Guardar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="saborTablaEliminarModal" class="modal" style="display:none;">
+            <div class="modal-content" style="max-width:420px; width:96%;">
+                <div class="modal-header">
+                    <h2>Eliminar item</h2>
+                    <span class="close" onclick="cerrarModalEliminarSaborTabla()">&times;</span>
+                </div>
+                <p id="saborTablaEliminarMensaje" style="padding:0 4px;">Confirma la eliminacion de este item.</p>
+                <div id="saborTablaEliminarError" style="display:none; color:#c0392b; font-size:0.92em; padding:0 4px 8px;"></div>
+                <div style="display:flex; justify-content:flex-end; gap:10px; padding-top:10px;">
+                    <button type="button" class="btn btn-secondary" onclick="cerrarModalEliminarSaborTabla()">Cancelar</button>
+                    <button type="button" class="btn btn-danger" onclick="confirmarEliminarSaborTabla()">Eliminar</button>
+                </div>
+            </div>
+        </div>
+    `);
+}
+
+function ensureSaborArtesanalTablasUI() {
+    const panel = document.getElementById('saborArtesanalTablasPanel');
+    if (!panel || panel.dataset.initialized === 'true') return;
+
+    ensureSaborArtesanalTablaModals();
+
+    panel.innerHTML = `
+        <div id="saborArtesanalTablasMenu" class="sabor-tablas-menu-view">
+            <div class="sabor-tablas-menu-head">
+                <button type="button" class="btn btn-secondary sabor-tabla-back-btn" onclick="volverMenuPrincipalDesdeSaborArtesanal()">Volver al menu principal</button>
+                <div class="sabor-tablas-menu-text">
+                    <h3 style="margin:0;">Tablas</h3>
+                    <p style="margin:4px 0 0;">Selecciona una categoria para trabajar solo esa opcion.</p>
+                </div>
+            </div>
+            <div class="sabor-tablas-option-list" role="listbox" aria-label="Categorias de tablas Sabor Artesanal">
+                <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaEntradas" onclick="setSaborArtesanalTablasSection('entradas')">Entradas</button>
+                <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaPrincipios" onclick="setSaborArtesanalTablasSection('principios')">Principios</button>
+                <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaProteinas" onclick="setSaborArtesanalTablasSection('proteinas')">Proteinas</button>
+                <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaBasicos" onclick="setSaborArtesanalTablasSection('basicos')">Basicos</button>
+                <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaAcompanamientos" onclick="setSaborArtesanalTablasSection('acompanamientos')">Acompanamientos</button>
+                <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaEnsaladas" onclick="setSaborArtesanalTablasSection('ensaladas')">Ensaladas</button>
+            </div>
+        </div>
+        <div id="saborArtesanalTablaWorkspace" class="sabor-artesanal-subpanel" style="display:none;"></div>
+    `;
+    panel.dataset.initialized = 'true';
+}
+
+function ensureSaborArtesanalTablaCrudPanel(section = 'entradas') {
+    const config = _getSaborTablaConfig(section);
+    const domKey = _getSaborTablaDomKey(config.key);
+    const panel = document.getElementById('saborArtesanalTablaWorkspace');
+    if (!panel) return;
+
+    panel.innerHTML = `
+        <div class="sabor-tabla-shell">
+            <div class="sabor-tabla-crumbs">
+                <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="volverATablasSaborArtesanal()">Volver a Tablas</button>
+                <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="volverMenuPrincipalDesdeSaborArtesanal()">Menu principal</button>
+                <strong>${config.label}</strong>
+            </div>
+            <div class="sabor-tabla-header-line">
+                <input type="text" id="saborTabla${domKey}Busqueda" placeholder="Buscar principal o variante..." oninput="renderSaborArtesanalTabla('${config.key}')">
+                <select id="saborTabla${domKey}Activo" onchange="renderSaborArtesanalTabla('${config.key}')">
+                    <option value="true">Activos</option>
+                    <option value="all">Todos</option>
+                    <option value="false">Inactivos</option>
+                </select>
+                <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="cargarSaborArtesanalTabla('${config.key}', true)">Actualizar</button>
+            </div>
+            <div class="sabor-tabla-editor">
+                <div class="sabor-tabla-editor-head">
+                    <strong>${config.label.slice(0, -1) || config.label} principal</strong>
+                    <span>Este boton guarda el principal y todas las opciones llenas.</span>
+                </div>
+                <div class="sabor-tabla-capture-grid">
+                    <input type="text" id="saborTabla${domKey}PrincipalNombre" placeholder="Principal. Ej: Pechuga" oninput="setSaborTablaDraftField('${config.key}', 'nombre', this.value)">
+                    <input type="text" id="saborTabla${domKey}PrincipalDescripcion" placeholder="Descripcion opcional" oninput="setSaborTablaDraftField('${config.key}', 'descripcion', this.value)">
+                    <label class="sabor-tabla-inline-check">
+                        <input type="checkbox" id="saborTabla${domKey}PrincipalActivo" checked onchange="setSaborTablaDraftActivo('${config.key}', this.checked)">
+                        Activo
+                    </label>
+                </div>
+                <div class="sabor-tabla-variants-box">
+                    <div class="sabor-tabla-variants-header">
+                        <h6>Opciones del principal</h6>
+                        <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="agregarSaborTablaVarianteRow('${config.key}')">Agregar opcion</button>
+                    </div>
+                    <div id="saborTabla${domKey}VariantesEditor"></div>
+                </div>
+                <div id="saborTabla${domKey}QuickError" class="sabor-tabla-error" style="display:none;"></div>
+                <div class="sabor-tabla-capture-actions">
+                    <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="limpiarSaborTablaQuickForm('${config.key}')">Limpiar</button>
+                    <button type="button" class="btn btn-primary sabor-tabla-save-btn" onclick="guardarSaborTablaQuickForm('${config.key}')">Guardar principal con opciones</button>
+                </div>
+            </div>
+            <div id="saborTabla${domKey}Resumen" class="sabor-tabla-resumen"></div>
+            <div class="sabor-tabla-list-layout">
+                <div class="sabor-tabla-list-panel">
+                    <div class="sabor-tabla-list-title">Principales guardados</div>
+                    <div id="saborTabla${domKey}Principales" class="sabor-tabla-listbox">
+                        <div class="placeholder" style="padding:20px 12px;">Cargando items...</div>
+                    </div>
+                </div>
+                <div class="sabor-tabla-list-panel">
+                    <div class="sabor-tabla-list-title-row">
+                        <div>
+                            <div class="sabor-tabla-list-title">Opciones guardadas</div>
+                            <div id="saborTabla${domKey}SeleccionadoNombre" class="sabor-tabla-selected-label">Selecciona un principal.</div>
+                        </div>
+                        <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" id="saborTabla${domKey}BtnNuevoDetalle" onclick="abrirModalDetalleSaborTabla('${config.key}')" disabled>Nueva opcion</button>
+                    </div>
+                    <div id="saborTabla${domKey}Detalles" class="sabor-tabla-listbox">
+                        <div class="placeholder" style="padding:20px 12px;">Selecciona un principal para ver sus opciones.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    renderSaborTablaQuickForm(config.key);
+}
+
+function setSaborTablaDraftField(section = 'entradas', field, value) {
+    const draft = _getSaborTablaDraft(section);
+    draft[field] = value;
+}
+
+function setSaborTablaDraftActivo(section = 'entradas', checked) {
+    const draft = _getSaborTablaDraft(section);
+    draft.activo = checked !== false;
+}
+
+function setSaborTablaVarianteField(section = 'entradas', index, field, value) {
+    const draft = _getSaborTablaDraft(section);
+    if (!draft.variantes[index]) return;
+    draft.variantes[index][field] = value;
+}
+
+function setSaborTablaVarianteActivo(section = 'entradas', index, checked) {
+    const draft = _getSaborTablaDraft(section);
+    if (!draft.variantes[index]) return;
+    draft.variantes[index].activo = checked !== false;
+}
+
+function agregarSaborTablaVarianteRow(section = 'entradas') {
+    const draft = _getSaborTablaDraft(section);
+    draft.variantes.push({ nombre: '', descripcion: '', activo: true });
+    renderSaborTablaQuickForm(section);
+}
+
+function quitarSaborTablaVarianteRow(section = 'entradas', index) {
+    const draft = _getSaborTablaDraft(section);
+    draft.variantes.splice(index, 1);
+    if (draft.variantes.length === 0) {
+        draft.variantes.push({ nombre: '', descripcion: '', activo: true });
+    }
+    renderSaborTablaQuickForm(section);
+}
+
+function limpiarSaborTablaQuickForm(section = 'entradas') {
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const state = _getSaborTablaState(normalized);
+    state.draft = {
+        nombre: '',
+        descripcion: '',
+        activo: true,
+        variantes: [{ nombre: '', descripcion: '', activo: true }],
+    };
+    renderSaborTablaQuickForm(normalized);
+}
+
+function renderSaborTablaQuickForm(section = 'entradas') {
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const domKey = _getSaborTablaDomKey(normalized);
+    const draft = _getSaborTablaDraft(normalized);
+    const container = document.getElementById(`saborTabla${domKey}VariantesEditor`);
+    if (!container) return;
+
+    const inputNombre = document.getElementById(`saborTabla${domKey}PrincipalNombre`);
+    const inputDescripcion = document.getElementById(`saborTabla${domKey}PrincipalDescripcion`);
+    const inputActivo = document.getElementById(`saborTabla${domKey}PrincipalActivo`);
+    if (inputNombre) inputNombre.value = draft.nombre || '';
+    if (inputDescripcion) inputDescripcion.value = draft.descripcion || '';
+    if (inputActivo) inputActivo.checked = draft.activo !== false;
+
+    container.innerHTML = draft.variantes.map((variante, index) => `
+        <div class="sabor-tabla-variant-row">
+            <input type="text" value="${escapeHtml(variante.nombre || '')}" placeholder="Opcion ${index + 1}. Ej: Al horno" oninput="setSaborTablaVarianteField('${normalized}', ${index}, 'nombre', this.value)">
+            <input type="text" value="${escapeHtml(variante.descripcion || '')}" placeholder="Descripcion opcional" oninput="setSaborTablaVarianteField('${normalized}', ${index}, 'descripcion', this.value)">
+            <label class="sabor-tabla-inline-check">
+                <input type="checkbox" ${variante.activo !== false ? 'checked' : ''} onchange="setSaborTablaVarianteActivo('${normalized}', ${index}, this.checked)">
+                Activa
+            </label>
+            <button type="button" class="btn btn-danger sabor-tabla-mini-btn" onclick="quitarSaborTablaVarianteRow('${normalized}', ${index})">Quitar</button>
+        </div>
+    `).join('');
+}
+
+async function guardarSaborTablaQuickForm(section = 'entradas') {
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const domKey = _getSaborTablaDomKey(normalized);
+    const draft = _getSaborTablaDraft(normalized);
+    const error = document.getElementById(`saborTabla${domKey}QuickError`);
+
+    if (error) {
+        error.style.display = 'none';
+        error.textContent = '';
+    }
+
+    const nombre = (draft.nombre || '').trim();
+    if (!nombre) {
+        if (error) {
+            error.textContent = 'Debes ingresar el item principal.';
+            error.style.display = '';
+        }
+        return;
+    }
+
+    const variantes = (draft.variantes || [])
+        .map(variante => ({
+            nombre: (variante.nombre || '').trim(),
+            descripcion: (variante.descripcion || '').trim(),
+            activo: variante.activo !== false,
+        }))
+        .filter(variante => variante.nombre);
+
+    try {
+        const response = await fetch(`/api/sabor-artesanal/tablas/${normalized}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                nombre,
+                descripcion: (draft.descripcion || '').trim(),
+                activo: draft.activo !== false,
+                variantes,
+            }),
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.error || `Error ${response.status}`);
+        }
+
+        const state = _getSaborTablaState(normalized);
+        state.selectedParentId = result?.item?.id ? Number(result.item.id) : null;
+        limpiarSaborTablaQuickForm(normalized);
+        state.loaded = false;
+        await cargarSaborArtesanalTabla(normalized, true);
+        showSuccess(result.mensaje || 'Item creado correctamente.');
+    } catch (err) {
+        console.error('Error en ingreso rapido de Sabor Artesanal:', err);
+        if (error) {
+            error.textContent = err.message || 'No se pudo guardar el item.';
+            error.style.display = '';
+        }
+    }
+}
+
+function _findSaborTablaItem(section = 'entradas', itemId) {
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const state = _getSaborTablaState(normalized);
+    const targetId = Number(itemId);
+
+    for (const item of state.items || []) {
+        if (Number(item.id) === targetId) return item;
+        const child = (item.children || []).find(entry => Number(entry.id) === targetId);
+        if (child) return child;
+    }
+    return null;
+}
+
+async function cargarSaborArtesanalTabla(section = 'entradas', force = false) {
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const config = _getSaborTablaConfig(normalized);
+    const state = _getSaborTablaState(normalized);
+    const domKey = _getSaborTablaDomKey(normalized);
+
+    ensureSaborArtesanalTablaCrudPanel(normalized);
+
+    if (!force && state.loaded) {
+        renderSaborArtesanalTabla(normalized);
+        return;
+    }
+
+    const principales = document.getElementById(`saborTabla${domKey}Principales`);
+    const detalles = document.getElementById(`saborTabla${domKey}Detalles`);
+    if (principales) principales.innerHTML = '<div class="placeholder" style="padding:32px 20px;">Cargando items...</div>';
+    if (detalles) detalles.innerHTML = '<div class="placeholder" style="padding:32px 20px;">Cargando variantes...</div>';
+
+    try {
+        const response = await fetch(`/api/sabor-artesanal/tablas/${normalized}`, { credentials: 'include' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(payload.error || `Error ${response.status}`);
+        }
+
+        state.items = Array.isArray(payload.items) ? payload.items : [];
+        state.loaded = true;
+
+        if (!state.selectedParentId || !state.items.some(item => Number(item.id) === Number(state.selectedParentId))) {
+            state.selectedParentId = state.items[0] ? Number(state.items[0].id) : null;
+        }
+
+        renderSaborArtesanalTabla(normalized);
+    } catch (error) {
+        console.error(`Error cargando tabla de ${config.label}:`, error);
+        if (principales) {
+            principales.innerHTML = `<div class="placeholder" style="padding:32px 20px; color:#c0392b;">${escapeHtml(error.message || 'No se pudo cargar la tabla.')}</div>`;
+        }
+        if (detalles) {
+            detalles.innerHTML = '<div class="placeholder" style="padding:32px 20px;">Sin datos disponibles.</div>';
+        }
+    }
+}
+
+function renderSaborArtesanalTabla(section = 'entradas') {
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const config = _getSaborTablaConfig(normalized);
+    const state = _getSaborTablaState(normalized);
+    const domKey = _getSaborTablaDomKey(normalized);
+
+    ensureSaborArtesanalTablaCrudPanel(normalized);
+
+    const search = ((document.getElementById(`saborTabla${domKey}Busqueda`) || {}).value || '').trim().toLowerCase();
+    const activo = ((document.getElementById(`saborTabla${domKey}Activo`) || {}).value || 'true').toLowerCase();
+    const principales = document.getElementById(`saborTabla${domKey}Principales`);
+    const detalles = document.getElementById(`saborTabla${domKey}Detalles`);
+    const resumen = document.getElementById(`saborTabla${domKey}Resumen`);
+    const selectedLabel = document.getElementById(`saborTabla${domKey}SeleccionadoNombre`);
+    const btnNuevoDetalle = document.getElementById(`saborTabla${domKey}BtnNuevoDetalle`);
+
+    const matchesActivo = item => {
+        if (activo === 'all') return true;
+        if (activo === 'true') return item.activo !== false;
+        return item.activo === false;
+    };
+
+    const matchesSearch = item => {
+        if (!search) return true;
+        return `${item.nombre || ''} ${item.descripcion || ''}`.toLowerCase().includes(search);
+    };
+
+    const filtered = (state.items || []).filter(item => {
+        const childMatch = (item.children || []).some(child => matchesSearch(child) && matchesActivo(child));
+        return (matchesSearch(item) && matchesActivo(item)) || childMatch;
+    });
+
+    if (resumen) {
+        const totalVariantes = filtered.reduce((acc, item) => acc + (item.children || []).length, 0);
+        resumen.textContent = `${filtered.length} principales y ${totalVariantes} opciones registradas.`;
+    }
+
+    if (principales) {
+        if (filtered.length === 0) {
+            principales.innerHTML = '<div class="placeholder" style="padding:20px 12px;">No hay principales para los filtros seleccionados.</div>';
+        } else {
+            principales.innerHTML = filtered.map(item => `
+                <div class="sabor-list-item ${Number(item.id) === Number(state.selectedParentId) ? 'is-selected' : ''}" onclick="seleccionarSaborArtesanalPrincipal('${config.key}', ${Number(item.id)})">
+                    <span class="sabor-list-item-main">
+                        <strong>${escapeHtml(item.nombre || '')}</strong>
+                        ${item.descripcion ? `<small>${escapeHtml(item.descripcion)}</small>` : ''}
+                    </span>
+                    <span class="sabor-list-item-meta">
+                        <span>${Number(item.children_count || (item.children || []).length || 0)} opcion(es)</span>
+                        <span class="sabor-tabla-status ${item.activo === false ? 'is-inactive' : 'is-active'}">${item.activo === false ? 'Inactivo' : 'Activo'}</span>
+                    </span>
+                    <span class="sabor-list-item-actions" onclick="event.stopPropagation()">
+                        <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="abrirModalSaborTabla('${config.key}', ${Number(item.id)})">Editar</button>
+                        <button type="button" class="btn btn-danger sabor-tabla-mini-btn" onclick="abrirModalEliminarSaborTabla('${config.key}', ${Number(item.id)})">Eliminar</button>
+                    </span>
+                </div>
+            `).join('');
+        }
+    }
+
+    const selectedParent = filtered.find(item => Number(item.id) === Number(state.selectedParentId)) || null;
+    if (selectedLabel) {
+        selectedLabel.textContent = selectedParent
+            ? `Principal seleccionado: ${selectedParent.nombre}`
+            : 'Selecciona un item principal.';
+    }
+    if (btnNuevoDetalle) btnNuevoDetalle.disabled = !selectedParent;
+
+    if (!detalles) return;
+    if (!selectedParent) {
+        detalles.innerHTML = '<div class="placeholder" style="padding:20px 12px;">Selecciona un principal para ver o crear sus opciones.</div>';
+        return;
+    }
+
+    const filteredChildren = (selectedParent.children || []).filter(child => matchesSearch(child) && matchesActivo(child));
+    if (filteredChildren.length === 0) {
+        detalles.innerHTML = '<div class="placeholder" style="padding:20px 12px;">Este principal aun no tiene opciones guardadas.</div>';
+        return;
+    }
+
+    detalles.innerHTML = filteredChildren.map(child => `
+        <div class="sabor-list-item is-compact">
+            <span class="sabor-list-item-main">
+                <strong>${escapeHtml(child.nombre || '')}</strong>
+                ${child.descripcion ? `<small>${escapeHtml(child.descripcion)}</small>` : ''}
+            </span>
+            <span class="sabor-list-item-meta">
+                <span class="sabor-tabla-status ${child.activo === false ? 'is-inactive' : 'is-active'}">${child.activo === false ? 'Inactivo' : 'Activo'}</span>
+            </span>
+            <span class="sabor-list-item-actions">
+                <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="abrirModalSaborTabla('${config.key}', ${Number(child.id)})">Editar</button>
+                <button type="button" class="btn btn-danger sabor-tabla-mini-btn" onclick="abrirModalEliminarSaborTabla('${config.key}', ${Number(child.id)})">Eliminar</button>
+            </span>
+        </div>
+    `).join('');
+}
+
+function seleccionarSaborArtesanalPrincipal(section = 'entradas', parentId) {
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const state = _getSaborTablaState(normalized);
+    state.selectedParentId = Number(parentId) || null;
+    renderSaborArtesanalTabla(normalized);
+}
+
+function abrirModalDetalleSaborTabla(section = 'entradas') {
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const state = _getSaborTablaState(normalized);
+    if (!state.selectedParentId) {
+        showError('Selecciona primero un item principal.');
+        return;
+    }
+    abrirModalSaborTabla(normalized, null, state.selectedParentId);
+}
+
+function abrirModalSaborTabla(section = 'entradas', itemId = null, parentId = null) {
+    ensureSaborArtesanalTablaModals();
+
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const config = _getSaborTablaConfig(normalized);
+    const item = itemId ? _findSaborTablaItem(normalized, itemId) : null;
+    const resolvedParentId = item ? item.parent_id : (parentId || null);
+    const parentItem = resolvedParentId ? _findSaborTablaItem(normalized, resolvedParentId) : null;
+
+    _saborTablaCrudModalState = {
+        category: normalized,
+        itemId: item ? Number(item.id) : null,
+        parentId: resolvedParentId ? Number(resolvedParentId) : null,
+    };
+
+    const title = document.getElementById('saborTablaCrudTitulo');
+    const context = document.getElementById('saborTablaCrudContexto');
+    const nombre = document.getElementById('saborTablaCrudNombre');
+    const descripcion = document.getElementById('saborTablaCrudDescripcion');
+    const activo = document.getElementById('saborTablaCrudActivo');
+    const error = document.getElementById('saborTablaCrudError');
+
+    if (error) {
+        error.style.display = 'none';
+        error.textContent = '';
+    }
+
+    if (title) {
+        title.textContent = item
+            ? (resolvedParentId ? 'Editar variante' : 'Editar item principal')
+            : (resolvedParentId ? 'Nueva variante' : `Nuevo item en ${config.label}`);
+    }
+    if (context) {
+        context.textContent = parentItem
+            ? `Item principal: ${parentItem.nombre}`
+            : `Categoria: ${config.label}`;
+    }
+    if (nombre) nombre.value = item?.nombre || '';
+    if (descripcion) descripcion.value = item?.descripcion || '';
+    if (activo) activo.checked = item ? item.activo !== false : true;
+
+    const modal = document.getElementById('saborTablaCrudModal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function cerrarModalSaborTabla() {
+    const modal = document.getElementById('saborTablaCrudModal');
+    if (modal) modal.style.display = 'none';
+    _saborTablaCrudModalState = null;
+}
+
+async function guardarSaborTablaItem() {
+    if (!_saborTablaCrudModalState) return;
+
+    const nombre = (document.getElementById('saborTablaCrudNombre')?.value || '').trim();
+    const descripcion = (document.getElementById('saborTablaCrudDescripcion')?.value || '').trim();
+    const activo = document.getElementById('saborTablaCrudActivo')?.checked !== false;
+    const error = document.getElementById('saborTablaCrudError');
+
+    if (error) {
+        error.style.display = 'none';
+        error.textContent = '';
+    }
+
+    if (!nombre) {
+        if (error) {
+            error.textContent = 'El nombre es obligatorio.';
+            error.style.display = '';
+        }
+        return;
+    }
+
+    const payload = {
+        nombre,
+        descripcion,
+        activo,
+        parent_id: _saborTablaCrudModalState.parentId || null,
+    };
+
+    const isEdit = Boolean(_saborTablaCrudModalState.itemId);
+    const url = isEdit
+        ? `/api/sabor-artesanal/tablas/items/${_saborTablaCrudModalState.itemId}`
+        : `/api/sabor-artesanal/tablas/${_saborTablaCrudModalState.category}`;
+
+    try {
+        const response = await fetch(url, {
+            method: isEdit ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.error || `Error ${response.status}`);
+        }
+
+        const state = _getSaborTablaState(_saborTablaCrudModalState.category);
+        if (result.item) {
+            state.selectedParentId = result.item.parent_id ? Number(result.item.parent_id) : Number(result.item.id);
+        }
+
+        const category = _saborTablaCrudModalState.category;
+        cerrarModalSaborTabla();
+        await cargarSaborArtesanalTabla(category, true);
+        showSuccess(result.mensaje || 'Item guardado correctamente.');
+    } catch (err) {
+        console.error('Error guardando item de Sabor Artesanal:', err);
+        if (error) {
+            error.textContent = err.message || 'No se pudo guardar el item.';
+            error.style.display = '';
+        }
+    }
+}
+
+function abrirModalEliminarSaborTabla(section = 'entradas', itemId) {
+    ensureSaborArtesanalTablaModals();
+
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const item = _findSaborTablaItem(normalized, itemId);
+    if (!item) {
+        showError('No se encontro el item seleccionado.');
+        return;
+    }
+
+    _saborTablaDeleteState = {
+        category: normalized,
+        itemId: Number(item.id),
+        parentId: item.parent_id ? Number(item.parent_id) : null,
+    };
+
+    const message = document.getElementById('saborTablaEliminarMensaje');
+    const error = document.getElementById('saborTablaEliminarError');
+    if (error) {
+        error.style.display = 'none';
+        error.textContent = '';
+    }
+
+    if (message) {
+        const extra = item.parent_id
+            ? 'Esta variante se eliminara de forma permanente.'
+            : `Si tiene variantes relacionadas, tambien se eliminaran (${Number(item.children_count || (item.children || []).length || 0)}).`;
+        message.innerHTML = `Confirma la eliminacion de <strong>${escapeHtml(item.nombre || '')}</strong>. ${escapeHtml(extra)}`;
+    }
+
+    const modal = document.getElementById('saborTablaEliminarModal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function cerrarModalEliminarSaborTabla() {
+    const modal = document.getElementById('saborTablaEliminarModal');
+    if (modal) modal.style.display = 'none';
+    _saborTablaDeleteState = null;
+}
+
+async function confirmarEliminarSaborTabla() {
+    if (!_saborTablaDeleteState) return;
+
+    const error = document.getElementById('saborTablaEliminarError');
+    if (error) {
+        error.style.display = 'none';
+        error.textContent = '';
+    }
+
+    try {
+        const response = await fetch(`/api/sabor-artesanal/tablas/items/${_saborTablaDeleteState.itemId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.error || `Error ${response.status}`);
+        }
+
+        const state = _getSaborTablaState(_saborTablaDeleteState.category);
+        if (Number(state.selectedParentId) === Number(_saborTablaDeleteState.itemId)) {
+            state.selectedParentId = null;
+        }
+
+        const category = _saborTablaDeleteState.category;
+        cerrarModalEliminarSaborTabla();
+        await cargarSaborArtesanalTabla(category, true);
+        showSuccess(result.mensaje || 'Item eliminado correctamente.');
+    } catch (err) {
+        console.error('Error eliminando item de Sabor Artesanal:', err);
+        if (error) {
+            error.textContent = err.message || 'No se pudo eliminar el item.';
+            error.style.display = '';
+        }
+    }
+}
+
+function setSaborArtesanalTablasSection(section = 'entradas') {
+    ensureSaborArtesanalTablasUI();
+
+    const menu = document.getElementById('saborArtesanalTablasMenu');
+    const workspace = document.getElementById('saborArtesanalTablaWorkspace');
+    const normalized = section ? _normalizarSaborTablaCategoria(section) : '';
+    window._saborArtesanalTablasSeccionActual = normalized;
+
+    Object.keys(SABOR_ARTESANAL_TABLAS_CONFIG).forEach(key => {
+        const domKey = _getSaborTablaDomKey(key);
+        const btn = document.getElementById(`saborArtesanalTabla${domKey}`);
+        if (btn) btn.classList.toggle('active', key === normalized);
+    });
+
+    if (!normalized) {
+        if (menu) menu.style.display = '';
+        if (workspace) workspace.style.display = 'none';
+        return;
+    }
+
+    if (menu) menu.style.display = 'none';
+    if (workspace) workspace.style.display = '';
+    ensureSaborArtesanalTablaCrudPanel(normalized);
+    cargarSaborArtesanalTabla(normalized);
+}
+
+function setSaborArtesanalSection(section = 'tablas') {
+    normalizeSaborArtesanalLabels();
+    const normalized = String(section || 'tablas');
+    window._saborArtesanalSeccionActual = normalized;
+    updateSaborArtesanalLayout(normalized === 'tablas');
+
+    const panelMap = {
+        tablas: 'saborArtesanalTablasPanel',
+        menus: 'saborArtesanalMenusPanel',
+        compras: 'saborArtesanalComprasPanel',
+        ventas_dia: 'saborArtesanalVentasDiaPanel',
+        cierre_dia: 'saborArtesanalCierreDiaPanel',
+        informes: 'saborArtesanalInformesPanel',
+    };
+
+    const buttonMap = {
+        tablas: 'saborArtesanalNavTablas',
+        menus: 'saborArtesanalNavMenus',
+        compras: 'saborArtesanalNavCompras',
+        ventas_dia: 'saborArtesanalNavVentasDia',
+        cierre_dia: 'saborArtesanalNavCierreDia',
+        informes: 'saborArtesanalNavInformes',
+    };
+
+    Object.values(panelMap).forEach(id => {
+        const panel = document.getElementById(id);
+        if (panel) panel.style.display = 'none';
+    });
+    Object.values(buttonMap).forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.remove('active');
+    });
+
+    const panel = document.getElementById(panelMap[normalized] || panelMap.tablas);
+    if (panel) panel.style.display = '';
+    const btn = document.getElementById(buttonMap[normalized] || buttonMap.tablas);
+    if (btn) btn.classList.add('active');
+
+    if (normalized === 'tablas') {
+        setSaborArtesanalTablasSection(window._saborArtesanalTablasSeccionActual || '');
+    }
+
+    markSidebarModuleActive('sabor_artesanal', normalized);
+}
+
 function switchModule(moduleName) {
+    if (moduleName !== 'sabor_artesanal') {
+        updateSaborArtesanalLayout(false);
+    }
     const allowedModules = Array.isArray(currentUser?.menu_modules) ? currentUser.menu_modules : [];
     const isAdminUser = currentUser?.role === 'Administrador';
     if (!isAdminUser && moduleName !== 'dashboard' && moduleName !== 'appBanner' && !allowedModules.includes(moduleName)) {
         showError('No tienes acceso a ese módulo con tu rol actual.');
         return;
     }
+
+    markSidebarModuleActive(moduleName, moduleName === 'sabor_artesanal' ? window._saborArtesanalSeccionActual : '');
 
     // Hide all views
     const views = document.querySelectorAll('.module-view');
@@ -2280,6 +3147,9 @@ function switchModule(moduleName) {
     } else if (moduleName === 'gestion_informacion') {
         displayName = 'Gestión Información';
         if (userMenu) userMenu.style.display = '';
+    } else if (moduleName === 'sabor_artesanal') {
+        displayName = 'Sabor Artesanal';
+        if (userMenu) userMenu.style.display = '';
     } else if (moduleName === 'chat') {
         displayName = 'Chat Interno';
         if (userMenu) userMenu.style.display = '';
@@ -2301,6 +3171,9 @@ function switchModule(moduleName) {
     }
     if (moduleName === 'gestion_informacion') {
         displayName = 'Gestión Información';
+    }
+    if (moduleName === 'sabor_artesanal') {
+        displayName = 'Sabor Artesanal';
     }
     document.getElementById('moduleTitle').textContent = displayName;
 
@@ -2337,6 +3210,8 @@ function switchModule(moduleName) {
             } catch (e) {
                 console.error('Error abriendo Gestión Información', e);
             }
+        } else if (moduleName === 'sabor_artesanal') {
+            setSaborArtesanalSection(window._saborArtesanalSeccionActual || 'tablas');
         } else if (moduleName === 'recepcion') {
             try {
                 inicializarModuloRecepcion();
@@ -3849,6 +4724,7 @@ function setIngresoInformacionSection(section = 'inicio') {
 
     const panelMap = {
         inicio: ['ingresoInfoInicioPanel'],
+        catalogo: ['ingresoInfoCatalogoPanel'],
         cargue_atenciones: ['ingresoInfoCarguePanel', 'ingresoInfoHistorialPanel'],
         prefacturas: ['ingresoInfoPrefacturasPanel'],
         consulta_prefacturas: ['ingresoInfoConsultaPrefacturasPanel'],
@@ -3857,6 +4733,7 @@ function setIngresoInformacionSection(section = 'inicio') {
     };
     const buttonMap = {
         inicio: 'ingresoInfoNavInicio',
+        catalogo: 'ingresoInfoNavCatalogo',
         cargue_atenciones: 'ingresoInfoNavCargueAtenciones',
         prefacturas: 'ingresoInfoNavPrefacturas',
         consulta_prefacturas: 'ingresoInfoNavConsultaPrefacturas',
@@ -3883,6 +4760,11 @@ function setIngresoInformacionSection(section = 'inicio') {
     hideCargueAtencionesClienteSuggestions();
 
     if (normalized === 'inicio') {
+        return;
+    }
+
+    if (normalized === 'catalogo') {
+        cargarTablaCatalogo();
         return;
     }
 
@@ -15382,5 +16264,630 @@ async function ejecutarVerificacionGaps() {
         resultado.innerHTML = html;
     } catch (err) {
         if (resultado) resultado.textContent = 'Error de conexión.';
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SERVICIOS Y PAQUETES — Catálogo Comercial (CRUD)
+// ---------------------------------------------------------------------------
+
+let _catalogoItems = [];      // cache local para filtros
+let _catalogoEditandoId = null;
+let _catalogoEliminandoId = null;
+let _catalogoComponentesIds = [];  // IDs seleccionados para paquete
+let _catalogoEliminarModo = 'delete';
+
+function puedeLeerCatalogoGestion() {
+    return canManageComercial('examenes', 'read') || canManageComercial('paquetes', 'read');
+}
+
+function puedeCrearCatalogoGestion() {
+    return canManageComercial('examenes', 'create') || canManageComercial('paquetes', 'create');
+}
+
+function puedeGestionarItemCatalogo(item, action) {
+    if (!item) return false;
+    if (currentUser?.role === 'Administrador' || currentUser?.is_superuser || currentUser?.is_easy || currentUser?.usuario === 'admin') {
+        return true;
+    }
+    return canManageComercial(getCatalogEntityFromTipoItem(item.tipo_item), action);
+}
+
+function actualizarControlesCatalogoGestion() {
+    const aviso = document.getElementById('catalogoPermisoAviso');
+    const cargaExcel = document.getElementById('catalogoExcelCargaBox');
+    const btnNuevo = document.getElementById('btnNuevoCatalogo')
+        || document.querySelector('button[onclick="abrirModalCatalogo(null)"]');
+    const btnActualizar = document.getElementById('btnActualizarCatalogo')
+        || document.querySelector('button[onclick="cargarTablaCatalogo()"]');
+
+    const puedeLeer = puedeLeerCatalogoGestion();
+    const puedeCrear = puedeCrearCatalogoGestion();
+
+    if (cargaExcel) cargaExcel.style.display = puedeCrear ? '' : 'none';
+    if (btnNuevo) btnNuevo.style.display = puedeCrear ? '' : 'none';
+    if (btnActualizar) btnActualizar.disabled = !puedeLeer;
+
+    if (!aviso) return;
+
+    if (!puedeLeer) {
+        aviso.style.display = '';
+        aviso.style.background = '#fdecea';
+        aviso.style.color = '#a93226';
+        aviso.style.border = '1px solid #f5c6cb';
+        aviso.textContent = 'Tu usuario no tiene permisos para consultar este catálogo.';
+        return;
+    }
+
+    if (!puedeCrear) {
+        aviso.style.display = '';
+        aviso.style.background = '#fff8e1';
+        aviso.style.color = '#8a6d3b';
+        aviso.style.border = '1px solid #f3d28b';
+        aviso.textContent = 'Estás en modo solo consulta. Puedes revisar el catálogo, pero no crear nuevos ítems ni cargar Excel.';
+        return;
+    }
+
+    aviso.style.display = 'none';
+    aviso.textContent = '';
+}
+
+async function cargarTablaCatalogo() {
+    const contenedor = document.getElementById('catalogoTablaContenedor');
+    actualizarControlesCatalogoGestion();
+    if (!puedeLeerCatalogoGestion()) {
+        if (contenedor) {
+            contenedor.innerHTML = '<p style="color:#c0392b; text-align:center; padding:20px;">No tienes permisos para consultar servicios y paquetes.</p>';
+        }
+        return;
+    }
+    if (contenedor) contenedor.innerHTML = '<p style="color:#888; text-align:center; padding:20px;">Cargando catálogo...</p>';
+
+    try {
+        const resp = await fetch('/api/comercial/catalogo', { credentials: 'include' });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            if (contenedor) contenedor.innerHTML = `<p style="color:#c0392b;">Error al cargar: ${err.error || resp.status}</p>`;
+            return;
+        }
+        _catalogoItems = await resp.json();
+        filtrarTablaCatalogo();
+    } catch (err) {
+        if (contenedor) contenedor.innerHTML = '<p style="color:#c0392b;">Error de conexión al cargar el catálogo.</p>';
+    }
+}
+
+function filtrarTablaCatalogo() {
+    const tipo   = (document.getElementById('catalogoFiltroTipo')   || {}).value || '';
+    const activo = (document.getElementById('catalogoFiltroActivo') || {}).value;
+    const busq   = ((document.getElementById('catalogoBusqueda')    || {}).value || '').toLowerCase().trim();
+
+    const filtrados = _catalogoItems.filter(item => {
+        if (tipo   && item.tipo_item !== tipo) return false;
+        if (activo === 'true'  && !item.activo) return false;
+        if (activo === 'false' &&  item.activo) return false;
+        if (busq && !`${item.nombre} ${item.codigo || ''}`.toLowerCase().includes(busq)) return false;
+        return true;
+    });
+    _renderTablaCatalogo(filtrados);
+}
+
+function _renderTablaCatalogo_legacy(items) {
+    const contenedor = document.getElementById('catalogoTablaContenedor');
+    if (!contenedor) return;
+
+    if (!items || items.length === 0) {
+        contenedor.innerHTML = '<p style="color:#888; text-align:center; padding:20px;">No se encontraron ítems con los filtros aplicados.</p>';
+        return;
+    }
+
+    const badge = (txt, color) =>
+        `<span style="background:${color};color:#fff;padding:2px 7px;border-radius:10px;font-size:0.78em;white-space:nowrap;">${txt}</span>`;
+
+    const tipoBadge = tipo => {
+        const map = { EXAMEN: '#2980b9', PAQUETE: '#8e44ad', SERVICIO: '#27ae60' };
+        return badge(tipo, map[tipo] || '#7f8c8d');
+    };
+
+    const rows = items.map(it => {
+        const subTipo = it.clasificacion_resumen || '—';
+        const activoBadge = it.activo ? badge('Activo', '#27ae60') : badge('Inactivo', '#95a5a6');
+        const tarifa = it.tarifa_base != null
+            ? `$ ${Number(it.tarifa_base).toLocaleString('es-CO')}`
+            : '—';
+        const componentes = it.resumen_componentes
+            ? `<span style="font-size:0.82em; color:#555;" title="${it.resumen_componentes}">${it.cantidad_componentes} examen(s)</span>`
+            : '';
+        const acciones = [];
+        if (puedeGestionarItemCatalogo(it, 'update')) {
+            acciones.push(
+                `<button class="btn btn-secondary" style="padding:3px 10px; font-size:0.82em;" onclick="abrirModalCatalogo(${it.id})">âœ Editar</button>`
+            );
+        }
+        if (puedeGestionarItemCatalogo(it, 'delete')) {
+            acciones.push(
+                `<button class="btn btn-danger" style="padding:3px 10px; font-size:0.82em; margin-left:4px;" onclick="abrirModalEliminarCatalogo(${it.id}, '${(it.nombre || '').replace(/'/g, "\\'")}')">ðŸ—‘</button>`
+            );
+        }
+        const accionesHtml = acciones.length
+            ? acciones.join('')
+            : '<span style="color:#888; font-size:0.82em;">Solo lectura</span>';
+        return `<tr>
+            <td style="white-space:nowrap; font-size:0.88em;">${it.codigo || '—'}</td>
+            <td style="font-size:0.9em;">${it.nombre}${componentes ? '<br>' + componentes : ''}</td>
+            <td style="text-align:center;">${tipoBadge(it.tipo_item)}</td>
+            <td style="white-space:nowrap; font-size:0.88em;">${subTipo}</td>
+            <td style="text-align:right; white-space:nowrap; font-size:0.9em;">${tarifa}</td>
+            <td style="text-align:center;">${activoBadge}</td>
+            <td style="text-align:center; white-space:nowrap;">
+                <button class="btn btn-secondary" style="padding:3px 10px; font-size:0.82em;"
+                        onclick="abrirModalCatalogo(${it.id})">✏ Editar</button>
+                <button class="btn btn-danger" style="padding:3px 10px; font-size:0.82em; margin-left:4px;"
+                        onclick="abrirModalEliminarCatalogo(${it.id}, '${(it.nombre || '').replace(/'/g, "\\'")}')">🗑</button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    contenedor.innerHTML = `
+        <p style="color:#666; font-size:0.88em; margin-bottom:6px;">${items.length} ítem(s)</p>
+        <table style="width:100%; border-collapse:collapse; font-size:0.91em;">
+            <thead>
+                <tr style="background:#2c3e50; color:#fff;">
+                    <th style="padding:7px 8px; text-align:left;">Código</th>
+                    <th style="padding:7px 8px; text-align:left;">Nombre</th>
+                    <th style="padding:7px 8px; text-align:center;">Tipo</th>
+                    <th style="padding:7px 8px; text-align:left;">Clasificación</th>
+                    <th style="padding:7px 8px; text-align:right;">Tarifa base</th>
+                    <th style="padding:7px 8px; text-align:center;">Estado</th>
+                    <th style="padding:7px 8px; text-align:center;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows}
+            </tbody>
+        </table>`;
+}
+
+function _renderTablaCatalogo(items) {
+    const contenedor = document.getElementById('catalogoTablaContenedor');
+    if (!contenedor) return;
+
+    if (!items || items.length === 0) {
+        contenedor.innerHTML = '<p style="color:#888; text-align:center; padding:20px;">No se encontraron items con los filtros aplicados.</p>';
+        return;
+    }
+
+    const badge = (txt, color) =>
+        `<span style="background:${color};color:#fff;padding:2px 7px;border-radius:10px;font-size:0.78em;white-space:nowrap;">${txt}</span>`;
+
+    const tipoBadge = tipo => {
+        const map = { EXAMEN: '#2980b9', PAQUETE: '#8e44ad', SERVICIO: '#27ae60' };
+        return badge(tipo, map[tipo] || '#7f8c8d');
+    };
+
+    const rows = items.map(it => {
+        const subTipo = it.clasificacion_resumen || '-';
+        const activoBadge = it.activo ? badge('Activo', '#27ae60') : badge('Inactivo', '#95a5a6');
+        const tarifa = it.tarifa_base != null
+            ? `$ ${Number(it.tarifa_base).toLocaleString('es-CO')}`
+            : '-';
+        const componentes = it.resumen_componentes
+            ? `<span style="font-size:0.82em; color:#555;" title="${it.resumen_componentes}">${it.cantidad_componentes} examen(es)</span>`
+            : '';
+
+        const acciones = [];
+        if (puedeGestionarItemCatalogo(it, 'update')) {
+            acciones.push(
+                `<button class="btn btn-secondary" style="padding:3px 10px; font-size:0.82em;" onclick="abrirModalCatalogo(${it.id})">Editar</button>`
+            );
+        }
+        if (puedeGestionarItemCatalogo(it, 'delete')) {
+            acciones.push(
+                `<button class="btn btn-danger" style="padding:3px 10px; font-size:0.82em; margin-left:4px;" onclick="abrirModalEliminarCatalogo(${it.id}, '${(it.nombre || '').replace(/'/g, "\\'")}')">Eliminar</button>`
+            );
+        }
+        const accionesHtml = acciones.length
+            ? acciones.join('')
+            : '<span style="color:#888; font-size:0.82em;">Solo lectura</span>';
+
+        return `<tr>
+            <td style="white-space:nowrap; font-size:0.88em;">${it.codigo || '-'}</td>
+            <td style="font-size:0.9em;">${it.nombre}${componentes ? '<br>' + componentes : ''}</td>
+            <td style="text-align:center;">${tipoBadge(it.tipo_item)}</td>
+            <td style="white-space:nowrap; font-size:0.88em;">${subTipo}</td>
+            <td style="text-align:right; white-space:nowrap; font-size:0.9em;">${tarifa}</td>
+            <td style="text-align:center;">${activoBadge}</td>
+            <td style="text-align:center; white-space:nowrap;">${accionesHtml}</td>
+        </tr>`;
+    }).join('');
+
+    contenedor.innerHTML = `
+        <p style="color:#666; font-size:0.88em; margin-bottom:6px;">${items.length} item(s)</p>
+        <table style="width:100%; border-collapse:collapse; font-size:0.91em;">
+            <thead>
+                <tr style="background:#2c3e50; color:#fff;">
+                    <th style="padding:7px 8px; text-align:left;">Codigo</th>
+                    <th style="padding:7px 8px; text-align:left;">Nombre</th>
+                    <th style="padding:7px 8px; text-align:center;">Tipo</th>
+                    <th style="padding:7px 8px; text-align:left;">Clasificacion</th>
+                    <th style="padding:7px 8px; text-align:right;">Tarifa base</th>
+                    <th style="padding:7px 8px; text-align:center;">Estado</th>
+                    <th style="padding:7px 8px; text-align:center;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows}
+            </tbody>
+        </table>`;
+}
+
+// ---- Modal crear / editar ----
+
+function abrirModalCatalogo(itemId) {
+    if (!itemId && !puedeCrearCatalogoGestion()) {
+        showError('No tienes permiso para crear servicios, exámenes o paquetes.');
+        return;
+    }
+
+    _catalogoEditandoId = itemId || null;
+    _catalogoComponentesIds = [];
+
+    const modal = document.getElementById('catalogoCrudModal');
+    const titulo = document.getElementById('catalogoModalTitulo');
+    const errDiv = document.getElementById('catalogoCrudError');
+    if (errDiv) { errDiv.style.display = 'none'; errDiv.textContent = ''; }
+
+    // Limpiar form
+    ['crudNombre', 'crudNombreCorto', 'crudCodigo', 'crudDescripcion', 'crudComponentesBusq']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const crudTarifa = document.getElementById('crudTarifa');
+    if (crudTarifa) crudTarifa.value = '0';
+    const crudActivo = document.getElementById('crudActivo');
+    if (crudActivo) crudActivo.checked = true;
+    const crudTipoItem = document.getElementById('crudTipoItem');
+    if (crudTipoItem) crudTipoItem.value = 'EXAMEN';
+    const crudTipoExamen = document.getElementById('crudTipoExamen');
+    if (crudTipoExamen) crudTipoExamen.value = '';
+    const crudSubtipo = document.getElementById('crudSubtipo');
+    if (crudSubtipo) crudSubtipo.value = '';
+    _actualizarVisibilidadCrudCampos();
+    _renderComponentesSeleccionados();
+
+    if (itemId) {
+        titulo.textContent = 'Editar ítem';
+        const item = _catalogoItems.find(i => i.id === itemId);
+        if (!puedeGestionarItemCatalogo(item, 'update')) {
+            showError('No tienes permiso para editar este ítem del catálogo.');
+            return;
+        }
+        if (item) {
+            if (crudTipoItem) crudTipoItem.value = item.tipo_item || 'EXAMEN';
+            if (crudTipoExamen) crudTipoExamen.value = item.tipo_examen || '';
+            if (crudSubtipo) crudSubtipo.value = item.subtipo_laboratorio || '';
+            document.getElementById('crudNombre').value = item.nombre || '';
+            document.getElementById('crudNombreCorto').value = item.nombre_corto || '';
+            document.getElementById('crudCodigo').value = item.codigo || '';
+            document.getElementById('crudTarifa').value = item.tarifa_base || 0;
+            document.getElementById('crudDescripcion').value = item.descripcion || '';
+            document.getElementById('crudActivo').checked = item.activo !== false;
+            _catalogoComponentesIds = [...(item.componentes_ids || [])];
+            _renderComponentesSeleccionados();
+        }
+        _actualizarVisibilidadCrudCampos();
+    } else {
+        titulo.textContent = 'Nuevo ítem';
+    }
+
+    if (modal) modal.style.display = 'flex';
+}
+
+function cerrarModalCatalogo() {
+    const modal = document.getElementById('catalogoCrudModal');
+    if (modal) modal.style.display = 'none';
+    _catalogoEditandoId = null;
+    _catalogoComponentesIds = [];
+}
+
+function onCrudTipoItemChange() {
+    _actualizarVisibilidadCrudCampos();
+}
+
+function onCrudTipoExamenChange() {
+    _actualizarVisibilidadCrudCampos();
+}
+
+function _actualizarVisibilidadCrudCampos() {
+    const tipo = (document.getElementById('crudTipoItem') || {}).value || 'EXAMEN';
+    const tipoExamen = (document.getElementById('crudTipoExamen') || {}).value || '';
+
+    const grupoTipoExamen = document.getElementById('crudGrupoTipoExamen');
+    const grupoSubtipo    = document.getElementById('crudGrupoSubtipo');
+    const grupoComp       = document.getElementById('crudGrupoComponentes');
+
+    if (grupoTipoExamen) grupoTipoExamen.style.display = tipo === 'EXAMEN' ? '' : 'none';
+    if (grupoSubtipo) {
+        const necesitaSubtipo = tipo === 'EXAMEN' && ['LABORATORIO', 'CURSOS'].includes(tipoExamen);
+        grupoSubtipo.style.display = necesitaSubtipo ? '' : 'none';
+        if (!necesitaSubtipo) {
+            const el = document.getElementById('crudSubtipo');
+            if (el) el.value = '';
+        }
+    }
+    if (grupoComp) grupoComp.style.display = tipo === 'PAQUETE' ? '' : 'none';
+}
+
+async function buscarExamenesParaPaquete() {
+    const q = ((document.getElementById('crudComponentesBusq') || {}).value || '').trim().toLowerCase();
+    const sugs = document.getElementById('crudComponentesSugerencias');
+    if (!sugs) return;
+
+    const examenes = _catalogoItems.filter(it =>
+        it.tipo_item === 'EXAMEN' &&
+        it.activo &&
+        it.clasificacion_completa &&
+        !_catalogoComponentesIds.includes(it.id) &&
+        (q === '' || `${it.nombre} ${it.codigo || ''}`.toLowerCase().includes(q))
+    ).slice(0, 20);
+
+    if (!q && examenes.length === 0) { sugs.style.display = 'none'; return; }
+
+    sugs.innerHTML = examenes.map(ex =>
+        `<div style="padding:6px 10px; cursor:pointer; border-bottom:1px solid #f0f0f0; font-size:0.9em;"
+              onmousedown="agregarComponentePaquete(${ex.id}, '${(ex.nombre || '').replace(/'/g, "\\'")}')">
+            <strong>${ex.codigo || ''}</strong> ${ex.nombre}
+            <span style="color:#888; font-size:0.85em;">(${ex.clasificacion_resumen || ex.tipo_examen || ''})</span>
+         </div>`
+    ).join('') || '<div style="padding:8px 10px; color:#888; font-size:0.9em;">Sin resultados</div>';
+    sugs.style.display = '';
+}
+
+function agregarComponentePaquete(id, nombre) {
+    if (!_catalogoComponentesIds.includes(id)) {
+        _catalogoComponentesIds.push(id);
+        _renderComponentesSeleccionados();
+    }
+    const busq = document.getElementById('crudComponentesBusq');
+    if (busq) busq.value = '';
+    const sugs = document.getElementById('crudComponentesSugerencias');
+    if (sugs) sugs.style.display = 'none';
+}
+
+function quitarComponentePaquete(id) {
+    _catalogoComponentesIds = _catalogoComponentesIds.filter(x => x !== id);
+    _renderComponentesSeleccionados();
+}
+
+function _renderComponentesSeleccionados() {
+    const cont = document.getElementById('crudComponentesSeleccionados');
+    if (!cont) return;
+    if (_catalogoComponentesIds.length === 0) {
+        cont.innerHTML = '<span style="color:#aaa; font-size:0.88em;">Ningún examen seleccionado</span>';
+        return;
+    }
+    cont.innerHTML = _catalogoComponentesIds.map(id => {
+        const it = _catalogoItems.find(x => x.id === id);
+        const nombre = it ? it.nombre : `ID ${id}`;
+        return `<span style="background:#e8f4fd; border:1px solid #b3d7f0; border-radius:12px; padding:3px 10px; font-size:0.85em; display:flex; align-items:center; gap:5px;">
+            ${nombre}
+            <span onclick="quitarComponentePaquete(${id})" style="cursor:pointer; color:#c0392b; font-weight:bold; font-size:1.1em;" title="Quitar">&times;</span>
+        </span>`;
+    }).join('');
+}
+
+async function guardarItemCatalogo() {
+    const errDiv = document.getElementById('catalogoCrudError');
+    const btn    = document.getElementById('btnGuardarCatalogo');
+    if (errDiv) { errDiv.style.display = 'none'; errDiv.textContent = ''; }
+    if (btn) btn.disabled = true;
+
+    const tipo_item     = (document.getElementById('crudTipoItem')     || {}).value || '';
+    const tipo_examen   = (document.getElementById('crudTipoExamen')   || {}).value || null;
+    const subtipo       = (document.getElementById('crudSubtipo')      || {}).value || null;
+    const nombre        = ((document.getElementById('crudNombre')      || {}).value || '').trim();
+    const nombre_corto  = ((document.getElementById('crudNombreCorto') || {}).value || '').trim() || null;
+    const codigo        = ((document.getElementById('crudCodigo')      || {}).value || '').trim() || null;
+    const tarifa_base   = parseFloat((document.getElementById('crudTarifa') || {}).value || '0') || 0;
+    const descripcion   = ((document.getElementById('crudDescripcion') || {}).value || '').trim() || null;
+    const activo        = (document.getElementById('crudActivo') || {}).checked !== false;
+    const entidad       = getCatalogEntityFromTipoItem(tipo_item);
+    const accion        = _catalogoEditandoId ? 'update' : 'create';
+
+    if (!nombre) {
+        if (errDiv) { errDiv.textContent = 'El nombre es obligatorio.'; errDiv.style.display = ''; }
+        if (btn) btn.disabled = false;
+        return;
+    }
+    if (!canManageComercial(entidad, accion)) {
+        if (errDiv) { errDiv.textContent = 'No tienes permiso para guardar este tipo de ítem.'; errDiv.style.display = ''; }
+        if (btn) btn.disabled = false;
+        return;
+    }
+    if (tipo_item === 'PAQUETE' && _catalogoComponentesIds.length === 0) {
+        if (errDiv) { errDiv.textContent = 'Debes agregar al menos un examen al paquete.'; errDiv.style.display = ''; }
+        if (btn) btn.disabled = false;
+        return;
+    }
+
+    const payload = {
+        tipo_item,
+        tipo_examen: tipo_item === 'EXAMEN' ? (tipo_examen || null) : null,
+        subtipo_laboratorio: tipo_item === 'EXAMEN' ? (subtipo || null) : null,
+        nombre,
+        nombre_corto,
+        codigo,
+        tarifa_base,
+        descripcion,
+        activo,
+        componentes_ids: tipo_item === 'PAQUETE' ? _catalogoComponentesIds : [],
+    };
+
+    try {
+        const url    = _catalogoEditandoId ? `/api/comercial/catalogo/${_catalogoEditandoId}` : '/api/comercial/catalogo';
+        const method = _catalogoEditandoId ? 'PUT' : 'POST';
+        const resp   = await fetch(url, {
+            method,
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            if (errDiv) { errDiv.textContent = data.error || `Error ${resp.status}`; errDiv.style.display = ''; }
+            if (btn) btn.disabled = false;
+            return;
+        }
+        cerrarModalCatalogo();
+        await cargarTablaCatalogo();
+    } catch (err) {
+        if (errDiv) { errDiv.textContent = 'Error de conexión.'; errDiv.style.display = ''; }
+        if (btn) btn.disabled = false;
+    }
+}
+
+// ---- Modal eliminar ----
+
+function abrirModalEliminarCatalogo(id, nombre) {
+    const item = _catalogoItems.find(entry => entry.id === id);
+    if (!puedeGestionarItemCatalogo(item, 'delete')) {
+        showError('No tienes permiso para eliminar este ítem del catálogo.');
+        return;
+    }
+
+    _catalogoEliminandoId = id;
+    _catalogoEliminarModo = 'delete';
+    const modal  = document.getElementById('catalogoEliminarModal');
+    const label  = document.getElementById('catalogoEliminarNombre');
+    const errDiv = document.getElementById('catalogoEliminarError');
+    const btn    = document.getElementById('btnConfirmarEliminarCatalogo');
+    const message = document.getElementById('catalogoEliminarMensaje') || modal?.querySelector('p');
+    if (label)  label.textContent = nombre;
+    if (errDiv) { errDiv.style.display = 'none'; errDiv.textContent = ''; }
+    if (btn) {
+        btn.textContent = 'Eliminar';
+        btn.disabled = false;
+    }
+    if (message) {
+        message.innerHTML = `¿Confirmas que deseas eliminar <strong id="catalogoEliminarNombre">${escapeHtml(nombre || '')}</strong>? Esta acción no se puede deshacer.`;
+    }
+    if (modal)  modal.style.display = 'flex';
+}
+
+function cerrarModalEliminarCatalogo() {
+    const modal = document.getElementById('catalogoEliminarModal');
+    if (modal) modal.style.display = 'none';
+    _catalogoEliminandoId = null;
+    _catalogoEliminarModo = 'delete';
+}
+
+async function confirmarEliminarCatalogo() {
+    if (!_catalogoEliminandoId) return;
+    const btn    = document.getElementById('btnConfirmarEliminarCatalogo');
+    const errDiv = document.getElementById('catalogoEliminarError');
+    const item = _catalogoItems.find(entry => entry.id === _catalogoEliminandoId);
+    if (!puedeGestionarItemCatalogo(item, 'delete')) {
+        if (errDiv) {
+            errDiv.textContent = 'No tienes permiso para eliminar este ítem.';
+            errDiv.style.display = '';
+        }
+        return;
+    }
+    if (btn) btn.disabled = true;
+    if (errDiv) { errDiv.style.display = 'none'; errDiv.textContent = ''; }
+
+    try {
+        const query = _catalogoEliminarModo === 'soft' ? '?soft=true' : '';
+        const resp = await fetch(`/api/comercial/catalogo/${_catalogoEliminandoId}${query}`, {
+            method: 'DELETE',
+            credentials: 'include',
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.status === 409 && _catalogoEliminarModo !== 'soft') {
+            const details = data.details || {};
+            const referencias = [
+                details.tarifas ? `${details.tarifas} tarifa(s)` : null,
+                details.atenciones ? `${details.atenciones} atención(es)` : null,
+                details.paquetes ? `${details.paquetes} paquete(s)` : null,
+            ].filter(Boolean);
+            if (errDiv) {
+                errDiv.textContent = `${data.error || 'Este ítem ya tiene uso registrado.'} Puedes inactivarlo para ocultarlo del uso diario${referencias.length ? ` (${referencias.join(', ')})` : ''}.`;
+                errDiv.style.display = '';
+            }
+            _catalogoEliminarModo = 'soft';
+            if (btn) {
+                btn.textContent = 'Inactivar';
+                btn.disabled = false;
+            }
+            return;
+        }
+        if (!resp.ok) {
+            if (errDiv) {
+                errDiv.textContent = data.error || `Error ${resp.status}`;
+                errDiv.style.display = '';
+            }
+            if (btn) btn.disabled = false;
+            return;
+        }
+        if (_catalogoEliminarModo === 'soft') {
+            showSuccess(data.mensaje || 'Item inactivado correctamente.');
+        }
+        cerrarModalEliminarCatalogo();
+        await cargarTablaCatalogo();
+    } catch (err) {
+        if (errDiv) { errDiv.textContent = 'Error de conexión.'; errDiv.style.display = ''; }
+        if (btn) btn.disabled = false;
+    }
+}
+
+// ---- Carga masiva Excel ----
+
+async function cargarCatalogoDesdeExcel() {
+    const input     = document.getElementById('catalogoExcelArchivo');
+    const resultado = document.getElementById('catalogoExcelResultado');
+    const btn       = document.getElementById('btnCargarCatalogoExcel');
+
+    if (!puedeCrearCatalogoGestion()) {
+        if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">No tienes permiso para cargar catálogos desde Excel.</span>';
+        return;
+    }
+
+    if (!input || !input.files || !input.files[0]) {
+        if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">⚠ Selecciona un archivo .xlsx primero.</span>';
+        return;
+    }
+    const archivo = input.files[0];
+    if (!archivo.name.toLowerCase().endsWith('.xlsx')) {
+        if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">⚠ Solo se aceptan archivos .xlsx.</span>';
+        return;
+    }
+    if (btn) btn.disabled = true;
+    if (resultado) resultado.innerHTML = '<span style="color:#555;">Subiendo, por favor espera...</span>';
+
+    try {
+        const formData = new FormData();
+        formData.append('archivo', archivo);
+        const resp = await fetch('/api/comercial/catalogo/cargar-excel', {
+            method: 'POST',
+            credentials: 'include',
+            body: formData,
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            if (resultado) resultado.innerHTML = `<span style="color:#c0392b;">⚠ Error: ${data.error || resp.status}</span>`;
+            return;
+        }
+        let html = `<span style="color:#27ae60;">✔ ${data.mensaje}</span>`;
+        if (data.errores && data.errores.length > 0) {
+            html += `<br><span style="color:#e67e22;">Advertencias (${data.total_errores}):</span>
+                <ul style="margin:4px 0 0 16px; color:#e67e22; font-size:0.88em;">
+                    ${data.errores.map(e => `<li>${e}</li>`).join('')}
+                </ul>`;
+        }
+        if (resultado) resultado.innerHTML = html;
+        if (input) input.value = '';
+        await cargarTablaCatalogo();
+    } catch (err) {
+        if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">⚠ Error de conexión al subir el archivo.</span>';
+    } finally {
+        if (btn) btn.disabled = false;
     }
 }
