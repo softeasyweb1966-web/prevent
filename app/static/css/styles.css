@@ -1006,6 +1006,26 @@ body.body-sabor-tablas-focus .top-bar {
     justify-content: flex-start;
 }
 
+.sabor-artesanal-header-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.sabor-artesanal-header-card h2 {
+    margin-bottom: 0;
+}
+
+.sabor-artesanal-header-context {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+
 .sabor-artesanal-top-nav .btn {
     width: auto;
     min-width: 132px;
@@ -1022,6 +1042,11 @@ body.body-sabor-tablas-focus .top-bar {
 
 .sabor-artesanal-panel .placeholder {
     max-width: none;
+}
+
+#saborArtesanalVentasDiaPanel.is-pedidos-capture {
+    margin-top: -12px;
+    padding-top: 14px;
 }
 
 .sabor-artesanal-subnav {
@@ -1069,7 +1094,8 @@ body.body-sabor-tablas-focus .top-bar {
 }
 
 .sabor-tablas-menu-head,
-.sabor-tabla-crumbs {
+.sabor-tabla-crumbs,
+.sabor-artesanal-panel-head {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -1241,6 +1267,92 @@ body.body-sabor-tablas-focus .top-bar {
 .sabor-tabla-editor-head span {
     color: #64748b;
     font-size: 0.84rem;
+}
+
+.sabor-tabla-quick-mode {
+    margin-bottom: 8px;
+}
+
+.sabor-tabla-mode-pill {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 10px;
+    border: 1px solid #dbe3ef;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 0.88rem;
+}
+
+.sabor-tabla-mode-pill.is-editing {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+    color: #1e3a8a;
+}
+
+.sabor-tabla-helper-box {
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+.sabor-tabla-helper-title,
+.sabor-tabla-helper-tip {
+    color: #64748b;
+    font-size: 0.84rem;
+}
+
+.sabor-tabla-helper-title {
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+
+.sabor-tabla-helper-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sabor-tabla-helper-item {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    text-align: left;
+    padding: 8px 10px;
+    border: 1px solid #dbe3ef;
+    border-radius: 10px;
+    background: #ffffff;
+    cursor: pointer;
+}
+
+.sabor-tabla-helper-item:hover {
+    border-color: #93c5fd;
+    background: #f8fbff;
+}
+
+.sabor-tabla-helper-main,
+.sabor-tabla-helper-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.sabor-tabla-helper-main small {
+    margin-top: 2px;
+    color: #64748b;
+    font-size: 0.82rem;
+    line-height: 1.35;
+}
+
+.sabor-tabla-helper-meta {
+    align-items: flex-end;
+    gap: 4px;
+    color: #64748b;
+    font-size: 0.8rem;
 }
 
 .sabor-tabla-list-layout {
@@ -2692,6 +2804,7 @@ body.body-sabor-tablas-focus .top-bar {
     .sabor-tabla-capture-actions,
     .sabor-tablas-menu-head,
     .sabor-tabla-crumbs,
+    .sabor-tabla-mode-pill,
     .sabor-tabla-list-title-row,
     .sabor-tabla-header-line,
     .sabor-tabla-variants-header,
@@ -2699,6 +2812,14 @@ body.body-sabor-tablas-focus .top-bar {
     .sabor-list-item-actions {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .sabor-tabla-helper-item {
+        grid-template-columns: 1fr;
+    }
+
+    .sabor-tabla-helper-meta {
+        align-items: flex-start;
     }
 
     .sabor-tabla-back-btn,
@@ -3375,5 +3496,1203 @@ body.body-sabor-tablas-focus .top-bar {
     100% {
         box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
         background-color: transparent;
+    }
+}
+
+.sabor-menus-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.sabor-menus-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.sabor-menus-stat-card,
+.sabor-menus-card {
+    border: 1px solid #dbe3ef;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.sabor-menus-stat-card {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sabor-menus-stat-card strong {
+    font-size: 1.45rem;
+    color: #0f172a;
+}
+
+.sabor-menus-stat-card span,
+.sabor-menus-muted {
+    color: #64748b;
+    font-size: 0.88rem;
+    line-height: 1.4;
+}
+
+.sabor-menus-grid {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.35fr);
+    gap: 16px;
+}
+
+.sabor-menus-grid-single {
+    grid-template-columns: 1fr;
+}
+
+.sabor-menus-grid-bottom {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+}
+
+.sabor-menus-card {
+    padding: 16px;
+}
+
+.sabor-menus-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.sabor-menus-card-head.compact {
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.sabor-menus-card-head h4,
+.sabor-menus-card-head h5 {
+    margin: 0;
+    color: #0f172a;
+}
+
+.sabor-menus-card-head p {
+    margin: 4px 0 0;
+    color: #64748b;
+    font-size: 0.9rem;
+}
+
+.sabor-menus-inline-form,
+.sabor-menus-form-grid {
+    display: grid;
+    gap: 10px;
+}
+
+.sabor-menus-inline-form input,
+.sabor-menus-inline-form textarea,
+.sabor-menus-form-grid input,
+.sabor-menus-form-grid textarea,
+.sabor-menus-form-grid select,
+.sabor-menus-filter-row input,
+.sabor-menus-filter-row select,
+.sabor-menu-component-row input,
+.sabor-menu-component-row select,
+.sabor-menu-component-row textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d9e6;
+    border-radius: 10px;
+    background: #fff;
+    font: inherit;
+}
+
+.sabor-menus-actions-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.sabor-menu-inline-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #0f172a;
+    font-weight: 600;
+}
+
+.sabor-menus-list-simple,
+.sabor-menus-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.sabor-menus-list-item,
+.sabor-menu-saved-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px;
+    background: #f8fafc;
+}
+
+.sabor-menu-saved-card.is-slim {
+    padding: 10px 12px;
+}
+
+.sabor-menu-saved-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.sabor-menus-actions-inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.sabor-menus-filter-row {
+    display: grid;
+    grid-template-columns: minmax(190px, 0.7fr) minmax(0, 1fr);
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.sabor-menu-tablas-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin: 12px 0;
+}
+
+.sabor-menu-tabla-card {
+    border: 1px solid #dbe3ef;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    padding: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.sabor-menu-tabla-card:hover {
+    transform: translateY(-1px);
+    border-color: #93c5fd;
+    box-shadow: 0 10px 22px rgba(37, 99, 235, 0.08);
+}
+
+.sabor-menu-tabla-card strong {
+    display: block;
+    color: #0f172a;
+}
+
+.sabor-menu-tabla-card span {
+    display: block;
+    margin-top: 4px;
+    color: #64748b;
+    font-size: 0.84rem;
+}
+
+.sabor-menu-components-wrap {
+    border: 1px dashed #d6e2f0;
+    border-radius: 14px;
+    padding: 12px;
+    background: #fbfdff;
+}
+
+.sabor-menu-components-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sabor-menu-component-row {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px;
+    background: #fff;
+}
+
+.sabor-menu-component-main {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.9fr) minmax(0, 1.5fr) 110px 120px auto;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.sabor-menu-component-pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 10px 0;
+}
+
+.sabor-menu-component-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #e8f1ff;
+    color: #1d4ed8;
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.sabor-menus-form-grid.is-menu-definition {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+}
+
+.sabor-menu-definition-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px solid #dce7d4;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #fbfff8 0%, #f4fbf0 100%);
+}
+
+.sabor-menu-definition-banner strong {
+    color: #183526;
+}
+
+.sabor-menu-definition-banner span {
+    color: #5f6f67;
+    font-size: 0.88rem;
+}
+
+.sabor-menu-definition-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.sabor-menu-definition-column {
+    border: 1px solid #dbe7dd;
+    border-radius: 16px;
+    background: #fcfffb;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.sabor-menu-definition-head {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sabor-menu-definition-head h5 {
+    margin: 0;
+    color: #10281d;
+}
+
+.sabor-menu-definition-head p {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.86rem;
+    line-height: 1.4;
+}
+
+.sabor-menu-definition-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sabor-menu-definition-group {
+    overflow: hidden;
+}
+
+.sabor-menu-definition-group-title,
+.sabor-menu-definition-selected-title {
+    padding: 8px 10px;
+    background: #edf7ef;
+    color: #193223;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.sabor-menu-definition-options,
+.sabor-menu-definition-selected {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sabor-menu-definition-selected {
+    padding-top: 2px;
+}
+
+.sabor-menu-definition-option,
+.sabor-menu-selected-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 7px 0;
+    border: 0;
+    border-bottom: 1px solid #e8efe9;
+    border-radius: 0;
+    background: transparent;
+    text-align: left;
+}
+
+.sabor-menu-definition-option {
+    cursor: pointer;
+    transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.sabor-menu-definition-option:hover:not(:disabled) {
+    background: #f8fcf8;
+}
+
+.sabor-menu-definition-option.is-selected,
+.sabor-menu-definition-option:disabled {
+    opacity: 0.78;
+    cursor: default;
+    background: transparent;
+}
+
+.sabor-menu-definition-option span,
+.sabor-menu-selected-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.sabor-menu-definition-option strong,
+.sabor-menu-definition-option small,
+.sabor-menu-selected-copy strong,
+.sabor-menu-selected-copy small {
+    overflow-wrap: anywhere;
+}
+
+.sabor-menu-definition-option strong,
+.sabor-menu-selected-copy strong {
+    color: #10281d;
+    font-size: 0.9rem;
+}
+
+.sabor-menu-selected-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.sabor-menu-selected-item.is-protein-row {
+    align-items: flex-start;
+}
+
+.sabor-menu-selected-protein-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.sabor-menu-selected-protein-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.sabor-menu-selected-protein-grid span {
+    color: #65756c;
+    font-size: 0.72rem;
+    line-height: 1.25;
+}
+
+.sabor-menu-selected-protein-grid select,
+.sabor-menu-selected-protein-grid input {
+    min-width: 0;
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #d7e3da;
+    border-radius: 8px;
+    background: #fcfefd;
+    color: #10281d;
+    font-size: 0.82rem;
+}
+
+.sabor-menu-selected-meta-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.sabor-menu-selected-meta-grid span {
+    color: #65756c;
+    font-size: 0.72rem;
+    line-height: 1.25;
+}
+
+.sabor-menu-selected-meta-grid input {
+    min-width: 0;
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #d7e3da;
+    border-radius: 8px;
+    background: #fcfefd;
+    color: #10281d;
+    font-size: 0.82rem;
+}
+
+.sabor-menu-definition-option small,
+.sabor-menu-selected-copy small {
+    color: #65756c;
+    font-size: 0.76rem;
+    line-height: 1.35;
+}
+
+.sabor-menu-definition-option b {
+    color: #22543d;
+    font-size: 0.76rem;
+    white-space: nowrap;
+}
+
+.sabor-menu-definition-option:last-child,
+.sabor-menu-selected-item:last-child {
+    border-bottom: 0;
+}
+
+@media (max-width: 1200px) {
+    .sabor-menus-stats,
+    .sabor-menus-grid,
+    .sabor-menus-grid-bottom,
+    .sabor-menu-tablas-grid,
+    .sabor-menu-definition-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 900px) {
+    .sabor-menus-stats,
+    .sabor-menus-grid,
+    .sabor-menus-grid-bottom,
+    .sabor-menu-tablas-grid,
+    .sabor-menus-filter-row,
+    .sabor-menu-component-main,
+    .sabor-menus-form-grid.is-menu-definition,
+    .sabor-menu-definition-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sabor-menu-saved-top,
+    .sabor-menus-card-head {
+        flex-direction: column;
+    }
+
+    .sabor-menu-selected-protein-grid,
+    .sabor-menu-selected-meta-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.sabor-pedidos-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+}
+
+.sabor-pedidos-shell-setup {
+    justify-content: center;
+}
+
+.sabor-pedidos-setup-card {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 22px;
+    border: 1px solid #d8e4da;
+    border-radius: 20px;
+    background: linear-gradient(180deg, #ffffff 0%, #f7fbf7 100%);
+    box-shadow: 0 18px 34px rgba(15, 23, 42, 0.06);
+}
+
+.sabor-pedidos-setup-grid {
+    display: grid;
+    grid-template-columns: 170px minmax(160px, 180px) minmax(260px, 1fr) 180px;
+    gap: 12px;
+}
+
+.sabor-pedidos-setup-grid input,
+.sabor-pedidos-setup-grid select,
+.sabor-pedidos-observation-box textarea {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #c7d6cb;
+    border-radius: 12px;
+    background: #fff;
+    font: inherit;
+    color: #13251b;
+}
+
+.sabor-pedidos-setup-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.sabor-pedidos-toolbar-total {
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: #22543d;
+    color: #fff;
+    font-size: 0.98rem;
+    text-align: center;
+}
+
+.sabor-pedidos-order-pill {
+    padding: 9px 14px;
+    border: 1px solid #d4e0d6;
+    border-radius: 999px;
+    background: #f7faf7;
+    color: #244233;
+    font-size: 0.88rem;
+}
+
+.sabor-pedidos-header-fields {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    gap: 10px;
+    flex: 1 1 480px;
+}
+
+.sabor-pedidos-header-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    padding: 9px 12px;
+    border: 1px solid #d4e0d6;
+    border-radius: 12px;
+    background: #f7faf7;
+}
+
+.sabor-pedidos-header-field small {
+    color: #5f6f67;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.sabor-pedidos-header-field strong {
+    color: #183526;
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
+}
+
+.sabor-pedidos-top-total {
+    padding: 9px 16px;
+    border-radius: 999px;
+    background: #22543d;
+    color: #fff;
+    font-weight: 700;
+}
+
+.sabor-pedidos-capture-body {
+    display: grid;
+    grid-template-columns: minmax(290px, 0.88fr) minmax(0, 1.42fr);
+    gap: 12px;
+    min-height: 0;
+    height: calc(100vh - 330px);
+}
+
+.sabor-pedidos-summary-panel,
+.sabor-pedidos-catalog-panel {
+    border: 1px solid #dbe7dd;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #ffffff 0%, #f9fcf8 100%);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+
+.sabor-pedidos-summary-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px 0;
+    color: #183526;
+}
+
+.sabor-pedidos-summary-head span {
+    color: #5f6f67;
+    font-size: 0.82rem;
+}
+
+.sabor-pedidos-guest-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.sabor-pedidos-guest-list.compact {
+    padding-top: 10px;
+}
+
+.sabor-pedidos-guest-card {
+    border: 1px solid #dfe9df;
+    border-radius: 14px;
+    padding: 10px;
+    background: #fff;
+    cursor: default;
+    transition: box-shadow 0.14s ease, border-color 0.14s ease;
+}
+
+.sabor-pedidos-guest-card:hover {
+    box-shadow: 0 10px 22px rgba(34, 84, 61, 0.08);
+}
+
+.sabor-pedidos-guest-card.is-active {
+    border-color: #4f9d69;
+    background: linear-gradient(180deg, #ffffff 0%, #f0fbf2 100%);
+    box-shadow: 0 14px 24px rgba(79, 157, 105, 0.12);
+}
+
+.sabor-pedidos-guest-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    color: #10281d;
+}
+
+.sabor-pedidos-guest-top strong {
+    font-size: 1rem;
+}
+
+.sabor-pedidos-guest-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sabor-pedidos-empty-mini {
+    padding: 10px;
+    border: 1px dashed #d5e1d7;
+    border-radius: 12px;
+    color: #718076;
+    background: #fbfdfb;
+    font-size: 0.86rem;
+}
+
+.sabor-pedidos-item-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid #eef3ee;
+}
+
+.sabor-pedidos-item-line.read-only {
+    align-items: flex-start;
+}
+
+.sabor-pedidos-item-line:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+
+.sabor-pedidos-item-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.sabor-pedidos-item-copy strong,
+.sabor-pedidos-item-copy span {
+    overflow-wrap: anywhere;
+}
+
+.sabor-pedidos-item-copy span {
+    color: #607066;
+    font-size: 0.82rem;
+}
+
+.sabor-pedidos-item-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.sabor-pedidos-item-total {
+    min-width: 74px;
+    text-align: right;
+    color: #244233;
+    font-weight: 700;
+}
+
+.sabor-pedidos-observacion {
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: #fff7df;
+    color: #6f5614;
+    font-size: 0.82rem;
+}
+
+.sabor-pedidos-category-strip {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 8px;
+    padding: 0;
+}
+
+.sabor-pedidos-category-tab {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    padding: 9px 10px;
+    border: 1px solid #d5e1d7;
+    border-radius: 12px;
+    background: #f8fbf8;
+    color: #183526;
+    cursor: pointer;
+    transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.sabor-pedidos-category-tab:hover:not(:disabled) {
+    border-color: #8bc59d;
+}
+
+.sabor-pedidos-category-tab.active {
+    border-color: #4f9d69;
+    background: #edf8f0;
+}
+
+.sabor-pedidos-category-tab:disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+}
+
+.sabor-pedidos-category-tab strong {
+    font-size: 0.86rem;
+}
+
+.sabor-pedidos-category-tab span {
+    font-size: 0.76rem;
+    color: #5f6f67;
+}
+
+.sabor-pedidos-category-strip-main {
+    padding: 0 0 2px;
+}
+
+.sabor-pedidos-options-panel {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.sabor-pedidos-options-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.sabor-pedidos-options-wrap {
+    padding: 10px;
+    min-height: 100%;
+}
+
+.sabor-pedidos-options-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 0 2px;
+}
+
+.sabor-pedidos-options-header strong {
+    color: #10281d;
+}
+
+.sabor-pedidos-options-header span {
+    color: #5f6f67;
+    font-size: 0.84rem;
+}
+
+.sabor-pedidos-options-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.sabor-pedidos-menu-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sabor-pedidos-menu-picker {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 1px solid #dbe7dd;
+    border-radius: 14px;
+    background: #f8fcf8;
+}
+
+.sabor-pedidos-menu-picker label {
+    color: #183526;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.sabor-pedidos-menu-picker select {
+    width: 100%;
+    padding: 11px 12px;
+    border: 1px solid #c7d6cb;
+    border-radius: 12px;
+    background: #fff;
+    font: inherit;
+    color: #13251b;
+}
+
+.sabor-pedidos-menu-picker-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
+}
+
+.sabor-pedidos-menu-picker-meta strong {
+    color: #22543d;
+    white-space: nowrap;
+}
+
+.sabor-pedidos-menu-picker-meta span {
+    color: #5f6f67;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    text-align: right;
+}
+
+.sabor-pedidos-option-row {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #dbe7dd;
+    border-radius: 12px;
+    background: #fff;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.14s ease, background 0.14s ease;
+}
+
+.sabor-pedidos-option-row.is-menu {
+    min-height: 70px;
+}
+
+.sabor-pedidos-option-row:hover {
+    border-color: #86be97;
+    background: #f8fcf8;
+}
+
+.sabor-pedidos-option-main {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.sabor-pedidos-option-main strong,
+.sabor-pedidos-option-main small {
+    overflow-wrap: anywhere;
+}
+
+.sabor-pedidos-option-main strong {
+    color: #10281d;
+    font-size: 0.94rem;
+}
+
+.sabor-pedidos-option-main small {
+    color: #65756c;
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+
+.sabor-pedidos-option-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.sabor-pedidos-option-side em {
+    font-style: normal;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #22543d;
+}
+
+.sabor-pedidos-option-side b {
+    font-size: 0.76rem;
+    color: #5f6f67;
+}
+
+.sabor-pedidos-builder-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sabor-pedidos-builder-head {
+    padding: 10px 12px;
+    border: 1px solid #d8e7db;
+    border-radius: 12px;
+    background: #f8fcf8;
+}
+
+.sabor-pedidos-builder-head strong,
+.sabor-pedidos-builder-head small {
+    display: block;
+}
+
+.sabor-pedidos-builder-head small {
+    margin-top: 4px;
+    color: #62716a;
+    line-height: 1.35;
+}
+
+.sabor-pedidos-builder-group {
+    border: 1px solid #dce8de;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.sabor-pedidos-builder-group-title {
+    padding: 8px 12px;
+    background: #edf7ef;
+    color: #193223;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.sabor-pedidos-builder-group-options {
+    display: grid;
+    grid-template-columns: 1fr;
+}
+
+.sabor-pedidos-builder-subgroup {
+    border-top: 1px solid #edf3ee;
+}
+
+.sabor-pedidos-builder-subgroup:first-of-type {
+    border-top: 0;
+}
+
+.sabor-pedidos-builder-subgroup-title {
+    padding: 8px 12px;
+    background: #f8fcf8;
+    color: #345543;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.sabor-pedidos-builder-option {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 0;
+    border-top: 1px solid #edf3ee;
+    background: #fff;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sabor-pedidos-builder-group-options .sabor-pedidos-builder-option:first-child {
+    border-top: 0;
+}
+
+.sabor-pedidos-builder-option.is-selected {
+    background: #f6fcf7;
+}
+
+.sabor-pedidos-builder-check {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #a7c8af;
+    border-radius: 4px;
+    background: #fff;
+    color: #1f6b3b;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.sabor-pedidos-builder-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.sabor-pedidos-builder-copy strong,
+.sabor-pedidos-builder-copy small {
+    overflow-wrap: anywhere;
+}
+
+.sabor-pedidos-builder-copy strong {
+    color: #13251b;
+    font-size: 0.9rem;
+}
+
+.sabor-pedidos-builder-copy small {
+    color: #65756c;
+    font-size: 0.77rem;
+    line-height: 1.35;
+}
+
+.sabor-pedidos-builder-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding-top: 4px;
+}
+
+.sabor-pedidos-observation-box {
+    padding: 0 10px 10px;
+}
+
+.sabor-pedidos-observation-box.compact {
+    padding-top: 2px;
+}
+
+.sabor-pedidos-observation-box textarea {
+    min-height: 70px;
+    resize: vertical;
+}
+
+.sabor-pedidos-bottom-bar {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid #d2e0d5;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.sabor-pedidos-bottom-guest-tabs,
+.sabor-pedidos-bottom-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.sabor-pedidos-guest-chip {
+    min-width: 48px;
+    padding: 10px 14px;
+    border: 1px solid #d3e0d5;
+    border-radius: 12px;
+    background: #f8fbf8;
+    color: #183526;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.sabor-pedidos-guest-chip.active {
+    border-color: #22543d;
+    background: #22543d;
+    color: #fff;
+}
+
+@media (max-width: 1200px) {
+    .sabor-pedidos-header-fields,
+    .sabor-pedidos-setup-grid,
+    .sabor-pedidos-options-list {
+        grid-template-columns: 1fr;
+    }
+
+    .sabor-pedidos-capture-body,
+    .sabor-pedidos-category-strip {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+
+    .sabor-pedidos-setup-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+
+@media (max-width: 900px) {
+    .sabor-pedidos-setup-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sabor-pedidos-menu-picker-meta,
+    .sabor-pedidos-bottom-bar,
+    .sabor-pedidos-item-line {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .sabor-pedidos-item-actions {
+        justify-content: flex-start;
+    }
+
+    .sabor-pedidos-guest-list {
+        max-height: none;
+    }
+
+    .sabor-artesanal-header-context {
+        width: 100%;
+        margin-left: 0;
     }
 }

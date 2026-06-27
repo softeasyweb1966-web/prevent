@@ -28,7 +28,7 @@ window._comercialSeccionActual = window._comercialSeccionActual || 'inicio';
 window._impuestosPeriodoActual = window._impuestosPeriodoActual || null;
 window._comprasPeriodoActual = window._comprasPeriodoActual || null;
 window._ventasPeriodoActual = window._ventasPeriodoActual || null;
-window._saborArtesanalSeccionActual = window._saborArtesanalSeccionActual || 'tablas';
+window._saborArtesanalSeccionActual = window._saborArtesanalSeccionActual || '';
 window._saborArtesanalTablasSeccionActual = window._saborArtesanalTablasSeccionActual || '';
 window._saborArtesanalTablasState = window._saborArtesanalTablasState || {};
 
@@ -2277,6 +2277,7 @@ function setupMenuNavigation() {
                 if (section) {
                     window._saborArtesanalSeccionActual = section;
                 } else {
+                    window._saborArtesanalSeccionActual = '';
                     setSidebarGroupOpen('sabor_artesanal', true);
                 }
             }
@@ -2308,11 +2309,17 @@ function normalizeSaborArtesanalLabels() {
     const topNav = document.querySelector('.sabor-artesanal-top-nav');
     if (topNav) topNav.setAttribute('aria-label', 'Menu Sabor Artesanal');
 
-    const menusPlaceholder = document.querySelector('#saborArtesanalMenusPanel .placeholder');
+    const menusPanel = document.getElementById('saborArtesanalMenusPanel');
+    const menusPlaceholder = menusPanel?.dataset?.initializedMenus === 'true'
+        ? null
+        : document.querySelector('#saborArtesanalMenusPanel .placeholder');
     if (menusPlaceholder) menusPlaceholder.textContent = 'Aqui podremos administrar el catalogo de menus y preparaciones.';
     const comprasPlaceholder = document.querySelector('#saborArtesanalComprasPanel .placeholder');
     if (comprasPlaceholder) comprasPlaceholder.textContent = 'Modulo base preparado para registrar compras e insumos.';
-    const ventasPlaceholder = document.querySelector('#saborArtesanalVentasDiaPanel .placeholder');
+    const ventasPanel = document.getElementById('saborArtesanalVentasDiaPanel');
+    const ventasPlaceholder = ventasPanel?.dataset?.initializedPedidos === 'true'
+        ? null
+        : document.querySelector('#saborArtesanalVentasDiaPanel .placeholder');
     if (ventasPlaceholder) ventasPlaceholder.textContent = 'Vista inicial para el registro diario de ventas.';
     const cierrePlaceholder = document.querySelector('#saborArtesanalCierreDiaPanel .placeholder');
     if (cierrePlaceholder) cierrePlaceholder.textContent = 'Seccion lista para consolidar cierres diarios.';
@@ -2321,25 +2328,75 @@ function normalizeSaborArtesanalLabels() {
 }
 
 const SABOR_ARTESANAL_TABLAS_CONFIG = {
-    entradas: { key: 'entradas', label: 'Entradas' },
-    principios: { key: 'principios', label: 'Principios' },
-    proteinas: { key: 'proteinas', label: 'Proteinas' },
-    basicos: { key: 'basicos', label: 'Basicos' },
-    acompanamientos: { key: 'acompanamientos', label: 'Acompanamientos' },
-    ensaladas: { key: 'ensaladas', label: 'Ensaladas' },
+    entradas: { key: 'entradas', label: 'Entradas', singular: 'Entrada' },
+    principios: { key: 'principios', label: 'Principios', singular: 'Principio' },
+    proteinas: { key: 'proteinas', label: 'Proteinas', singular: 'Proteina' },
+    basicos: { key: 'basicos', label: 'Basicos', singular: 'Basico' },
+    acompanamientos: { key: 'acompanamientos', label: 'Acompanamientos', singular: 'Acompanamiento' },
+    ensaladas: { key: 'ensaladas', label: 'Ensaladas', singular: 'Ensalada' },
+    bebidas_frias: { key: 'bebidas_frias', label: 'Bebidas Frias', singular: 'Bebida Fria' },
+    bebidas_calientes: { key: 'bebidas_calientes', label: 'Bebidas Calientes', singular: 'Bebida Caliente' },
+    paquetes: { key: 'paquetes', label: 'Paquetes', singular: 'Paquete' },
+    adicionales: { key: 'adicionales', label: 'Adicionales', singular: 'Adicional' },
 };
 
 let _saborTablaCrudModalState = null;
 let _saborTablaDeleteState = null;
+
+const SABOR_ARTESANAL_PRINCIPIOS_GRUPOS = ['granos', 'verduras'];
+const SABOR_ARTESANAL_TABLAS_CON_PRECIO = ['bebidas_frias', 'bebidas_calientes', 'paquetes', 'adicionales'];
+
+function _saborTablaCategoriaRequierePrecio(section = 'entradas') {
+    return SABOR_ARTESANAL_TABLAS_CON_PRECIO.includes(_normalizarSaborTablaCategoria(section));
+}
+
+function _formatSaborTablaPrecio(value) {
+    if (value === null || value === '' || typeof value === 'undefined') return '';
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return '';
+    if (typeof formatCurrency === 'function') return formatCurrency(amount);
+    return `$ ${amount.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 function updateSaborArtesanalLayout(isFocus = false) {
     if (!document?.body) return;
     document.body.classList.toggle('body-sabor-tablas-focus', Boolean(isFocus));
 }
 
+function ensureSaborArtesanalPanelBackButtons() {
+    const panelConfigs = [
+        { id: 'saborArtesanalMenusPanel', title: 'Menus' },
+        { id: 'saborArtesanalComprasPanel', title: 'Compras' },
+        { id: 'saborArtesanalVentasDiaPanel', title: 'Ventas Dia' },
+        { id: 'saborArtesanalCierreDiaPanel', title: 'Cierre Dia' },
+        { id: 'saborArtesanalInformesPanel', title: 'Informes' },
+    ];
+
+    panelConfigs.forEach(({ id, title }) => {
+        const panel = document.getElementById(id);
+        if (!panel) return;
+
+        let head = panel.querySelector('.sabor-artesanal-panel-head');
+        if (!head) {
+            const staleTitle = panel.querySelector('h3');
+            if (staleTitle) staleTitle.remove();
+
+            head = document.createElement('div');
+            head.className = 'sabor-artesanal-panel-head';
+            head.innerHTML = `
+                <button type="button" class="btn btn-secondary sabor-tabla-back-btn" onclick="volverMenuPrincipalDesdeSaborArtesanal()">Volver al menu anterior</button>
+                <h3 style="margin:0;">${title}</h3>
+            `;
+            panel.insertBefore(head, panel.firstChild);
+        }
+    });
+}
+
 function volverMenuPrincipalDesdeSaborArtesanal() {
+    window._saborArtesanalSeccionActual = '';
+    window._saborArtesanalTablasSeccionActual = '';
     updateSaborArtesanalLayout(false);
-    switchModule('appBanner');
+    setSaborArtesanalSection('');
 }
 
 function volverATablasSaborArtesanal() {
@@ -2354,6 +2411,14 @@ function _normalizarSaborTablaCategoria(section = 'entradas') {
 
 function _getSaborTablaConfig(section = 'entradas') {
     return SABOR_ARTESANAL_TABLAS_CONFIG[_normalizarSaborTablaCategoria(section)];
+}
+
+function _isSaborTablaPrincipios(section = 'entradas') {
+    return _normalizarSaborTablaCategoria(section) === 'principios';
+}
+
+function _isSaborPrincipioGrupoFijoItem(item) {
+    return SABOR_ARTESANAL_PRINCIPIOS_GRUPOS.includes(String(item?.nombre || '').trim().toLowerCase());
 }
 
 function _getSaborTablaDomKey(section = 'entradas') {
@@ -2373,15 +2438,37 @@ function _getSaborTablaState(section = 'entradas') {
     return window._saborArtesanalTablasState[key];
 }
 
+function _createEmptySaborTablaDraft() {
+    return {
+        editingParentId: null,
+        nombre: '',
+        descripcion: '',
+        precio_venta: '',
+        activo: true,
+        variantes: [{ id: null, nombre: '', descripcion: '', precio_venta: '', activo: true }],
+    };
+}
+
+function _cloneSaborTablaVariantes(children = []) {
+    const variantes = Array.isArray(children)
+        ? children.map(child => ({
+            id: Number(child.id) || null,
+            nombre: child.nombre || '',
+            descripcion: child.descripcion || '',
+            precio_venta: child.precio_venta_texto || child.precio_venta || '',
+            activo: child.activo !== false,
+        }))
+        : [];
+
+    return variantes.length > 0
+        ? variantes
+        : [{ id: null, nombre: '', descripcion: '', precio_venta: '', activo: true }];
+}
+
 function _getSaborTablaDraft(section = 'entradas') {
     const state = _getSaborTablaState(section);
     if (!state.draft) {
-        state.draft = {
-            nombre: '',
-            descripcion: '',
-            activo: true,
-            variantes: [{ nombre: '', descripcion: '', activo: true }],
-        };
+        state.draft = _createEmptySaborTablaDraft();
     }
     return state.draft;
 }
@@ -2401,11 +2488,16 @@ function ensureSaborArtesanalTablaModals() {
                     <div id="saborTablaCrudContexto" style="margin-bottom:12px; color:#64748b; font-size:0.92em;"></div>
                     <div class="form-group">
                         <label for="saborTablaCrudNombre">Nombre *</label>
-                        <input type="text" id="saborTablaCrudNombre" maxlength="150" placeholder="Nombre del item">
+                        <input type="text" id="saborTablaCrudNombre" maxlength="150" placeholder="Nombre del item" autocomplete="off" onfocus="renderSaborTablaCrudHelper()" oninput="renderSaborTablaCrudHelper()">
+                        <div id="saborTablaCrudHelper" class="sabor-tabla-helper-box"></div>
                     </div>
                     <div class="form-group">
                         <label for="saborTablaCrudDescripcion">Descripcion</label>
                         <textarea id="saborTablaCrudDescripcion" rows="3" style="width:100%; resize:vertical;" placeholder="Detalle opcional"></textarea>
+                    </div>
+                    <div class="form-group" id="saborTablaCrudPrecioGroup" style="display:none;">
+                        <label for="saborTablaCrudPrecioVenta">Precio de venta *</label>
+                        <input type="number" id="saborTablaCrudPrecioVenta" min="0" step="0.01" placeholder="Ej: 12500">
                     </div>
                     <div class="form-group" style="display:flex; align-items:center; gap:8px;">
                         <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:500;">
@@ -2416,7 +2508,7 @@ function ensureSaborArtesanalTablaModals() {
                     <div id="saborTablaCrudError" style="display:none; color:#c0392b; font-size:0.92em; margin-top:10px;"></div>
                     <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:18px; padding-top:12px; border-top:1px solid #eee;">
                         <button type="button" class="btn btn-secondary" onclick="cerrarModalSaborTabla()">Cancelar</button>
-                        <button type="button" class="btn btn-primary" onclick="guardarSaborTablaItem()">Guardar</button>
+                        <button type="button" class="btn btn-primary" id="saborTablaCrudGuardarBtn" onclick="guardarSaborTablaItem()">Guardar</button>
                     </div>
                 </div>
             </div>
@@ -2447,19 +2539,24 @@ function ensureSaborArtesanalTablasUI() {
     panel.innerHTML = `
         <div id="saborArtesanalTablasMenu" class="sabor-tablas-menu-view">
             <div class="sabor-tablas-menu-head">
-                <button type="button" class="btn btn-secondary sabor-tabla-back-btn" onclick="volverMenuPrincipalDesdeSaborArtesanal()">Volver al menu principal</button>
+                <button type="button" class="btn btn-secondary sabor-tabla-back-btn" onclick="volverMenuPrincipalDesdeSaborArtesanal()">Volver al menu anterior</button>
                 <div class="sabor-tablas-menu-text">
                     <h3 style="margin:0;">Tablas</h3>
-                    <p style="margin:4px 0 0;">Selecciona una categoria para trabajar solo esa opcion.</p>
+                    <p style="margin:4px 0 0;">Selecciona una categoria para trabajar solo esa opcion. En Menus, la columna Complementos toma ayudas desde Basicos, Acompanamientos, Ensaladas, Adicionales y Bebidas.</p>
                 </div>
             </div>
             <div class="sabor-tablas-option-list" role="listbox" aria-label="Categorias de tablas Sabor Artesanal">
+                <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaCategorias_menu" onclick="setSaborArtesanalTablasSection('categorias_menu')">Categorias de Menu</button>
                 <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaEntradas" onclick="setSaborArtesanalTablasSection('entradas')">Entradas</button>
                 <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaPrincipios" onclick="setSaborArtesanalTablasSection('principios')">Principios</button>
                 <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaProteinas" onclick="setSaborArtesanalTablasSection('proteinas')">Proteinas</button>
                 <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaBasicos" onclick="setSaborArtesanalTablasSection('basicos')">Basicos</button>
                 <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaAcompanamientos" onclick="setSaborArtesanalTablasSection('acompanamientos')">Acompanamientos</button>
                 <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaEnsaladas" onclick="setSaborArtesanalTablasSection('ensaladas')">Ensaladas</button>
+                <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaBebidas_frias" onclick="setSaborArtesanalTablasSection('bebidas_frias')">Bebidas Frias</button>
+                <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaBebidas_calientes" onclick="setSaborArtesanalTablasSection('bebidas_calientes')">Bebidas Calientes</button>
+                <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaPaquetes" onclick="setSaborArtesanalTablasSection('paquetes')">Paquetes</button>
+                <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaAdicionales" onclick="setSaborArtesanalTablasSection('adicionales')">Adicionales</button>
             </div>
         </div>
         <div id="saborArtesanalTablaWorkspace" class="sabor-artesanal-subpanel" style="display:none;"></div>
@@ -2472,36 +2569,36 @@ function ensureSaborArtesanalTablaCrudPanel(section = 'entradas') {
     const domKey = _getSaborTablaDomKey(config.key);
     const panel = document.getElementById('saborArtesanalTablaWorkspace');
     if (!panel) return;
-
-    panel.innerHTML = `
-        <div class="sabor-tabla-shell">
-            <div class="sabor-tabla-crumbs">
-                <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="volverATablasSaborArtesanal()">Volver a Tablas</button>
-                <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="volverMenuPrincipalDesdeSaborArtesanal()">Menu principal</button>
-                <strong>${config.label}</strong>
-            </div>
-            <div class="sabor-tabla-header-line">
-                <input type="text" id="saborTabla${domKey}Busqueda" placeholder="Buscar principal o variante..." oninput="renderSaborArtesanalTabla('${config.key}')">
-                <select id="saborTabla${domKey}Activo" onchange="renderSaborArtesanalTabla('${config.key}')">
-                    <option value="true">Activos</option>
-                    <option value="all">Todos</option>
-                    <option value="false">Inactivos</option>
-                </select>
-                <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="cargarSaborArtesanalTabla('${config.key}', true)">Actualizar</button>
-            </div>
+    const isPrincipios = _isSaborTablaPrincipios(config.key);
+    const editorBlock = isPrincipios
+        ? `
             <div class="sabor-tabla-editor">
                 <div class="sabor-tabla-editor-head">
-                    <strong>${config.label.slice(0, -1) || config.label} principal</strong>
+                    <strong>Principios: Granos y Verduras</strong>
+                    <span>Aqui defines las opciones que luego se podran combinar en el menu.</span>
+                </div>
+                <div class="sabor-tabla-mode-pill">
+                    En Principios solo se manejan dos grupos fijos: Granos y Verduras. Selecciona uno en la lista y agrega sus opciones desde el panel derecho.
+                </div>
+            </div>
+        `
+        : `
+            <div class="sabor-tabla-editor">
+                <div class="sabor-tabla-editor-head">
+                    <strong>${config.singular || config.label} principal</strong>
                     <span>Este boton guarda el principal y todas las opciones llenas.</span>
                 </div>
+                <div id="saborTabla${domKey}QuickMode" class="sabor-tabla-quick-mode"></div>
                 <div class="sabor-tabla-capture-grid">
-                    <input type="text" id="saborTabla${domKey}PrincipalNombre" placeholder="Principal. Ej: Pechuga" oninput="setSaborTablaDraftField('${config.key}', 'nombre', this.value)">
+                    <input type="text" id="saborTabla${domKey}PrincipalNombre" placeholder="Principal. Ej: Pechuga" autocomplete="off" onfocus="renderSaborTablaPrincipalHelper('${config.key}')" oninput="setSaborTablaDraftField('${config.key}', 'nombre', this.value)">
                     <input type="text" id="saborTabla${domKey}PrincipalDescripcion" placeholder="Descripcion opcional" oninput="setSaborTablaDraftField('${config.key}', 'descripcion', this.value)">
+                    ${_saborTablaCategoriaRequierePrecio(config.key) ? `<input type="number" id="saborTabla${domKey}PrincipalPrecioVenta" min="0" step="0.01" placeholder="Precio de venta" oninput="setSaborTablaDraftField('${config.key}', 'precio_venta', this.value)">` : ''}
                     <label class="sabor-tabla-inline-check">
                         <input type="checkbox" id="saborTabla${domKey}PrincipalActivo" checked onchange="setSaborTablaDraftActivo('${config.key}', this.checked)">
                         Activo
                     </label>
                 </div>
+                <div id="saborTabla${domKey}PrincipalHelper" class="sabor-tabla-helper-box"></div>
                 <div class="sabor-tabla-variants-box">
                     <div class="sabor-tabla-variants-header">
                         <h6>Opciones del principal</h6>
@@ -2512,13 +2609,31 @@ function ensureSaborArtesanalTablaCrudPanel(section = 'entradas') {
                 <div id="saborTabla${domKey}QuickError" class="sabor-tabla-error" style="display:none;"></div>
                 <div class="sabor-tabla-capture-actions">
                     <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="limpiarSaborTablaQuickForm('${config.key}')">Limpiar</button>
-                    <button type="button" class="btn btn-primary sabor-tabla-save-btn" onclick="guardarSaborTablaQuickForm('${config.key}')">Guardar principal con opciones</button>
+                    <button type="button" class="btn btn-primary sabor-tabla-save-btn" id="saborTabla${domKey}SaveBtn" onclick="guardarSaborTablaQuickForm('${config.key}')">Guardar principal con opciones</button>
                 </div>
             </div>
+        `;
+
+    panel.innerHTML = `
+        <div class="sabor-tabla-shell">
+            <div class="sabor-tabla-crumbs">
+                <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="volverATablasSaborArtesanal()">Volver a Tablas</button>
+                <strong>${config.label}</strong>
+            </div>
+            <div class="sabor-tabla-header-line">
+                <input type="text" id="saborTabla${domKey}Busqueda" placeholder="${isPrincipios ? 'Buscar grupo, grano o verdura...' : 'Buscar principal o variante...'}" oninput="renderSaborArtesanalTabla('${config.key}')">
+                <select id="saborTabla${domKey}Activo" onchange="renderSaborArtesanalTabla('${config.key}')">
+                    <option value="true">Activos</option>
+                    <option value="all">Todos</option>
+                    <option value="false">Inactivos</option>
+                </select>
+                <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="cargarSaborArtesanalTabla('${config.key}', true)">Actualizar</button>
+            </div>
+            ${editorBlock}
             <div id="saborTabla${domKey}Resumen" class="sabor-tabla-resumen"></div>
             <div class="sabor-tabla-list-layout">
                 <div class="sabor-tabla-list-panel">
-                    <div class="sabor-tabla-list-title">Principales guardados</div>
+                    <div class="sabor-tabla-list-title">${isPrincipios ? 'Grupos de principios' : 'Principales guardados'}</div>
                     <div id="saborTabla${domKey}Principales" class="sabor-tabla-listbox">
                         <div class="placeholder" style="padding:20px 12px;">Cargando items...</div>
                     </div>
@@ -2526,13 +2641,13 @@ function ensureSaborArtesanalTablaCrudPanel(section = 'entradas') {
                 <div class="sabor-tabla-list-panel">
                     <div class="sabor-tabla-list-title-row">
                         <div>
-                            <div class="sabor-tabla-list-title">Opciones guardadas</div>
-                            <div id="saborTabla${domKey}SeleccionadoNombre" class="sabor-tabla-selected-label">Selecciona un principal.</div>
+                            <div class="sabor-tabla-list-title">${isPrincipios ? 'Opciones del grupo' : 'Opciones guardadas'}</div>
+                            <div id="saborTabla${domKey}SeleccionadoNombre" class="sabor-tabla-selected-label">${isPrincipios ? 'Selecciona Granos o Verduras.' : 'Selecciona un principal.'}</div>
                         </div>
                         <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" id="saborTabla${domKey}BtnNuevoDetalle" onclick="abrirModalDetalleSaborTabla('${config.key}')" disabled>Nueva opcion</button>
                     </div>
                     <div id="saborTabla${domKey}Detalles" class="sabor-tabla-listbox">
-                        <div class="placeholder" style="padding:20px 12px;">Selecciona un principal para ver sus opciones.</div>
+                        <div class="placeholder" style="padding:20px 12px;">${isPrincipios ? 'Selecciona Granos o Verduras para ver o crear sus opciones.' : 'Selecciona un principal para ver sus opciones.'}</div>
                     </div>
                 </div>
             </div>
@@ -2542,8 +2657,12 @@ function ensureSaborArtesanalTablaCrudPanel(section = 'entradas') {
 }
 
 function setSaborTablaDraftField(section = 'entradas', field, value) {
-    const draft = _getSaborTablaDraft(section);
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const draft = _getSaborTablaDraft(normalized);
     draft[field] = value;
+    if (field === 'nombre') {
+        renderSaborTablaPrincipalHelper(normalized);
+    }
 }
 
 function setSaborTablaDraftActivo(section = 'entradas', checked) {
@@ -2565,7 +2684,7 @@ function setSaborTablaVarianteActivo(section = 'entradas', index, checked) {
 
 function agregarSaborTablaVarianteRow(section = 'entradas') {
     const draft = _getSaborTablaDraft(section);
-    draft.variantes.push({ nombre: '', descripcion: '', activo: true });
+    draft.variantes.push({ id: null, nombre: '', descripcion: '', activo: true });
     renderSaborTablaQuickForm(section);
 }
 
@@ -2573,7 +2692,7 @@ function quitarSaborTablaVarianteRow(section = 'entradas', index) {
     const draft = _getSaborTablaDraft(section);
     draft.variantes.splice(index, 1);
     if (draft.variantes.length === 0) {
-        draft.variantes.push({ nombre: '', descripcion: '', activo: true });
+        draft.variantes.push({ id: null, nombre: '', descripcion: '', activo: true });
     }
     renderSaborTablaQuickForm(section);
 }
@@ -2581,12 +2700,7 @@ function quitarSaborTablaVarianteRow(section = 'entradas', index) {
 function limpiarSaborTablaQuickForm(section = 'entradas') {
     const normalized = _normalizarSaborTablaCategoria(section);
     const state = _getSaborTablaState(normalized);
-    state.draft = {
-        nombre: '',
-        descripcion: '',
-        activo: true,
-        variantes: [{ nombre: '', descripcion: '', activo: true }],
-    };
+    state.draft = _createEmptySaborTablaDraft();
     renderSaborTablaQuickForm(normalized);
 }
 
@@ -2596,18 +2710,45 @@ function renderSaborTablaQuickForm(section = 'entradas') {
     const draft = _getSaborTablaDraft(normalized);
     const container = document.getElementById(`saborTabla${domKey}VariantesEditor`);
     if (!container) return;
+    const requierePrecio = _saborTablaCategoriaRequierePrecio(normalized);
 
     const inputNombre = document.getElementById(`saborTabla${domKey}PrincipalNombre`);
     const inputDescripcion = document.getElementById(`saborTabla${domKey}PrincipalDescripcion`);
+    const inputPrecio = document.getElementById(`saborTabla${domKey}PrincipalPrecioVenta`);
     const inputActivo = document.getElementById(`saborTabla${domKey}PrincipalActivo`);
+    const modeBox = document.getElementById(`saborTabla${domKey}QuickMode`);
+    const saveBtn = document.getElementById(`saborTabla${domKey}SaveBtn`);
     if (inputNombre) inputNombre.value = draft.nombre || '';
     if (inputDescripcion) inputDescripcion.value = draft.descripcion || '';
+    if (inputPrecio) inputPrecio.value = draft.precio_venta || '';
     if (inputActivo) inputActivo.checked = draft.activo !== false;
+
+    if (modeBox) {
+        modeBox.innerHTML = draft.editingParentId
+            ? `
+                <div class="sabor-tabla-mode-pill is-editing">
+                    Editando un principal ya guardado. Al guardar se actualiza el principal y sus opciones.
+                    <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="limpiarSaborTablaQuickForm('${normalized}')">Crear nuevo</button>
+                </div>
+            `
+            : `
+                <div class="sabor-tabla-mode-pill">
+                    Escribe en principal para ver ayudas de lo que ya esta guardado.
+                </div>
+            `;
+    }
+
+    if (saveBtn) {
+        saveBtn.textContent = draft.editingParentId
+            ? 'Actualizar principal con opciones'
+            : 'Guardar principal con opciones';
+    }
 
     container.innerHTML = draft.variantes.map((variante, index) => `
         <div class="sabor-tabla-variant-row">
             <input type="text" value="${escapeHtml(variante.nombre || '')}" placeholder="Opcion ${index + 1}. Ej: Al horno" oninput="setSaborTablaVarianteField('${normalized}', ${index}, 'nombre', this.value)">
             <input type="text" value="${escapeHtml(variante.descripcion || '')}" placeholder="Descripcion opcional" oninput="setSaborTablaVarianteField('${normalized}', ${index}, 'descripcion', this.value)">
+            ${requierePrecio ? `<input type="number" min="0" step="0.01" value="${escapeHtml(variante.precio_venta || '')}" placeholder="Precio venta" oninput="setSaborTablaVarianteField('${normalized}', ${index}, 'precio_venta', this.value)">` : ''}
             <label class="sabor-tabla-inline-check">
                 <input type="checkbox" ${variante.activo !== false ? 'checked' : ''} onchange="setSaborTablaVarianteActivo('${normalized}', ${index}, this.checked)">
                 Activa
@@ -2615,6 +2756,107 @@ function renderSaborTablaQuickForm(section = 'entradas') {
             <button type="button" class="btn btn-danger sabor-tabla-mini-btn" onclick="quitarSaborTablaVarianteRow('${normalized}', ${index})">Quitar</button>
         </div>
     `).join('');
+
+    renderSaborTablaPrincipalHelper(normalized);
+}
+
+function _getSaborTablaPrincipalMatches(section = 'entradas', query = '') {
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const state = _getSaborTablaState(normalized);
+    const search = String(query || '').trim().toLowerCase();
+    if (!search) return [];
+
+    return (state.items || [])
+        .map(item => {
+            const nombre = String(item.nombre || '').toLowerCase();
+            const descripcion = String(item.descripcion || '').toLowerCase();
+            let score = 99;
+
+            if (nombre === search) score = 0;
+            else if (nombre.startsWith(search)) score = 1;
+            else if (nombre.includes(search)) score = 2;
+            else if (descripcion.includes(search)) score = 3;
+
+            return { item, score };
+        })
+        .filter(entry => entry.score < 99)
+        .sort((a, b) => {
+            if (a.score !== b.score) return a.score - b.score;
+            return String(a.item.nombre || '').localeCompare(String(b.item.nombre || ''), 'es', { sensitivity: 'base' });
+        })
+        .slice(0, 6)
+        .map(entry => entry.item);
+}
+
+function renderSaborTablaPrincipalHelper(section = 'entradas') {
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const domKey = _getSaborTablaDomKey(normalized);
+    const state = _getSaborTablaState(normalized);
+    const draft = _getSaborTablaDraft(normalized);
+    const helper = document.getElementById(`saborTabla${domKey}PrincipalHelper`);
+    if (!helper) return;
+
+    const query = String(draft.nombre || '').trim();
+    if (!state.loaded) {
+        helper.innerHTML = '<div class="sabor-tabla-helper-tip">Cargando principales guardados para ayudarte...</div>';
+        return;
+    }
+
+    if (!query) {
+        const total = Array.isArray(state.items) ? state.items.length : 0;
+        helper.innerHTML = total > 0
+            ? `<div class="sabor-tabla-helper-tip">Escribe para buscar entre ${total} principales ya guardados.</div>`
+            : '<div class="sabor-tabla-helper-tip">Todavia no hay principales guardados en esta categoria.</div>';
+        return;
+    }
+
+    const matches = _getSaborTablaPrincipalMatches(normalized, query);
+    if (matches.length === 0) {
+        helper.innerHTML = '<div class="sabor-tabla-helper-tip">No hay coincidencias guardadas. Si quieres, puedes crear un principal nuevo.</div>';
+        return;
+    }
+
+    helper.innerHTML = `
+        <div class="sabor-tabla-helper-title">Coincidencias guardadas</div>
+        <div class="sabor-tabla-helper-list">
+            ${matches.map(item => `
+                <button type="button" class="sabor-tabla-helper-item" onclick="cargarPrincipalSaborTablaEnFormulario('${normalized}', ${Number(item.id)})">
+                    <span class="sabor-tabla-helper-main">
+                        <strong>${escapeHtml(item.nombre || '')}</strong>
+                        ${item.descripcion ? `<small>${escapeHtml(item.descripcion)}</small>` : ''}
+                    </span>
+                    <span class="sabor-tabla-helper-meta">
+                        ${item.precio_venta != null ? `<span>${escapeHtml(_formatSaborTablaPrecio(item.precio_venta))}</span>` : ''}
+                        <span>${Number(item.children_count || (item.children || []).length || 0)} opcion(es)</span>
+                        <span class="sabor-tabla-status ${item.activo === false ? 'is-inactive' : 'is-active'}">${item.activo === false ? 'Inactivo' : 'Activo'}</span>
+                    </span>
+                </button>
+            `).join('')}
+        </div>
+    `;
+}
+
+function cargarPrincipalSaborTablaEnFormulario(section = 'entradas', parentId) {
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const state = _getSaborTablaState(normalized);
+    const parent = (state.items || []).find(item => Number(item.id) === Number(parentId));
+    if (!parent) {
+        showError('No se encontro el principal seleccionado.');
+        return;
+    }
+
+    state.selectedParentId = Number(parent.id);
+    state.draft = {
+        editingParentId: Number(parent.id),
+        nombre: parent.nombre || '',
+        descripcion: parent.descripcion || '',
+        precio_venta: parent.precio_venta_texto || parent.precio_venta || '',
+        activo: parent.activo !== false,
+        variantes: _cloneSaborTablaVariantes(parent.children || []),
+    };
+
+    renderSaborTablaQuickForm(normalized);
+    renderSaborArtesanalTabla(normalized);
 }
 
 async function guardarSaborTablaQuickForm(section = 'entradas') {
@@ -2622,6 +2864,7 @@ async function guardarSaborTablaQuickForm(section = 'entradas') {
     const domKey = _getSaborTablaDomKey(normalized);
     const draft = _getSaborTablaDraft(normalized);
     const error = document.getElementById(`saborTabla${domKey}QuickError`);
+    const requierePrecio = _saborTablaCategoriaRequierePrecio(normalized);
 
     if (error) {
         error.style.display = 'none';
@@ -2637,15 +2880,108 @@ async function guardarSaborTablaQuickForm(section = 'entradas') {
         return;
     }
 
+    const precioPrincipal = String(draft.precio_venta || '').trim();
+    if (requierePrecio && (precioPrincipal === '' || Number(precioPrincipal) < 0)) {
+        if (error) {
+            error.textContent = 'Debes indicar el precio de venta del principal.';
+            error.style.display = '';
+        }
+        return;
+    }
+
     const variantes = (draft.variantes || [])
         .map(variante => ({
+            id: Number(variante.id) || null,
             nombre: (variante.nombre || '').trim(),
             descripcion: (variante.descripcion || '').trim(),
+            precio_venta: String(variante.precio_venta || '').trim(),
             activo: variante.activo !== false,
         }))
         .filter(variante => variante.nombre);
 
+    if (requierePrecio && variantes.some(variante => variante.precio_venta === '' || Number(variante.precio_venta) < 0)) {
+        if (error) {
+            error.textContent = 'Cada opcion debe tener un precio de venta valido.';
+            error.style.display = '';
+        }
+        return;
+    }
+
     try {
+        const state = _getSaborTablaState(normalized);
+        if (draft.editingParentId) {
+            const parentId = Number(draft.editingParentId);
+            const currentParent = (state.items || []).find(item => Number(item.id) === parentId);
+            if (!currentParent) {
+                throw new Error('El principal que intentas actualizar ya no existe. Recarga la tabla.');
+            }
+
+            let response = await fetch(`/api/sabor-artesanal/tablas/items/${parentId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    nombre,
+                    descripcion: (draft.descripcion || '').trim(),
+                    precio_venta: precioPrincipal || null,
+                    activo: draft.activo !== false,
+                }),
+            });
+
+            let result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(result.error || `Error ${response.status}`);
+            }
+
+            const existingChildren = Array.isArray(currentParent.children) ? currentParent.children : [];
+            const keptIds = new Set(variantes.map(variante => Number(variante.id)).filter(Boolean));
+            const removedIds = existingChildren
+                .map(child => Number(child.id))
+                .filter(childId => !keptIds.has(childId));
+
+            for (const removedId of removedIds) {
+                response = await fetch(`/api/sabor-artesanal/tablas/items/${removedId}`, {
+                    method: 'DELETE',
+                    credentials: 'include',
+                });
+                result = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(result.error || `Error ${response.status}`);
+                }
+            }
+
+            for (const variante of variantes) {
+                const payload = {
+                    nombre: variante.nombre,
+                    descripcion: variante.descripcion,
+                    precio_venta: variante.precio_venta || null,
+                    activo: variante.activo !== false,
+                    parent_id: parentId,
+                };
+                const isEdit = Boolean(variante.id);
+                const variantUrl = isEdit
+                    ? `/api/sabor-artesanal/tablas/items/${Number(variante.id)}`
+                    : `/api/sabor-artesanal/tablas/${normalized}`;
+                response = await fetch(variantUrl, {
+                    method: isEdit ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(payload),
+                });
+                result = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(result.error || `Error ${response.status}`);
+                }
+            }
+
+            state.selectedParentId = parentId;
+            state.loaded = false;
+            await cargarSaborArtesanalTabla(normalized, true);
+            cargarPrincipalSaborTablaEnFormulario(normalized, parentId);
+            showSuccess('Principal y opciones actualizados correctamente.');
+            return;
+        }
+
         const response = await fetch(`/api/sabor-artesanal/tablas/${normalized}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2653,6 +2989,7 @@ async function guardarSaborTablaQuickForm(section = 'entradas') {
             body: JSON.stringify({
                 nombre,
                 descripcion: (draft.descripcion || '').trim(),
+                precio_venta: precioPrincipal || null,
                 activo: draft.activo !== false,
                 variantes,
             }),
@@ -2663,7 +3000,6 @@ async function guardarSaborTablaQuickForm(section = 'entradas') {
             throw new Error(result.error || `Error ${response.status}`);
         }
 
-        const state = _getSaborTablaState(normalized);
         state.selectedParentId = result?.item?.id ? Number(result.item.id) : null;
         limpiarSaborTablaQuickForm(normalized);
         state.loaded = false;
@@ -2723,6 +3059,7 @@ async function cargarSaborArtesanalTabla(section = 'entradas', force = false) {
             state.selectedParentId = state.items[0] ? Number(state.items[0].id) : null;
         }
 
+        renderSaborTablaQuickForm(normalized);
         renderSaborArtesanalTabla(normalized);
     } catch (error) {
         console.error(`Error cargando tabla de ${config.label}:`, error);
@@ -2732,12 +3069,14 @@ async function cargarSaborArtesanalTabla(section = 'entradas', force = false) {
         if (detalles) {
             detalles.innerHTML = '<div class="placeholder" style="padding:32px 20px;">Sin datos disponibles.</div>';
         }
+        renderSaborTablaQuickForm(normalized);
     }
 }
 
 function renderSaborArtesanalTabla(section = 'entradas') {
     const normalized = _normalizarSaborTablaCategoria(section);
     const config = _getSaborTablaConfig(normalized);
+    const isPrincipios = _isSaborTablaPrincipios(normalized);
     const state = _getSaborTablaState(normalized);
     const domKey = _getSaborTablaDomKey(normalized);
 
@@ -2762,19 +3101,29 @@ function renderSaborArtesanalTabla(section = 'entradas') {
         return `${item.nombre || ''} ${item.descripcion || ''}`.toLowerCase().includes(search);
     };
 
-    const filtered = (state.items || []).filter(item => {
+    const sourceItems = isPrincipios
+        ? (state.items || []).filter(_isSaborPrincipioGrupoFijoItem)
+        : (state.items || []);
+
+    const filtered = sourceItems.filter(item => {
         const childMatch = (item.children || []).some(child => matchesSearch(child) && matchesActivo(child));
         return (matchesSearch(item) && matchesActivo(item)) || childMatch;
     });
 
+    if (!state.selectedParentId || !filtered.some(item => Number(item.id) === Number(state.selectedParentId))) {
+        state.selectedParentId = filtered[0] ? Number(filtered[0].id) : null;
+    }
+
     if (resumen) {
         const totalVariantes = filtered.reduce((acc, item) => acc + (item.children || []).length, 0);
-        resumen.textContent = `${filtered.length} principales y ${totalVariantes} opciones registradas.`;
+        resumen.textContent = isPrincipios
+            ? `${filtered.length} grupos fijos y ${totalVariantes} opciones registradas.`
+            : `${filtered.length} principales y ${totalVariantes} opciones registradas.`;
     }
 
     if (principales) {
         if (filtered.length === 0) {
-            principales.innerHTML = '<div class="placeholder" style="padding:20px 12px;">No hay principales para los filtros seleccionados.</div>';
+            principales.innerHTML = `<div class="placeholder" style="padding:20px 12px;">${isPrincipios ? 'No hay grupos de Principios para los filtros seleccionados.' : 'No hay principales para los filtros seleccionados.'}</div>`;
         } else {
             principales.innerHTML = filtered.map(item => `
                 <div class="sabor-list-item ${Number(item.id) === Number(state.selectedParentId) ? 'is-selected' : ''}" onclick="seleccionarSaborArtesanalPrincipal('${config.key}', ${Number(item.id)})">
@@ -2783,13 +3132,16 @@ function renderSaborArtesanalTabla(section = 'entradas') {
                         ${item.descripcion ? `<small>${escapeHtml(item.descripcion)}</small>` : ''}
                     </span>
                     <span class="sabor-list-item-meta">
+                        ${item.precio_venta != null ? `<span>${escapeHtml(_formatSaborTablaPrecio(item.precio_venta))}</span>` : ''}
                         <span>${Number(item.children_count || (item.children || []).length || 0)} opcion(es)</span>
-                        <span class="sabor-tabla-status ${item.activo === false ? 'is-inactive' : 'is-active'}">${item.activo === false ? 'Inactivo' : 'Activo'}</span>
+                        <span class="sabor-tabla-status ${item.activo === false ? 'is-inactive' : 'is-active'}">${isPrincipios ? 'Grupo fijo' : (item.activo === false ? 'Inactivo' : 'Activo')}</span>
                     </span>
-                    <span class="sabor-list-item-actions" onclick="event.stopPropagation()">
-                        <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="abrirModalSaborTabla('${config.key}', ${Number(item.id)})">Editar</button>
-                        <button type="button" class="btn btn-danger sabor-tabla-mini-btn" onclick="abrirModalEliminarSaborTabla('${config.key}', ${Number(item.id)})">Eliminar</button>
-                    </span>
+                    ${isPrincipios ? '' : `
+                        <span class="sabor-list-item-actions" onclick="event.stopPropagation()">
+                            <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="abrirModalSaborTabla('${config.key}', ${Number(item.id)})">Editar</button>
+                            <button type="button" class="btn btn-danger sabor-tabla-mini-btn" onclick="abrirModalEliminarSaborTabla('${config.key}', ${Number(item.id)})">Eliminar</button>
+                        </span>
+                    `}
                 </div>
             `).join('');
         }
@@ -2798,20 +3150,20 @@ function renderSaborArtesanalTabla(section = 'entradas') {
     const selectedParent = filtered.find(item => Number(item.id) === Number(state.selectedParentId)) || null;
     if (selectedLabel) {
         selectedLabel.textContent = selectedParent
-            ? `Principal seleccionado: ${selectedParent.nombre}`
-            : 'Selecciona un item principal.';
+            ? `${isPrincipios ? 'Grupo seleccionado' : 'Principal seleccionado'}: ${selectedParent.nombre}`
+            : (isPrincipios ? 'Selecciona Granos o Verduras.' : 'Selecciona un item principal.');
     }
     if (btnNuevoDetalle) btnNuevoDetalle.disabled = !selectedParent;
 
     if (!detalles) return;
     if (!selectedParent) {
-        detalles.innerHTML = '<div class="placeholder" style="padding:20px 12px;">Selecciona un principal para ver o crear sus opciones.</div>';
+        detalles.innerHTML = `<div class="placeholder" style="padding:20px 12px;">${isPrincipios ? 'Selecciona Granos o Verduras para ver o crear sus opciones.' : 'Selecciona un principal para ver o crear sus opciones.'}</div>`;
         return;
     }
 
     const filteredChildren = (selectedParent.children || []).filter(child => matchesSearch(child) && matchesActivo(child));
     if (filteredChildren.length === 0) {
-        detalles.innerHTML = '<div class="placeholder" style="padding:20px 12px;">Este principal aun no tiene opciones guardadas.</div>';
+        detalles.innerHTML = `<div class="placeholder" style="padding:20px 12px;">${isPrincipios ? 'Este grupo aun no tiene opciones guardadas.' : 'Este principal aun no tiene opciones guardadas.'}</div>`;
         return;
     }
 
@@ -2822,6 +3174,7 @@ function renderSaborArtesanalTabla(section = 'entradas') {
                 ${child.descripcion ? `<small>${escapeHtml(child.descripcion)}</small>` : ''}
             </span>
             <span class="sabor-list-item-meta">
+                ${child.precio_venta != null ? `<span>${escapeHtml(_formatSaborTablaPrecio(child.precio_venta))}</span>` : ''}
                 <span class="sabor-tabla-status ${child.activo === false ? 'is-inactive' : 'is-active'}">${child.activo === false ? 'Inactivo' : 'Activo'}</span>
             </span>
             <span class="sabor-list-item-actions">
@@ -2843,7 +3196,7 @@ function abrirModalDetalleSaborTabla(section = 'entradas') {
     const normalized = _normalizarSaborTablaCategoria(section);
     const state = _getSaborTablaState(normalized);
     if (!state.selectedParentId) {
-        showError('Selecciona primero un item principal.');
+        showError(_isSaborTablaPrincipios(normalized) ? 'Selecciona primero Granos o Verduras.' : 'Selecciona primero un item principal.');
         return;
     }
     abrirModalSaborTabla(normalized, null, state.selectedParentId);
@@ -2868,8 +3221,11 @@ function abrirModalSaborTabla(section = 'entradas', itemId = null, parentId = nu
     const context = document.getElementById('saborTablaCrudContexto');
     const nombre = document.getElementById('saborTablaCrudNombre');
     const descripcion = document.getElementById('saborTablaCrudDescripcion');
+    const precioGroup = document.getElementById('saborTablaCrudPrecioGroup');
+    const precio = document.getElementById('saborTablaCrudPrecioVenta');
     const activo = document.getElementById('saborTablaCrudActivo');
     const error = document.getElementById('saborTablaCrudError');
+    const requierePrecio = _saborTablaCategoriaRequierePrecio(normalized);
 
     if (error) {
         error.style.display = 'none';
@@ -2888,10 +3244,14 @@ function abrirModalSaborTabla(section = 'entradas', itemId = null, parentId = nu
     }
     if (nombre) nombre.value = item?.nombre || '';
     if (descripcion) descripcion.value = item?.descripcion || '';
+    if (precioGroup) precioGroup.style.display = requierePrecio ? '' : 'none';
+    if (precio) precio.value = item?.precio_venta_texto || item?.precio_venta || '';
     if (activo) activo.checked = item ? item.activo !== false : true;
+    renderSaborTablaCrudHelper();
 
     const modal = document.getElementById('saborTablaCrudModal');
     if (modal) modal.style.display = 'flex';
+    if (nombre) setTimeout(() => nombre.focus(), 0);
 }
 
 function cerrarModalSaborTabla() {
@@ -2900,13 +3260,83 @@ function cerrarModalSaborTabla() {
     _saborTablaCrudModalState = null;
 }
 
+function renderSaborTablaCrudHelper() {
+    const helper = document.getElementById('saborTablaCrudHelper');
+    const saveBtn = document.getElementById('saborTablaCrudGuardarBtn');
+    if (!helper) return;
+
+    if (!_saborTablaCrudModalState) {
+        helper.innerHTML = '';
+        if (saveBtn) saveBtn.textContent = 'Guardar';
+        return;
+    }
+
+    const isEdit = Boolean(_saborTablaCrudModalState.itemId);
+    const parentId = Number(_saborTablaCrudModalState.parentId) || null;
+
+    if (saveBtn) {
+        if (parentId && !isEdit) saveBtn.textContent = 'Guardar y siguiente';
+        else if (isEdit) saveBtn.textContent = 'Guardar cambios';
+        else saveBtn.textContent = 'Guardar';
+    }
+
+    if (!parentId) {
+        helper.innerHTML = '';
+        return;
+    }
+
+    const normalized = _normalizarSaborTablaCategoria(_saborTablaCrudModalState.category);
+    const parentItem = _findSaborTablaItem(normalized, parentId);
+    const siblings = Array.isArray(parentItem?.children) ? parentItem.children : [];
+    const currentItemId = Number(_saborTablaCrudModalState.itemId) || null;
+    const rawQuery = (document.getElementById('saborTablaCrudNombre')?.value || '').trim().toLowerCase();
+
+    const filtered = siblings
+        .filter(child => Number(child.id) !== currentItemId)
+        .filter(child => {
+            if (!rawQuery) return true;
+            return `${child.nombre || ''} ${child.descripcion || ''}`.toLowerCase().includes(rawQuery);
+        })
+        .slice(0, 6);
+
+    if (siblings.length === 0) {
+        helper.innerHTML = '<div class="sabor-tabla-helper-tip">Este principal aun no tiene opciones guardadas. Puedes capturar la primera.</div>';
+        return;
+    }
+
+    if (filtered.length === 0) {
+        helper.innerHTML = '<div class="sabor-tabla-helper-tip">No hay coincidencias dentro de las opciones de este principal.</div>';
+        return;
+    }
+
+    helper.innerHTML = `
+        <div class="sabor-tabla-helper-title">Opciones relacionadas con ${escapeHtml(parentItem?.nombre || 'este principal')}</div>
+        <div class="sabor-tabla-helper-list">
+            ${filtered.map(child => `
+                <button type="button" class="sabor-tabla-helper-item" onclick="abrirModalSaborTabla('${normalized}', ${Number(child.id)})">
+                    <span class="sabor-tabla-helper-main">
+                        <strong>${escapeHtml(child.nombre || '')}</strong>
+                        ${child.descripcion ? `<small>${escapeHtml(child.descripcion)}</small>` : ''}
+                    </span>
+                    <span class="sabor-tabla-helper-meta">
+                        ${child.precio_venta != null ? `<span>${escapeHtml(_formatSaborTablaPrecio(child.precio_venta))}</span>` : ''}
+                        <span class="sabor-tabla-status ${child.activo === false ? 'is-inactive' : 'is-active'}">${child.activo === false ? 'Inactivo' : 'Activo'}</span>
+                    </span>
+                </button>
+            `).join('')}
+        </div>
+    `;
+}
+
 async function guardarSaborTablaItem() {
     if (!_saborTablaCrudModalState) return;
 
     const nombre = (document.getElementById('saborTablaCrudNombre')?.value || '').trim();
     const descripcion = (document.getElementById('saborTablaCrudDescripcion')?.value || '').trim();
+    const precioVenta = (document.getElementById('saborTablaCrudPrecioVenta')?.value || '').trim();
     const activo = document.getElementById('saborTablaCrudActivo')?.checked !== false;
     const error = document.getElementById('saborTablaCrudError');
+    const requierePrecio = _saborTablaCategoriaRequierePrecio(_saborTablaCrudModalState.category);
 
     if (error) {
         error.style.display = 'none';
@@ -2921,9 +3351,18 @@ async function guardarSaborTablaItem() {
         return;
     }
 
+    if (requierePrecio && (precioVenta === '' || Number(precioVenta) < 0)) {
+        if (error) {
+            error.textContent = 'El precio de venta es obligatorio para esta tabla.';
+            error.style.display = '';
+        }
+        return;
+    }
+
     const payload = {
         nombre,
         descripcion,
+        precio_venta: requierePrecio ? precioVenta : null,
         activo,
         parent_id: _saborTablaCrudModalState.parentId || null,
     };
@@ -2934,6 +3373,7 @@ async function guardarSaborTablaItem() {
         : `/api/sabor-artesanal/tablas/${_saborTablaCrudModalState.category}`;
 
     try {
+        const modalState = { ..._saborTablaCrudModalState };
         const response = await fetch(url, {
             method: isEdit ? 'PUT' : 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2950,9 +3390,16 @@ async function guardarSaborTablaItem() {
             state.selectedParentId = result.item.parent_id ? Number(result.item.parent_id) : Number(result.item.id);
         }
 
-        const category = _saborTablaCrudModalState.category;
-        cerrarModalSaborTabla();
+        const category = modalState.category;
         await cargarSaborArtesanalTabla(category, true);
+
+        if (!isEdit && modalState.parentId) {
+            abrirModalSaborTabla(category, null, modalState.parentId);
+            showSuccess('Variante guardada. Puedes ingresar la siguiente.');
+            return;
+        }
+
+        cerrarModalSaborTabla();
         showSuccess(result.mensaje || 'Item guardado correctamente.');
     } catch (err) {
         console.error('Error guardando item de Sabor Artesanal:', err);
@@ -3045,9 +3492,14 @@ function setSaborArtesanalTablasSection(section = 'entradas') {
 
     const menu = document.getElementById('saborArtesanalTablasMenu');
     const workspace = document.getElementById('saborArtesanalTablaWorkspace');
-    const normalized = section ? _normalizarSaborTablaCategoria(section) : '';
+    const requested = String(section || '');
+    const normalized = requested === 'categorias_menu'
+        ? 'categorias_menu'
+        : (requested ? _normalizarSaborTablaCategoria(requested) : '');
     window._saborArtesanalTablasSeccionActual = normalized;
 
+    const categoriasMenuBtn = document.getElementById('saborArtesanalTablaCategorias_menu');
+    if (categoriasMenuBtn) categoriasMenuBtn.classList.toggle('active', normalized === 'categorias_menu');
     Object.keys(SABOR_ARTESANAL_TABLAS_CONFIG).forEach(key => {
         const domKey = _getSaborTablaDomKey(key);
         const btn = document.getElementById(`saborArtesanalTabla${domKey}`);
@@ -3062,15 +3514,22 @@ function setSaborArtesanalTablasSection(section = 'entradas') {
 
     if (menu) menu.style.display = 'none';
     if (workspace) workspace.style.display = '';
+    if (normalized === 'categorias_menu') {
+        if (typeof ensureSaborArtesanalCategoriasMenuUI === 'function') {
+            ensureSaborArtesanalCategoriasMenuUI();
+        }
+        if (typeof cargarContextoMenusSaborArtesanal === 'function') {
+            cargarContextoMenusSaborArtesanal();
+        }
+        return;
+    }
     ensureSaborArtesanalTablaCrudPanel(normalized);
     cargarSaborArtesanalTabla(normalized);
 }
 
-function setSaborArtesanalSection(section = 'tablas') {
+function setSaborArtesanalSection(section = '') {
     normalizeSaborArtesanalLabels();
-    const normalized = String(section || 'tablas');
-    window._saborArtesanalSeccionActual = normalized;
-    updateSaborArtesanalLayout(normalized === 'tablas');
+    ensureSaborArtesanalPanelBackButtons();
 
     const panelMap = {
         tablas: 'saborArtesanalTablasPanel',
@@ -3090,6 +3549,13 @@ function setSaborArtesanalSection(section = 'tablas') {
         informes: 'saborArtesanalNavInformes',
     };
 
+    const requested = String(section || '');
+    const normalized = Object.prototype.hasOwnProperty.call(panelMap, requested) ? requested : '';
+    window._saborArtesanalSeccionActual = normalized;
+    updateSaborArtesanalLayout(normalized === 'tablas');
+    const topNav = document.querySelector('.sabor-artesanal-top-nav');
+    const mainMenuPanel = topNav ? topNav.closest('.recent-section') : null;
+
     Object.values(panelMap).forEach(id => {
         const panel = document.getElementById(id);
         if (panel) panel.style.display = 'none';
@@ -3099,14 +3565,36 @@ function setSaborArtesanalSection(section = 'tablas') {
         if (btn) btn.classList.remove('active');
     });
 
-    const panel = document.getElementById(panelMap[normalized] || panelMap.tablas);
+    if (mainMenuPanel) {
+        mainMenuPanel.style.display = normalized ? 'none' : '';
+    }
+
+    if (!normalized) {
+        if (typeof syncSaborPedidoChrome === 'function') syncSaborPedidoChrome();
+        markSidebarModuleActive('sabor_artesanal', '');
+        return;
+    }
+
+    const panel = document.getElementById(panelMap[normalized]);
     if (panel) panel.style.display = '';
-    const btn = document.getElementById(buttonMap[normalized] || buttonMap.tablas);
+    const btn = document.getElementById(buttonMap[normalized]);
     if (btn) btn.classList.add('active');
 
     if (normalized === 'tablas') {
-        setSaborArtesanalTablasSection(window._saborArtesanalTablasSeccionActual || '');
+        setSaborArtesanalTablasSection('');
+    } else if (normalized === 'menus' && typeof ensureSaborArtesanalMenusUI === 'function') {
+        ensureSaborArtesanalMenusUI();
+        if (typeof cargarContextoMenusSaborArtesanal === 'function') {
+            cargarContextoMenusSaborArtesanal();
+        }
+    } else if (normalized === 'ventas_dia' && typeof ensureSaborArtesanalPedidosUI === 'function') {
+        ensureSaborArtesanalPedidosUI();
+        if (typeof cargarContextoPedidosSaborArtesanal === 'function') {
+            cargarContextoPedidosSaborArtesanal();
+        }
     }
+
+    if (typeof syncSaborPedidoChrome === 'function') syncSaborPedidoChrome();
 
     markSidebarModuleActive('sabor_artesanal', normalized);
 }
@@ -3211,7 +3699,7 @@ function switchModule(moduleName) {
                 console.error('Error abriendo Gestión Información', e);
             }
         } else if (moduleName === 'sabor_artesanal') {
-            setSaborArtesanalSection(window._saborArtesanalSeccionActual || 'tablas');
+            setSaborArtesanalSection(window._saborArtesanalSeccionActual || '');
         } else if (moduleName === 'recepcion') {
             try {
                 inicializarModuloRecepcion();

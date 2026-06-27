@@ -1,5 +1,59 @@
 // JS helper for Services module
 
+function syncServiciosPeriodoInputs(periodo) {
+    if (!periodo || !periodo.mes || !periodo.anio) return;
+
+    const mes = String(Number(periodo.mes));
+    const anio = String(Number(periodo.anio));
+    const monthInputIds = ['servicios_periodo_mes', 'serv_liq_mes', 'serv_nov_mes'];
+    const yearInputIds = ['servicios_periodo_anio', 'serv_liq_anio', 'serv_nov_anio'];
+
+    monthInputIds.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = mes;
+    });
+
+    yearInputIds.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = anio;
+    });
+}
+
+function persistServiciosPeriodoActual(periodo, options = {}) {
+    if (!periodo || !periodo.mes || !periodo.anio) {
+        return null;
+    }
+
+    const normalized = {
+        mes: Number(periodo.mes),
+        anio: Number(periodo.anio)
+    };
+
+    window._serviciosPeriodoActual = normalized;
+
+    try {
+        if (window.localStorage) {
+            localStorage.setItem('serviciosPeriodoActual', JSON.stringify(normalized));
+        }
+    } catch (eStore) {
+        console.warn('No se pudo guardar periodo de servicios en localStorage', eStore);
+    }
+
+    if (options.syncInputs !== false) {
+        syncServiciosPeriodoInputs(normalized);
+    }
+
+    try {
+        if (typeof actualizarEtiquetaServiciosPeriodo === 'function') {
+            actualizarEtiquetaServiciosPeriodo();
+        }
+    } catch (eLabel) {
+        console.warn('Error actualizando etiqueta de período de servicios', eLabel);
+    }
+
+    return normalized;
+}
+
 // Contexto de período actual de Servicios (mes/año seleccionado por el usuario)
 // Se intenta recuperar primero desde localStorage para que el usuario
 // no tenga que volver a elegirlo en cada recarga.
@@ -34,9 +88,9 @@ async function switchToServicios() {
 // Obtener el periodo (mes/año) actual de Servicios.
 // Si ya está definido en memoria (window._serviciosPeriodoActual),
 // se reutiliza sin consultar al backend.
-async function obtenerPeriodoActualServicios() {
+async function obtenerPeriodoActualServicios(forceRefresh = false) {
     const ahora = new Date();
-    if (window._serviciosPeriodoActual) {
+    if (!forceRefresh && window._serviciosPeriodoActual) {
         return window._serviciosPeriodoActual;
     }
     try {
@@ -45,15 +99,7 @@ async function obtenerPeriodoActualServicios() {
         const data = await res.json();
         const mes = data.mes || (ahora.getMonth() + 1);
         const anio = data.anio || ahora.getFullYear();
-        const periodo = { mes, anio };
-        window._serviciosPeriodoActual = periodo;
-        try {
-            if (window.localStorage) {
-                localStorage.setItem('serviciosPeriodoActual', JSON.stringify(periodo));
-            }
-        } catch (eStore) {
-            console.warn('No se pudo guardar periodo de servicios en localStorage', eStore);
-        }
+        const periodo = persistServiciosPeriodoActual({ mes, anio });
         try {
             if (typeof actualizarEtiquetaServiciosPeriodo === 'function') {
                 actualizarEtiquetaServiciosPeriodo();
@@ -64,8 +110,10 @@ async function obtenerPeriodoActualServicios() {
         return periodo;
     } catch (err) {
         console.warn('obtenerPeriodoActualServicios: usando fecha local por error', err);
-        const periodo = { mes: ahora.getMonth() + 1, anio: ahora.getFullYear() };
-        window._serviciosPeriodoActual = periodo;
+        const periodo = persistServiciosPeriodoActual({
+            mes: ahora.getMonth() + 1,
+            anio: ahora.getFullYear()
+        });
         try {
             if (window.localStorage) {
                 localStorage.setItem('serviciosPeriodoActual', JSON.stringify(periodo));
@@ -643,19 +691,34 @@ async function finalizarPeriodoServicios(){
                 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
             ];
 
-            const nuevoPeriodo = { mes: m, anio: y };
-            window._serviciosPeriodoActual = nuevoPeriodo;
-            try {
-                if (window.localStorage) {
-                    localStorage.setItem('serviciosPeriodoActual', JSON.stringify(nuevoPeriodo));
-                }
-            } catch (eStore) {
-                console.warn('No se pudo guardar nuevo periodo de servicios en localStorage', eStore);
-            }
+            const nuevoPeriodo = persistServiciosPeriodoActual({ mes: m, anio: y });
 
             const span = document.getElementById('serviciosLiquidacionTitulo');
             if (span) {
                 span.textContent = `${meses[m]} de ${y}`;
+            }
+
+            const modalNovedades = document.getElementById('serviciosNovedadesMesModal');
+            const modalLiquidacion = document.getElementById('serviciosLiquidacionModal');
+            const inlineNovedades = document.getElementById('serviciosNovedadesInlineBody');
+            const liquidacionBody = document.getElementById('serviciosLiquidacionBody');
+
+            try { loadServiciosDashboardFull(); } catch (eDash) { console.warn('No se pudo refrescar dashboard de servicios tras finalizar período', eDash); }
+
+            if (inlineNovedades) {
+                try { loadServiciosNovedadesMesActual('serviciosNovedadesInlineBody'); } catch (eInline) { console.warn('No se pudo refrescar novedades inline de servicios tras finalizar período', eInline); }
+            }
+
+            if (modalNovedades && modalNovedades.classList.contains('active')) {
+                try { await submitServiciosNovedadesMesForm(); } catch (eNovedades) { console.warn('No se pudo refrescar novedades del período de servicios tras finalizar', eNovedades); }
+            }
+
+            if (liquidacionBody || (modalLiquidacion && modalLiquidacion.classList.contains('active'))) {
+                try { await submitServiciosLiquidacionForm(); } catch (eLiquidacion) { console.warn('No se pudo refrescar liquidación de servicios tras finalizar período', eLiquidacion); }
+            }
+
+            if (!nuevoPeriodo) {
+                await obtenerPeriodoActualServicios(true);
             }
 
             try {
@@ -1095,10 +1158,6 @@ async function loadServiciosDashboardFull() {
             periodo = await obtenerPeriodoActualServicios();
         }
 
-        if (periodo && !window._serviciosPeriodoActual) {
-            window._serviciosPeriodoActual = periodo;
-        }
-
         const anio = parseInt(yearEl?.value, 10) || periodo?.anio || new Date().getFullYear();
         const params = new URLSearchParams({ anio: String(anio) });
         if (periodo?.mes && periodo?.anio) {
@@ -1113,10 +1172,10 @@ async function loadServiciosDashboardFull() {
         }
 
         if ((!window._serviciosPeriodoActual || !window._serviciosPeriodoActual.mes) && data.periodo_actual?.mes && data.periodo_actual?.anio) {
-            window._serviciosPeriodoActual = {
+            persistServiciosPeriodoActual({
                 mes: Number(data.periodo_actual.mes),
                 anio: Number(data.periodo_actual.anio)
-            };
+            });
         }
 
         actualizarEtiquetaServiciosPeriodo();
@@ -1205,7 +1264,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
                 showToast('Debe seleccionar mes y año', 'error');
                 return;
             }
-            window._serviciosPeriodoActual = { mes, anio };
+            persistServiciosPeriodoActual({ mes, anio });
             try {
                 if (window.localStorage) {
                     localStorage.setItem('serviciosPeriodoActual', JSON.stringify(window._serviciosPeriodoActual));

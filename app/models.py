@@ -1464,6 +1464,7 @@ class SaborArtesanalTablaItem(db.Model):
         index=True,
     )
     activo = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    precio_venta = db.Column(Numeric(15, 2))
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1489,4 +1490,167 @@ class SaborArtesanalTablaItem(db.Model):
         return (
             f'<SaborArtesanalTablaItem categoria={self.categoria} '
             f'nombre={self.nombre} parent={self.parent_id}>'
+        )
+
+
+class SaborArtesanalMenuCategoria(db.Model):
+    __tablename__ = 'sabor_artesanal_menu_categorias'
+
+    id = db.Column(db.Integer, primary_key=True)
+    codigo = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    nombre = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    descripcion = db.Column(db.Text)
+    orden = db.Column(db.Integer, nullable=False, default=0)
+    activo = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+    menus = db.relationship(
+        'SaborArtesanalMenu',
+        backref='categoria_menu',
+        lazy='dynamic',
+        cascade='all, delete-orphan',
+    )
+    programaciones = db.relationship(
+        'SaborArtesanalMenuDia',
+        backref='categoria_menu_programada',
+        lazy='dynamic',
+    )
+
+    def __repr__(self):
+        return f'<SaborArtesanalMenuCategoria {self.codigo} {self.nombre}>'
+
+
+class SaborArtesanalMenu(db.Model):
+    __tablename__ = 'sabor_artesanal_menus'
+
+    id = db.Column(db.Integer, primary_key=True)
+    categoria_id = db.Column(
+        db.Integer,
+        db.ForeignKey('sabor_artesanal_menu_categorias.id'),
+        nullable=False,
+        index=True,
+    )
+    nombre = db.Column(db.String(160), nullable=False, index=True)
+    descripcion = db.Column(db.Text)
+    instrucciones = db.Column(db.Text)
+    precio_venta = db.Column(Numeric(15, 2))
+    activo = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+    componentes = db.relationship(
+        'SaborArtesanalMenuComponente',
+        backref='menu',
+        lazy='select',
+        cascade='all, delete-orphan',
+        order_by='SaborArtesanalMenuComponente.orden.asc(), SaborArtesanalMenuComponente.id.asc()',
+    )
+    programaciones = db.relationship(
+        'SaborArtesanalMenuDia',
+        backref='menu',
+        lazy='select',
+        cascade='all, delete-orphan',
+        order_by='SaborArtesanalMenuDia.fecha_servicio.asc(), SaborArtesanalMenuDia.id.asc()',
+    )
+
+    __table_args__ = (
+        db.Index('ix_sabor_artesanal_menu_categoria_nombre', 'categoria_id', 'nombre'),
+    )
+
+    def __repr__(self):
+        return f'<SaborArtesanalMenu {self.nombre} categoria={self.categoria_id}>'
+
+
+class SaborArtesanalMenuComponente(db.Model):
+    __tablename__ = 'sabor_artesanal_menu_componentes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    menu_id = db.Column(
+        db.Integer,
+        db.ForeignKey('sabor_artesanal_menus.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    tabla_categoria = db.Column(db.String(40), nullable=False, index=True)
+    tabla_item_id = db.Column(
+        db.Integer,
+        db.ForeignKey('sabor_artesanal_tabla_items.id'),
+        nullable=False,
+        index=True,
+    )
+    parent_item_id = db.Column(
+        db.Integer,
+        db.ForeignKey('sabor_artesanal_tabla_items.id'),
+        index=True,
+    )
+    principal_nombre = db.Column(db.String(150))
+    item_nombre = db.Column(db.String(150), nullable=False)
+    descripcion = db.Column(db.Text)
+    bloque_codigo = db.Column(db.String(40), index=True)
+    bloque_label = db.Column(db.String(120))
+    selector_tipo = db.Column(db.String(20), default='single')
+    grupo_codigo = db.Column(db.String(40), index=True)
+    grupo_label = db.Column(db.String(120))
+    seleccion_default = db.Column(db.Boolean, default=False)
+    cantidad = db.Column(Numeric(10, 2), nullable=False, default=1)
+    unidad = db.Column(db.String(40), nullable=False, default='porcion')
+    presentacion = db.Column(db.String(160))
+    acompanamiento = db.Column(db.String(160))
+    orden = db.Column(db.Integer, nullable=False, default=0)
+    observaciones = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    item = db.relationship('SaborArtesanalTablaItem', foreign_keys=[tabla_item_id])
+    parent = db.relationship('SaborArtesanalTablaItem', foreign_keys=[parent_item_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('menu_id', 'tabla_item_id', name='uq_sabor_menu_componente_menu_item'),
+        db.Index('ix_sabor_menu_componente_categoria_menu', 'menu_id', 'tabla_categoria'),
+    )
+
+    def __repr__(self):
+        return (
+            f'<SaborArtesanalMenuComponente menu={self.menu_id} '
+            f'categoria={self.tabla_categoria} item={self.tabla_item_id}>'
+        )
+
+
+class SaborArtesanalMenuDia(db.Model):
+    __tablename__ = 'sabor_artesanal_menu_dias'
+
+    id = db.Column(db.Integer, primary_key=True)
+    menu_id = db.Column(
+        db.Integer,
+        db.ForeignKey('sabor_artesanal_menus.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    categoria_id = db.Column(
+        db.Integer,
+        db.ForeignKey('sabor_artesanal_menu_categorias.id'),
+        nullable=False,
+        index=True,
+    )
+    fecha_servicio = db.Column(db.Date, nullable=False, index=True)
+    observaciones = db.Column(db.Text)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('fecha_servicio', 'categoria_id', name='uq_sabor_menu_dia_fecha_categoria'),
+    )
+
+    def __repr__(self):
+        return (
+            f'<SaborArtesanalMenuDia fecha={self.fecha_servicio} '
+            f'menu={self.menu_id} categoria={self.categoria_id}>'
         )

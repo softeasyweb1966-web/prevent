@@ -94,8 +94,9 @@
             </div>
 
             <div id="sabor_artesanalView" class="module-view">
-                <div class="recent-section">
+                <div class="recent-section sabor-artesanal-header-card">
                     <h2 style="margin-top:0;">Sabor Artesanal</h2>
+                    <div id="saborArtesanalHeaderContext" class="sabor-artesanal-header-context" style="display:none;"></div>
                     <div class="button-group module-actions sabor-artesanal-top-nav" role="tablist" aria-label="MenÃº Sabor Artesanal">
                         <button type="button" class="btn btn-secondary" id="saborArtesanalNavTablas" onclick="setSaborArtesanalSection('tablas')"><span class="btn-label">Tablas</span></button>
                         <button type="button" class="btn btn-secondary" id="saborArtesanalNavMenus" onclick="setSaborArtesanalSection('menus')"><span class="btn-label">MenÃºs</span></button>
@@ -768,7 +769,7 @@
                             </div>
                             <div class="period-workflow-actions">
                                 <button id="btnServiciosFinalizarNovedadesPanel" type="button" class="btn btn-outline btn-step" style="display:none;" onclick="notImplemented('Servicios: FINALIZAR NOVEDADES mes')">Finalizar Novedades</button>
-                                <button id="btnServiciosFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="notImplemented('Servicios: FINALIZAR PAGO mes')">Finalizar Pago Mes</button>
+                                <button id="btnServiciosFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="finalizarPeriodoServicios()">Finalizar Pago Mes</button>
                             </div>
                         </div>
                     </div>
@@ -5398,6 +5399,8 @@
 </div>
 
 <script src="{{ asset_url('js/dashboard.js') }}"></script>
+<script src="{{ asset_url('js/sabor_artesanal_menus.js') }}"></script>
+<script src="{{ asset_url('js/sabor_artesanal_pedidos.js') }}"></script>
 <script src="{{ asset_url('js/servicios.js') }}"></script>
 <script src="{{ asset_url('js/prestamos.js') }}"></script>
 <script>

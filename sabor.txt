@@ -5,3 +5,24 @@ manejar tablas por cada item que se ingrese y que el sistema vaya alimentando la
 
 Una vez tengamos lo anterior funcionando con su respectivo CRUD, la idea es implementar la segunda opción llamada Menú, aqui la 
 idea es que se pueda seleccionar un día y se pueda diseñar un menú por proteina en el que va :  Entrada - Proteina - Principio - Base - Acompañamiento - Ensalada, cada opción viene con la ayuda de acuerdo a la información definida en TABLAS.
+
+Manejo de MENUS
+
+Al ser un restaurante se deben poder definir unos ingredientes , poder generar con esos ingredientes unos combos que se pueden convertir en Desayunos, Almuerzos, Especiales y Parrillas, además se deben poder añadir unos productos independientes como gaseosas por ejemplo, y tanto de los ingredientes como de los productos independientes debemos tener un control sobre el inventario.
+
+Existe una opción de tablas donde se agruparon unos ingredientes , pero falta añadir los productos independientes, estamos diseñando la opción de armar los menús, es importante que sea muy amigable y que nos permita en alguna parte decir de cada ingrediente cuanto se consume en el combo que se crea. Debemos poder tener una opción que nos permita registrar las compras y que las registren con las mismas unidades que se descargan de los combos y/o permitir una conversión amigable de la unidad en que se compran a la unidad que se descarga de cada combo. También debemos tener un doble control del inventario, todo lo que se compra entra al almacen principal o bodega principal , luego se hace un traslado al restaurante, entonces debemos controlar los saldos del almacen y el restaurante, teniendo en cuenta que : una compra suma a los saldos del almacen, un traslado resta al almacen y suma al restaurante y una venta resta del restaurante.   
+
+En lo que ya se hizo veo muy enredado la creación del menú y es que la verdad el manejo de tarjetas requiere de pantallas livianas con la información estrictamente necesaria, entonces si vamos a crear las categorias y los menús hagamos una opción para cada uno, además cuando se crea el menú si escojo proteina , debe traer la ayuda con las proteinas definidas en tablas. Ojo es necesario que sea muy amigable la interfaz y se debe pensar para manejar mucho desde una tablet. 
+
+Resolvamos esto y luego continuamos con una de las partes más pesadas que es la atención de los clientes la recolección de los pedidos.    
+
+
+2026-06-09 00:57:26
+Punto de continuidad - Toma de pedidos:
+- La presentacion general mejoro bastante.
+- Falta ajustar el encabezado para que muestre correctamente los campos definidos arriba.
+- La parte izquierda debe ser solo informativa.
+- La parte derecha no debe manejar tarjetas; debe mostrar todas las opciones del plato personalizado segun la categoria y el menu elegido.
+- Nuevo hallazgo: al seleccionar un almuerzo y luego agregar una cocacola, el sistema borro el almuerzo.
+- Debe permitirse mezclar productos de diferentes categorias en un mismo comensal y reflejarlos acumulados en la parte izquierda, sin reemplazar lo ya agregado.
+- Retomar luego desde Ventas Dia para corregir primero esa mezcla entre categorias y despues seguir con el armado visual/funcional del plato.
