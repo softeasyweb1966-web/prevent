@@ -1,4 +1,6 @@
 (function () {
+    const MAX_SABOR_MENU_PROTEINAS = 5;
+
     const MENU_SECTION_TEMPLATES = [
         {
             codigo: 'entradas',
@@ -10,15 +12,15 @@
         {
             codigo: 'principios',
             label: 'Principio',
-            selector_tipo: 'grouped_single',
-            helper: 'Selecciona una opcion de Granos y otra de Verduras desde Tablas.',
+            selector_tipo: 'single',
+            helper: 'Selecciona una sola opcion de principio, por ejemplo frijol, torta o mixto.',
             categorias: ['principios'],
         },
         {
             codigo: 'proteinas',
             label: 'Proteina',
             selector_tipo: 'single',
-            helper: 'Puedes definir de 1 a 4 proteinas. En cada fila eliges la proteina y luego su presentacion.',
+            helper: 'Puedes definir de 1 a 5 proteinas. En cada fila eliges la proteina y luego su presentacion.',
             categorias: ['proteinas'],
         },
         {
@@ -194,9 +196,6 @@
     function normalizeBlockSelectorType(blockOrCode, selectorType, options = []) {
         const normalized = String(selectorType || '').trim().toLowerCase() || 'single';
         if (normalized === 'grouped_single') return normalized;
-        if (isPrincipiosBlock(blockOrCode) && (options || []).some(option => option.grupo_codigo || option.grupo_label)) {
-            return 'grouped_single';
-        }
         return normalized;
     }
 
@@ -534,12 +533,10 @@
         const block = (menu?.bloques || []).find(item => item.codigo === blockCode) || null;
         if (!block || !Array.isArray(block.opciones) || block.opciones.length === 0) return '';
         if (blockCode === 'principios') {
-            const granos = block.opciones.find(item => groupKeyForOption(item) === 'granos');
-            const verduras = block.opciones.find(item => groupKeyForOption(item) === 'verduras');
-            const partes = [];
-            if (granos?.item_nombre) partes.push(`Granos: ${granos.item_nombre}`);
-            if (verduras?.item_nombre) partes.push(`Verduras: ${verduras.item_nombre}`);
-            return partes.join(' | ');
+            return block.opciones
+                .map(item => item.item_nombre || item.principal_nombre || '')
+                .filter(Boolean)
+                .join(', ');
         }
         if (blockCode === 'proteinas') {
             return block.opciones
@@ -745,14 +742,6 @@
         };
         const availableOptions = optionsForBlock(template);
 
-        if (isPrincipiosBlock(block)) {
-            return ['granos', 'verduras'].map(groupCode => ({
-                codigo: groupCode,
-                label: groupCode === 'granos' ? 'Granos' : 'Verduras',
-                options: availableOptions.filter(option => groupKeyForOption(option) === groupCode),
-            }));
-        }
-
         if (String(block.codigo || '') === 'complementos') {
             const grouped = new Map();
             availableOptions.forEach(option => {
@@ -847,7 +836,7 @@
                     <h5>${saborEscape(block.label || template.label)}</h5>
                     <p>${saborEscape(template.helper || '')}</p>
                     <span class="sabor-menu-component-pill">Selecciona una alternativa en ventas.</span>
-                    <span class="sabor-menu-component-pill">Define de 1 a 4 alternativas.</span>
+                    <span class="sabor-menu-component-pill">Define de 1 a 5 alternativas.</span>
                 </div>
                 <div class="sabor-menu-definition-selected">
                     <div class="sabor-menu-definition-selected-title">Proteinas definidas</div>
@@ -860,9 +849,9 @@
                             type="button"
                             class="btn btn-secondary sabor-tabla-mini-btn"
                             onclick="agregarSaborMenuProteina()"
-                            ${(block.opciones || []).length >= 4 ? 'disabled' : ''}
+                            ${(block.opciones || []).length >= MAX_SABOR_MENU_PROTEINAS ? 'disabled' : ''}
                         >
-                            ${(block.opciones || []).length >= 4 ? 'Maximo 4 proteinas' : 'Agregar proteina'}
+                            ${(block.opciones || []).length >= MAX_SABOR_MENU_PROTEINAS ? 'Maximo 5 proteinas' : 'Agregar proteina'}
                         </button>
                     ` : ''}
                 </div>
@@ -1207,8 +1196,8 @@
     window.agregarSaborMenuProteina = function agregarSaborMenuProteina() {
         const block = getBlockByCode('proteinas');
         if (!block) return;
-        if ((block.opciones || []).length >= 4) {
-            notifyError('En Proteina solo puedes dejar hasta 4 alternativas.');
+        if ((block.opciones || []).length >= MAX_SABOR_MENU_PROTEINAS) {
+            notifyError(`En Proteina solo puedes dejar hasta ${MAX_SABOR_MENU_PROTEINAS} alternativas.`);
             return;
         }
         block.opciones.push({
@@ -1307,8 +1296,8 @@
         if ((block.opciones || []).some(option => option.tabla_categoria === tablaCategoria && Number(option.tabla_item_id) === Number(itemId))) {
             return;
         }
-        if (isProteinasBlock(block) && (block.opciones || []).length >= 4) {
-            notifyError('En Proteina solo puedes dejar hasta 4 alternativas.');
+        if (isProteinasBlock(block) && (block.opciones || []).length >= MAX_SABOR_MENU_PROTEINAS) {
+            notifyError(`En Proteina solo puedes dejar hasta ${MAX_SABOR_MENU_PROTEINAS} alternativas.`);
             return;
         }
 
@@ -1331,7 +1320,7 @@
             presentacion: '',
             acompanamiento: '',
             observaciones: '',
-            seleccion_default: normalizedSelector !== 'multi',
+            seleccion_default: true,
             label: helperOption.label || helperOption.item_nombre || '',
         });
         block.selector_tipo = normalizedSelector;
@@ -1437,14 +1426,6 @@
         if (bloquesConOpciones.length === 0) {
             notifyError('Debes agregar al menos una alternativa en el menu.');
             return;
-        }
-        const bloquePrincipios = bloquesConOpciones.find(block => isPrincipiosBlock(block));
-        if (bloquePrincipios) {
-            const selectedGroups = new Set((bloquePrincipios.opciones || []).map(option => groupKeyForOption(option)));
-            if (!selectedGroups.has('granos') || !selectedGroups.has('verduras')) {
-                notifyError('En Principio debes seleccionar una opcion de Granos y otra de Verduras.');
-                return;
-            }
         }
         const bloqueProteinas = bloquesConOpciones.find(block => isProteinasBlock(block));
         if (bloqueProteinas) {

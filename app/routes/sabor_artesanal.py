@@ -1,4 +1,5 @@
 import logging
+import json
 import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -13,6 +14,7 @@ from app.models import (
     SaborArtesanalMenuCategoria,
     SaborArtesanalMenuComponente,
     SaborArtesanalMenuDia,
+    SaborArtesanalPedido,
     SaborArtesanalTablaItem,
     db,
 )
@@ -24,6 +26,7 @@ SABOR_ARTESANAL_CATEGORIAS = {
     'entradas': 'Entradas',
     'principios': 'Principios',
     'proteinas': 'Proteinas',
+    'parrillas': 'Parrillas',
     'basicos': 'Basicos',
     'acompanamientos': 'Acompanamientos',
     'ensaladas': 'Ensaladas',
@@ -36,6 +39,10 @@ SABOR_ARTESANAL_CATEGORIAS = {
 SABOR_ARTESANAL_PRINCIPIOS_GRUPOS = (
     ('granos', 'Granos'),
     ('verduras', 'Verduras'),
+)
+
+SABOR_ARTESANAL_PRINCIPIOS_OPCIONES_ESPECIALES = (
+    ('mixto', 'Mixto'),
 )
 
 SABOR_ARTESANAL_MENU_CATEGORIAS_BASE = (
@@ -66,6 +73,7 @@ SABOR_ARTESANAL_MENU_CATEGORIAS_BASE = (
 )
 
 SABOR_ARTESANAL_TABLAS_CON_PRECIO = {
+    'parrillas',
     'bebidas_frias',
     'bebidas_calientes',
     'paquetes',
@@ -79,6 +87,29 @@ SABOR_ARTESANAL_MENU_CATEGORIAS_CON_PRECIO = {
     'especiales',
 }
 
+SABOR_ARTESANAL_MENU_MAX_PROTEINAS = 5
+
+SABOR_ARTESANAL_PEDIDO_ESTADOS = {
+    'ABIERTO',
+    'FINALIZADO',
+    'COBRADO',
+}
+
+SABOR_ARTESANAL_PEDIDO_MODOS_ENTREGA = {
+    'SERVIDO',
+    'ICOPOR',
+    'DOMICILIO',
+}
+
+SABOR_ARTESANAL_PEDIDO_FORMAS_PAGO = {
+    'EFECTIVO',
+    'TRANSFERENCIA',
+    'NEQUI',
+    'DAVIPLATA',
+    'MIXTO',
+    'OTRO',
+}
+
 SABOR_ARTESANAL_MENU_BLOQUES_BASE = (
     {
         'codigo': 'entradas',
@@ -88,7 +119,7 @@ SABOR_ARTESANAL_MENU_BLOQUES_BASE = (
     {
         'codigo': 'principios',
         'label': 'Principio',
-        'selector_tipo': 'grouped_single',
+        'selector_tipo': 'single',
     },
     {
         'codigo': 'proteinas',
@@ -159,6 +190,21 @@ def _decimal_to_text(valor):
     return str(valor.quantize(Decimal('0.01')))
 
 
+def _normalize_pedido_estado(valor, default='ABIERTO'):
+    estado = (valor or default or 'ABIERTO').strip().upper()
+    return estado if estado in SABOR_ARTESANAL_PEDIDO_ESTADOS else default
+
+
+def _normalize_pedido_modo_entrega(valor, default='SERVIDO'):
+    modo = (valor or default or 'SERVIDO').strip().upper()
+    return modo if modo in SABOR_ARTESANAL_PEDIDO_MODOS_ENTREGA else default
+
+
+def _normalize_pedido_forma_pago(valor, default='EFECTIVO'):
+    forma = (valor or default or 'EFECTIVO').strip().upper()
+    return forma if forma in SABOR_ARTESANAL_PEDIDO_FORMAS_PAGO else None
+
+
 def _ensure_sabor_artesanal_schema():
     inspector = inspect(db.engine)
     models = (
@@ -167,6 +213,7 @@ def _ensure_sabor_artesanal_schema():
         SaborArtesanalMenu,
         SaborArtesanalMenuComponente,
         SaborArtesanalMenuDia,
+        SaborArtesanalPedido,
     )
     for model in models:
         if not inspector.has_table(model.__tablename__):
@@ -216,6 +263,11 @@ def _es_principio_grupo_fijo(nombre):
     return any(normalized == key for key, _label in SABOR_ARTESANAL_PRINCIPIOS_GRUPOS)
 
 
+def _es_principio_opcion_especial(nombre):
+    normalized = (nombre or '').strip().lower()
+    return any(normalized == key for key, _label in SABOR_ARTESANAL_PRINCIPIOS_OPCIONES_ESPECIALES)
+
+
 def _categoria_tabla_requiere_precio(categoria):
     return (categoria or '').strip().lower() in SABOR_ARTESANAL_TABLAS_CON_PRECIO
 
@@ -248,7 +300,7 @@ def _resolver_meta_bloque_menu(tabla_categoria, parent_nombre=None, bloque_codig
     if normalized_category == 'entradas':
         return {'bloque_codigo': 'entradas', 'bloque_label': 'Sopa', 'selector_tipo': 'single'}
     if normalized_category == 'principios':
-        return {'bloque_codigo': 'principios', 'bloque_label': 'Principio', 'selector_tipo': 'grouped_single'}
+        return {'bloque_codigo': 'principios', 'bloque_label': 'Principio', 'selector_tipo': 'single'}
     if normalized_category == 'proteinas':
         return {'bloque_codigo': 'proteinas', 'bloque_label': 'Proteina', 'selector_tipo': 'single'}
     if normalized_category == 'ensaladas':
@@ -330,6 +382,31 @@ def _ensure_principios_base_items():
             categoria='principios',
             nombre=label,
             descripcion=None,
+            parent_id=None,
+            activo=True,
+            usuario_id=getattr(current_user, 'id', None),
+        ))
+        created = True
+
+    for key, label in SABOR_ARTESANAL_PRINCIPIOS_OPCIONES_ESPECIALES:
+        existing = (
+            SaborArtesanalTablaItem.query.filter(
+                SaborArtesanalTablaItem.categoria == 'principios',
+                func.lower(SaborArtesanalTablaItem.nombre) == key,
+                SaborArtesanalTablaItem.parent_id.is_(None),
+            )
+            .first()
+        )
+        if existing:
+            if existing.nombre != label:
+                existing.nombre = label
+                created = True
+            continue
+
+        db.session.add(SaborArtesanalTablaItem(
+            categoria='principios',
+            nombre=label,
+            descripcion='Combina grano y verdura en un solo principio.',
             parent_id=None,
             activo=True,
             usuario_id=getattr(current_user, 'id', None),
@@ -521,6 +598,188 @@ def _serialize_menu(menu, include_programaciones=True):
     return payload
 
 
+def _pedido_snapshot_from_record(pedido):
+    raw = getattr(pedido, 'detalle_json', None) or '{}'
+    try:
+        snapshot = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        snapshot = {}
+
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+
+    guests = snapshot.get('guests')
+    if not isinstance(guests, list) or len(guests) == 0:
+        guests = [{
+            'id': 1,
+            'label': '1',
+            'items': [],
+            'observacion': '',
+        }]
+
+    snapshot['guests'] = guests
+    snapshot['orderMeta'] = {
+        'fecha_servicio': pedido.fecha_servicio.isoformat() if pedido.fecha_servicio else snapshot.get('orderMeta', {}).get('fecha_servicio'),
+        'mesa': pedido.mesa or snapshot.get('orderMeta', {}).get('mesa') or '',
+        'cliente': pedido.cliente or snapshot.get('orderMeta', {}).get('cliente') or '',
+        'modo_entrega': pedido.modo_entrega or snapshot.get('orderMeta', {}).get('modo_entrega') or 'SERVIDO',
+    }
+    snapshot['selectedCategory'] = snapshot.get('selectedCategory') or 'almuerzos'
+    snapshot['selectedMenus'] = snapshot.get('selectedMenus') if isinstance(snapshot.get('selectedMenus'), dict) else {}
+    return snapshot
+
+
+def _serialize_pedido(pedido):
+    snapshot = _pedido_snapshot_from_record(pedido)
+    return {
+        'id': pedido.id,
+        'codigo': pedido.codigo,
+        'fecha_servicio': pedido.fecha_servicio.isoformat() if pedido.fecha_servicio else None,
+        'mesa': pedido.mesa,
+        'cliente': pedido.cliente,
+        'modo_entrega': pedido.modo_entrega,
+        'estado': pedido.estado,
+        'items_count': int(pedido.items_count or 0),
+        'comensales_count': int(pedido.comensales_count or 0),
+        'total': _decimal_to_float(pedido.total),
+        'total_texto': _decimal_to_text(pedido.total),
+        'finalizado_at': pedido.finalizado_at.isoformat() if pedido.finalizado_at else None,
+        'cobrado_at': pedido.cobrado_at.isoformat() if pedido.cobrado_at else None,
+        'forma_pago': pedido.forma_pago,
+        'valor_pagado': _decimal_to_float(pedido.valor_pagado),
+        'valor_pagado_texto': _decimal_to_text(pedido.valor_pagado),
+        'pago_referencia': pedido.pago_referencia,
+        'pago_observaciones': pedido.pago_observaciones,
+        'created_at': pedido.created_at.isoformat() if pedido.created_at else None,
+        'updated_at': pedido.updated_at.isoformat() if pedido.updated_at else None,
+        'snapshot': snapshot,
+    }
+
+
+def _build_pedido_codigo(pedido_id, fecha_servicio):
+    fecha = fecha_servicio or date.today()
+    return f'SA-{fecha.strftime("%Y%m%d")}-{int(pedido_id):04d}'
+
+
+def _validate_pedido_payload(data):
+    if not isinstance(data, dict):
+        return None, 'El pedido enviado no tiene un formato valido.'
+
+    fecha_servicio = _parse_date(data.get('fecha_servicio'))
+    if fecha_servicio is None:
+        return None, 'Debes seleccionar una fecha valida para el pedido.'
+
+    mesa = str(data.get('mesa') or '').strip()
+    if not mesa:
+        return None, 'Debes indicar la mesa o numero del pedido.'
+
+    cliente = str(data.get('cliente') or '').strip() or None
+    modo_entrega = _normalize_pedido_modo_entrega(data.get('modo_entrega'))
+    selected_category = str(data.get('selectedCategory') or 'almuerzos').strip().lower() or 'almuerzos'
+    raw_selected_menus = data.get('selectedMenus') if isinstance(data.get('selectedMenus'), dict) else {}
+    selected_menus = {
+        str(key).strip(): str(value).strip()
+        for key, value in raw_selected_menus.items()
+        if str(key).strip() and str(value).strip()
+    }
+
+    raw_guests = data.get('guests')
+    if not isinstance(raw_guests, list) or len(raw_guests) == 0:
+        raw_guests = [{'id': 1, 'label': '1', 'items': [], 'observacion': ''}]
+
+    guests = []
+    total = Decimal('0')
+    items_count = 0
+
+    for guest_index, raw_guest in enumerate(raw_guests):
+        if not isinstance(raw_guest, dict):
+            return None, f'El comensal #{guest_index + 1} no tiene un formato valido.'
+
+        try:
+            guest_id = int(raw_guest.get('id') or (guest_index + 1))
+        except (TypeError, ValueError):
+            guest_id = guest_index + 1
+
+        label = str(raw_guest.get('label') or guest_id).strip() or str(guest_id)
+        observacion = str(raw_guest.get('observacion') or '').strip()
+        raw_items = raw_guest.get('items')
+        if not isinstance(raw_items, list):
+            raw_items = []
+
+        items = []
+        for item_index, raw_item in enumerate(raw_items):
+            if not isinstance(raw_item, dict):
+                return None, f'El item #{item_index + 1} del comensal {label} no es valido.'
+
+            title = str(raw_item.get('title') or '').strip()
+            if not title:
+                return None, f'Uno de los productos del comensal {label} no tiene nombre.'
+
+            try:
+                qty = int(raw_item.get('qty') or 1)
+            except (TypeError, ValueError):
+                return None, f'La cantidad de "{title}" en el comensal {label} no es valida.'
+            if qty <= 0:
+                return None, f'La cantidad de "{title}" en el comensal {label} debe ser mayor a cero.'
+
+            price = _parse_decimal(raw_item.get('price'), default=Decimal('0'))
+            if price is None or price < 0:
+                return None, f'El precio de "{title}" en el comensal {label} no es valido.'
+
+            components_summary = raw_item.get('components_summary') if isinstance(raw_item.get('components_summary'), list) else []
+            normalized_components = [str(line).strip() for line in components_summary if str(line).strip()]
+
+            item_payload = {
+                'line_id': str(raw_item.get('line_id') or f'pedido-item-{guest_id}-{item_index + 1}').strip(),
+                'option_id': str(raw_item.get('option_id') or '').strip() or None,
+                'ref_id': raw_item.get('ref_id'),
+                'category_key': str(raw_item.get('category_key') or '').strip() or None,
+                'category_label': str(raw_item.get('category_label') or '').strip() or None,
+                'title': title[:160],
+                'subtitle': str(raw_item.get('subtitle') or '').strip() or None,
+                'detail': str(raw_item.get('detail') or '').strip() or None,
+                'components_summary': normalized_components,
+                'source_type': str(raw_item.get('source_type') or '').strip() or None,
+                'builder_signature': str(raw_item.get('builder_signature') or '').strip() or None,
+                'price': float(price),
+                'qty': qty,
+            }
+            items.append(item_payload)
+            items_count += qty
+            total += (price * qty)
+
+        guests.append({
+            'id': guest_id,
+            'label': label[:20],
+            'observacion': observacion or '',
+            'items': items,
+        })
+
+    snapshot = {
+        'selectedCategory': selected_category,
+        'selectedMenus': selected_menus,
+        'orderMeta': {
+            'fecha_servicio': fecha_servicio.isoformat(),
+            'mesa': mesa,
+            'cliente': cliente or '',
+            'modo_entrega': modo_entrega,
+        },
+        'guests': guests,
+    }
+
+    return {
+        'fecha_servicio': fecha_servicio,
+        'mesa': mesa[:80],
+        'cliente': cliente[:160] if cliente else None,
+        'modo_entrega': modo_entrega,
+        'items_count': items_count,
+        'comensales_count': len(guests),
+        'total': total,
+        'detalle_json': json.dumps(snapshot, ensure_ascii=True),
+        'snapshot': snapshot,
+    }, None
+
+
 def _buscar_item_existente(categoria, nombre, parent_id, excluding_id=None):
     query = SaborArtesanalTablaItem.query.filter(
         SaborArtesanalTablaItem.categoria == categoria,
@@ -568,11 +827,10 @@ def _construir_nombre_automatico_menu(categoria, componentes, excluding_id=None)
 
     partes = [categoria_nombre]
     entrada = (bloques.get('entradas') or [None])[0]
+    principio = (bloques.get('principios') or [None])[0]
     proteina = (bloques.get('proteinas') or [None])[0]
-    granos = next((item for item in (bloques.get('principios') or []) if (item.get('grupo_codigo') or '') == 'granos'), None)
-    verduras = next((item for item in (bloques.get('principios') or []) if (item.get('grupo_codigo') or '') == 'verduras'), None)
 
-    for componente in (entrada, granos, verduras, proteina):
+    for componente in (entrada, principio, proteina):
         if componente and componente.get('item_nombre'):
             partes.append(str(componente['item_nombre']).strip())
 
@@ -687,8 +945,8 @@ def _validate_menu_componentes(payload_componentes):
         )
         if block_meta['bloque_codigo'] == 'proteinas':
             protein_count += 1
-            if protein_count > 4:
-                return None, 'En "Proteina" solo puedes definir hasta 4 alternativas.'
+            if protein_count > SABOR_ARTESANAL_MENU_MAX_PROTEINAS:
+                return None, f'En "Proteina" solo puedes definir hasta {SABOR_ARTESANAL_MENU_MAX_PROTEINAS} alternativas.'
         group_code, group_label = _resolver_grupo_menu(
             tabla_categoria,
             parent,
@@ -741,8 +999,8 @@ def _validate_menu_bloques(payload_bloques):
         opciones = raw_block.get('opciones')
         if not isinstance(opciones, list) or len(opciones) == 0:
             return None, f'El bloque "{block_label}" debe tener al menos una alternativa.'
-        if block_code == 'proteinas' and len(opciones) > 4:
-            return None, 'En "Proteina" solo puedes definir hasta 4 alternativas.'
+        if block_code == 'proteinas' and len(opciones) > SABOR_ARTESANAL_MENU_MAX_PROTEINAS:
+            return None, f'En "Proteina" solo puedes definir hasta {SABOR_ARTESANAL_MENU_MAX_PROTEINAS} alternativas.'
 
         defaults_in_block = 0
         defaults_by_group = {}
@@ -932,8 +1190,8 @@ def crear_tabla_sabor_artesanal(categoria):
             return jsonify({'error': 'Debes indicar un precio de venta valido para esta tabla.'}), 400
 
     if _es_categoria_principios(categoria_normalizada) and parent_id is None:
-        if not _es_principio_grupo_fijo(nombre):
-            return jsonify({'error': 'En Principios solo existen los grupos fijos Granos y Verduras. Agrega opciones dentro de uno de esos grupos.'}), 400
+        if not (_es_principio_grupo_fijo(nombre) or _es_principio_opcion_especial(nombre)):
+            return jsonify({'error': 'En Principios solo existen las raices fijas Granos, Verduras y Mixto. Agrega las demas opciones dentro de uno de esos grupos.'}), 400
 
     if _buscar_item_existente(categoria_normalizada, nombre, parent_id):
         return jsonify({'error': 'Ya existe un item con ese nombre en esta tabla'}), 409
@@ -1025,8 +1283,8 @@ def actualizar_tabla_sabor_artesanal(item_id):
         if precio_venta is None or precio_venta < 0:
             return jsonify({'error': 'Debes indicar un precio de venta valido para esta tabla.'}), 400
 
-    if _es_categoria_principios(item.categoria) and parent_id is None and not _es_principio_grupo_fijo(nombre):
-        return jsonify({'error': 'En Principios solo existen los grupos fijos Granos y Verduras.'}), 400
+    if _es_categoria_principios(item.categoria) and parent_id is None and not (_es_principio_grupo_fijo(nombre) or _es_principio_opcion_especial(nombre)):
+        return jsonify({'error': 'En Principios solo existen las raices fijas Granos, Verduras y Mixto.'}), 400
 
     if _buscar_item_existente(item.categoria, nombre, parent_id, excluding_id=item.id):
         return jsonify({'error': 'Ya existe un item con ese nombre en esta tabla'}), 409
@@ -1059,8 +1317,10 @@ def eliminar_tabla_sabor_artesanal(item_id):
     if _es_categoria_principios(item.categoria):
         _ensure_principios_base_items()
 
-    if _es_categoria_principios(item.categoria) and item.parent_id is None and _es_principio_grupo_fijo(item.nombre):
-        return jsonify({'error': 'Los grupos fijos Granos y Verduras no se pueden eliminar.'}), 400
+    if _es_categoria_principios(item.categoria) and item.parent_id is None and (
+        _es_principio_grupo_fijo(item.nombre) or _es_principio_opcion_especial(item.nombre)
+    ):
+        return jsonify({'error': 'Las raices fijas Granos, Verduras y Mixto no se pueden eliminar.'}), 400
 
     try:
         item_nombre = item.nombre
@@ -1198,6 +1458,7 @@ def eliminar_menu_categoria_sabor_artesanal(categoria_id):
 def obtener_contexto_menus_sabor_artesanal():
     try:
         _prepare_sabor_artesanal_context()
+        fecha_servicio = _parse_date(request.args.get('fecha_servicio'))
         categorias_menu = SaborArtesanalMenuCategoria.query.order_by(
             SaborArtesanalMenuCategoria.activo.desc(),
             SaborArtesanalMenuCategoria.orden.asc(),
@@ -1221,12 +1482,21 @@ def obtener_contexto_menus_sabor_artesanal():
             SaborArtesanalMenuDia.fecha_servicio.asc(),
             SaborArtesanalMenuDia.id.asc(),
         ).all()
+        pedidos = []
+        if fecha_servicio:
+            pedidos = SaborArtesanalPedido.query.filter(
+                SaborArtesanalPedido.fecha_servicio == fecha_servicio
+            ).order_by(
+                SaborArtesanalPedido.updated_at.desc(),
+                SaborArtesanalPedido.id.desc(),
+            ).all()
 
         return jsonify({
             'categorias_menu': [_serialize_menu_categoria(item) for item in categorias_menu],
             'tablas_catalogo': _build_catalogo_tablas(),
             'menus': [_serialize_menu(item) for item in menus],
             'programaciones': [_serialize_programacion(item) for item in programaciones],
+            'pedidos': [_serialize_pedido(item) for item in pedidos],
         }), 200
     except Exception as exc:
         logger.error('Error cargando contexto de menus de Sabor Artesanal: %s', exc)
@@ -1571,3 +1841,224 @@ def eliminar_programacion_menu_sabor_artesanal(programacion_id):
         db.session.rollback()
         logger.error('Error eliminando programacion de menu %s: %s', programacion_id, exc)
         return jsonify({'error': 'No se pudo eliminar la programacion'}), 500
+
+
+@sabor_artesanal_bp.route('/ventas-dia/pedidos', methods=['GET'])
+@sabor_artesanal_bp.route('/pedidos', methods=['GET'])
+@login_required
+def listar_pedidos_sabor_artesanal():
+    try:
+        _prepare_sabor_artesanal_context()
+        query = SaborArtesanalPedido.query
+
+        fecha_servicio = _parse_date(request.args.get('fecha_servicio'))
+        if fecha_servicio:
+            query = query.filter(SaborArtesanalPedido.fecha_servicio == fecha_servicio)
+
+        estado = (request.args.get('estado') or '').strip().upper()
+        if estado:
+            if estado not in SABOR_ARTESANAL_PEDIDO_ESTADOS:
+                return jsonify({'error': 'El estado del pedido no es valido'}), 400
+            query = query.filter(SaborArtesanalPedido.estado == estado)
+
+        pedidos = query.order_by(
+            SaborArtesanalPedido.fecha_servicio.desc(),
+            SaborArtesanalPedido.updated_at.desc(),
+            SaborArtesanalPedido.id.desc(),
+        ).all()
+        return jsonify({'pedidos': [_serialize_pedido(item) for item in pedidos]}), 200
+    except Exception as exc:
+        logger.error('Error listando pedidos de Sabor Artesanal: %s', exc)
+        return jsonify({'error': 'No se pudieron cargar los pedidos'}), 500
+
+
+@sabor_artesanal_bp.route('/ventas-dia/pedidos/<int:pedido_id>', methods=['GET'])
+@sabor_artesanal_bp.route('/pedidos/<int:pedido_id>', methods=['GET'])
+@login_required
+def obtener_pedido_sabor_artesanal(pedido_id):
+    _prepare_sabor_artesanal_context()
+    pedido = SaborArtesanalPedido.query.get(pedido_id)
+    if pedido is None:
+        return jsonify({'error': 'El pedido solicitado no existe'}), 404
+
+    try:
+        return jsonify({'pedido': _serialize_pedido(pedido)}), 200
+    except Exception as exc:
+        logger.error('Error cargando pedido %s de Sabor Artesanal: %s', pedido_id, exc)
+        return jsonify({'error': 'No se pudo cargar el pedido'}), 500
+
+
+@sabor_artesanal_bp.route('/ventas-dia/pedidos', methods=['POST'])
+@sabor_artesanal_bp.route('/pedidos', methods=['POST'])
+@login_required
+def crear_pedido_sabor_artesanal():
+    _prepare_sabor_artesanal_context()
+    payload, error = _validate_pedido_payload(request.get_json() or {})
+    if error:
+        return jsonify({'error': error}), 400
+
+    try:
+        pedido = SaborArtesanalPedido(
+            codigo='PENDIENTE',
+            fecha_servicio=payload['fecha_servicio'],
+            mesa=payload['mesa'],
+            cliente=payload['cliente'],
+            modo_entrega=payload['modo_entrega'],
+            estado='ABIERTO',
+            detalle_json=payload['detalle_json'],
+            items_count=payload['items_count'],
+            comensales_count=payload['comensales_count'],
+            total=payload['total'],
+            usuario_id=getattr(current_user, 'id', None),
+        )
+        db.session.add(pedido)
+        db.session.flush()
+        pedido.codigo = _build_pedido_codigo(pedido.id, pedido.fecha_servicio)
+        db.session.commit()
+        return jsonify({
+            'mensaje': 'Pedido creado correctamente',
+            'pedido': _serialize_pedido(pedido),
+        }), 201
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('Error creando pedido de Sabor Artesanal: %s', exc)
+        return jsonify({'error': 'No se pudo crear el pedido'}), 500
+
+
+@sabor_artesanal_bp.route('/ventas-dia/pedidos/<int:pedido_id>', methods=['PUT'])
+@sabor_artesanal_bp.route('/pedidos/<int:pedido_id>', methods=['PUT'])
+@login_required
+def actualizar_pedido_sabor_artesanal(pedido_id):
+    _prepare_sabor_artesanal_context()
+    pedido = SaborArtesanalPedido.query.get_or_404(pedido_id)
+    if pedido.estado == 'COBRADO':
+        return jsonify({'error': 'No puedes modificar un pedido que ya fue cobrado.'}), 409
+
+    payload, error = _validate_pedido_payload(request.get_json() or {})
+    if error:
+        return jsonify({'error': error}), 400
+
+    try:
+        pedido.fecha_servicio = payload['fecha_servicio']
+        pedido.mesa = payload['mesa']
+        pedido.cliente = payload['cliente']
+        pedido.modo_entrega = payload['modo_entrega']
+        pedido.detalle_json = payload['detalle_json']
+        pedido.items_count = payload['items_count']
+        pedido.comensales_count = payload['comensales_count']
+        pedido.total = payload['total']
+        db.session.commit()
+        return jsonify({
+            'mensaje': 'Pedido actualizado correctamente',
+            'pedido': _serialize_pedido(pedido),
+        }), 200
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('Error actualizando pedido %s de Sabor Artesanal: %s', pedido_id, exc)
+        return jsonify({'error': 'No se pudo actualizar el pedido'}), 500
+
+
+@sabor_artesanal_bp.route('/ventas-dia/pedidos/<int:pedido_id>', methods=['DELETE'])
+@sabor_artesanal_bp.route('/pedidos/<int:pedido_id>', methods=['DELETE'])
+@login_required
+def eliminar_pedido_sabor_artesanal(pedido_id):
+    _prepare_sabor_artesanal_context()
+    pedido = SaborArtesanalPedido.query.get_or_404(pedido_id)
+    if pedido.estado == 'COBRADO':
+        return jsonify({'error': 'No puedes eliminar un pedido que ya fue cobrado.'}), 409
+
+    try:
+        codigo = pedido.codigo
+        db.session.delete(pedido)
+        db.session.commit()
+        return jsonify({'mensaje': f'Se elimino el pedido {codigo}.'}), 200
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('Error eliminando pedido %s de Sabor Artesanal: %s', pedido_id, exc)
+        return jsonify({'error': 'No se pudo eliminar el pedido'}), 500
+
+
+@sabor_artesanal_bp.route('/ventas-dia/pedidos/<int:pedido_id>/finalizar', methods=['POST'])
+@sabor_artesanal_bp.route('/pedidos/<int:pedido_id>/finalizar', methods=['POST'])
+@login_required
+def finalizar_pedido_sabor_artesanal(pedido_id):
+    _prepare_sabor_artesanal_context()
+    pedido = SaborArtesanalPedido.query.get_or_404(pedido_id)
+    if pedido.estado == 'COBRADO':
+        return jsonify({'error': 'El pedido ya fue cobrado y no se puede finalizar de nuevo.'}), 409
+    if int(pedido.items_count or 0) <= 0:
+        return jsonify({'error': 'No puedes finalizar un pedido sin productos.'}), 400
+
+    try:
+        pedido.estado = 'FINALIZADO'
+        pedido.finalizado_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify({
+            'mensaje': 'Pedido finalizado correctamente',
+            'pedido': _serialize_pedido(pedido),
+        }), 200
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('Error finalizando pedido %s de Sabor Artesanal: %s', pedido_id, exc)
+        return jsonify({'error': 'No se pudo finalizar el pedido'}), 500
+
+
+@sabor_artesanal_bp.route('/ventas-dia/pedidos/<int:pedido_id>/reabrir', methods=['POST'])
+@sabor_artesanal_bp.route('/pedidos/<int:pedido_id>/reabrir', methods=['POST'])
+@login_required
+def reabrir_pedido_sabor_artesanal(pedido_id):
+    _prepare_sabor_artesanal_context()
+    pedido = SaborArtesanalPedido.query.get_or_404(pedido_id)
+    if pedido.estado == 'COBRADO':
+        return jsonify({'error': 'No puedes reabrir un pedido que ya fue cobrado.'}), 409
+
+    try:
+        pedido.estado = 'ABIERTO'
+        pedido.finalizado_at = None
+        db.session.commit()
+        return jsonify({
+            'mensaje': 'Pedido reabierto correctamente',
+            'pedido': _serialize_pedido(pedido),
+        }), 200
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('Error reabriendo pedido %s de Sabor Artesanal: %s', pedido_id, exc)
+        return jsonify({'error': 'No se pudo reabrir el pedido'}), 500
+
+
+@sabor_artesanal_bp.route('/ventas-dia/pedidos/<int:pedido_id>/cobrar', methods=['POST'])
+@sabor_artesanal_bp.route('/pedidos/<int:pedido_id>/cobrar', methods=['POST'])
+@login_required
+def cobrar_pedido_sabor_artesanal(pedido_id):
+    _prepare_sabor_artesanal_context()
+    pedido = SaborArtesanalPedido.query.get_or_404(pedido_id)
+    if pedido.estado == 'COBRADO':
+        return jsonify({'error': 'El pedido ya fue cobrado.'}), 409
+    if pedido.estado != 'FINALIZADO':
+        return jsonify({'error': 'Primero debes finalizar el pedido antes de registrar el cobro.'}), 409
+
+    data = request.get_json() or {}
+    forma_pago = _normalize_pedido_forma_pago(data.get('forma_pago'))
+    if not forma_pago:
+        return jsonify({'error': 'Debes seleccionar una forma de pago valida.'}), 400
+
+    valor_pagado = _parse_decimal(data.get('valor_pagado'), default=pedido.total)
+    if valor_pagado is None or valor_pagado < 0:
+        return jsonify({'error': 'El valor pagado no es valido.'}), 400
+
+    try:
+        pedido.estado = 'COBRADO'
+        pedido.cobrado_at = datetime.utcnow()
+        pedido.forma_pago = forma_pago
+        pedido.valor_pagado = valor_pagado
+        pedido.pago_referencia = (data.get('pago_referencia') or '').strip()[:120] or None
+        pedido.pago_observaciones = (data.get('pago_observaciones') or '').strip() or None
+        db.session.commit()
+        return jsonify({
+            'mensaje': 'Cobro registrado correctamente',
+            'pedido': _serialize_pedido(pedido),
+        }), 200
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('Error cobrando pedido %s de Sabor Artesanal: %s', pedido_id, exc)
+        return jsonify({'error': 'No se pudo registrar el cobro'}), 500

@@ -1654,3 +1654,37 @@ class SaborArtesanalMenuDia(db.Model):
             f'<SaborArtesanalMenuDia fecha={self.fecha_servicio} '
             f'menu={self.menu_id} categoria={self.categoria_id}>'
         )
+
+
+class SaborArtesanalPedido(db.Model):
+    __tablename__ = 'sabor_artesanal_pedidos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    codigo = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    fecha_servicio = db.Column(db.Date, nullable=False, index=True)
+    mesa = db.Column(db.String(80), nullable=False, index=True)
+    cliente = db.Column(db.String(160))
+    modo_entrega = db.Column(db.String(20), nullable=False, default='SERVIDO', index=True)
+    estado = db.Column(db.String(20), nullable=False, default='ABIERTO', index=True)
+    detalle_json = db.Column(db.Text, nullable=False)
+    items_count = db.Column(db.Integer, nullable=False, default=0)
+    comensales_count = db.Column(db.Integer, nullable=False, default=1)
+    total = db.Column(Numeric(15, 2), nullable=False, default=0)
+    finalizado_at = db.Column(db.DateTime)
+    cobrado_at = db.Column(db.DateTime)
+    forma_pago = db.Column(db.String(30))
+    valor_pagado = db.Column(Numeric(15, 2))
+    pago_referencia = db.Column(db.String(120))
+    pago_observaciones = db.Column(db.Text)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    usuario = db.relationship('Usuario', foreign_keys=[usuario_id])
+
+    __table_args__ = (
+        db.Index('ix_sabor_pedido_fecha_estado', 'fecha_servicio', 'estado'),
+    )
+
+    def __repr__(self):
+        return f'<SaborArtesanalPedido {self.codigo} mesa={self.mesa} estado={self.estado}>'

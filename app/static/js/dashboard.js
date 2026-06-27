@@ -2309,28 +2309,13 @@ function normalizeSaborArtesanalLabels() {
     const topNav = document.querySelector('.sabor-artesanal-top-nav');
     if (topNav) topNav.setAttribute('aria-label', 'Menu Sabor Artesanal');
 
-    const menusPanel = document.getElementById('saborArtesanalMenusPanel');
-    const menusPlaceholder = menusPanel?.dataset?.initializedMenus === 'true'
-        ? null
-        : document.querySelector('#saborArtesanalMenusPanel .placeholder');
-    if (menusPlaceholder) menusPlaceholder.textContent = 'Aqui podremos administrar el catalogo de menus y preparaciones.';
-    const comprasPlaceholder = document.querySelector('#saborArtesanalComprasPanel .placeholder');
-    if (comprasPlaceholder) comprasPlaceholder.textContent = 'Modulo base preparado para registrar compras e insumos.';
-    const ventasPanel = document.getElementById('saborArtesanalVentasDiaPanel');
-    const ventasPlaceholder = ventasPanel?.dataset?.initializedPedidos === 'true'
-        ? null
-        : document.querySelector('#saborArtesanalVentasDiaPanel .placeholder');
-    if (ventasPlaceholder) ventasPlaceholder.textContent = 'Vista inicial para el registro diario de ventas.';
-    const cierrePlaceholder = document.querySelector('#saborArtesanalCierreDiaPanel .placeholder');
-    if (cierrePlaceholder) cierrePlaceholder.textContent = 'Seccion lista para consolidar cierres diarios.';
-    const informesPlaceholder = document.querySelector('#saborArtesanalInformesPanel .placeholder');
-    if (informesPlaceholder) informesPlaceholder.textContent = 'Panel reservado para reportes y analisis de Sabor Artesanal.';
 }
 
 const SABOR_ARTESANAL_TABLAS_CONFIG = {
     entradas: { key: 'entradas', label: 'Entradas', singular: 'Entrada' },
     principios: { key: 'principios', label: 'Principios', singular: 'Principio' },
     proteinas: { key: 'proteinas', label: 'Proteinas', singular: 'Proteina' },
+    parrillas: { key: 'parrillas', label: 'Parrillas', singular: 'Parrilla' },
     basicos: { key: 'basicos', label: 'Basicos', singular: 'Basico' },
     acompanamientos: { key: 'acompanamientos', label: 'Acompanamientos', singular: 'Acompanamiento' },
     ensaladas: { key: 'ensaladas', label: 'Ensaladas', singular: 'Ensalada' },
@@ -2344,7 +2329,110 @@ let _saborTablaCrudModalState = null;
 let _saborTablaDeleteState = null;
 
 const SABOR_ARTESANAL_PRINCIPIOS_GRUPOS = ['granos', 'verduras'];
-const SABOR_ARTESANAL_TABLAS_CON_PRECIO = ['bebidas_frias', 'bebidas_calientes', 'paquetes', 'adicionales'];
+const SABOR_ARTESANAL_TABLAS_CON_PRECIO = ['parrillas', 'bebidas_frias', 'bebidas_calientes', 'paquetes', 'adicionales'];
+
+function _getSaborTablaUiCopy(section = 'entradas') {
+    const normalized = _normalizarSaborTablaCategoria(section);
+    const config = _getSaborTablaConfig(normalized);
+
+    if (normalized === 'basicos') {
+        return {
+            editorTitle: 'Basicos fijos del almuerzo',
+            editorSubtitle: 'Aqui defines grupos base como arroz, jugo, platano o papa y luego sus opciones.',
+            modeCreate: 'Piensa en el grupo base del almuerzo. Ejemplos: Arroz, Jugo, Platano o Papa.',
+            modeEdit: 'Estas editando un basico guardado. Al guardar se actualiza el grupo base y sus opciones.',
+            principalPlaceholder: 'Basico. Ej: Arroz',
+            descripcionPlaceholder: 'Detalle opcional. Ej: Va fijo en el almuerzo',
+            helperEmptyLoaded: 'Puedes crear basicos como Arroz, Jugo, Platano o Papa y luego definir sus opciones.',
+            helperEmptyNoData: 'Todavia no hay basicos guardados. Empieza con Arroz, Jugo, Platano o Papa.',
+            helperNoMatch: 'No hay coincidencias guardadas. Si quieres, puedes crear un basico nuevo.',
+            examplesHtml: `
+                <div class="sabor-tabla-friendly-box">
+                    <strong>Ejemplos utiles</strong>
+                    <span>Arroz -> Blanco, Con fideos</span>
+                    <span>Jugo -> Mora, Mango, Maracuya</span>
+                    <span>Platano o Papa -> Maduro, Salada, Francesa</span>
+                </div>
+            `,
+            variantsTitle: 'Opciones del basico',
+            addOptionLabel: 'Agregar opcion',
+            saveCreate: 'Guardar basico con opciones',
+            saveEdit: 'Actualizar basico con opciones',
+            searchPlaceholder: 'Buscar basico u opcion...',
+            listTitle: 'Basicos guardados',
+            detailTitle: 'Opciones guardadas',
+            selectedEmpty: 'Selecciona un basico.',
+            detailEmpty: 'Selecciona un basico para ver o crear sus opciones.',
+        };
+    }
+
+    if (normalized === 'parrillas') {
+        return {
+            editorTitle: 'Parrillas y combos de parrilla',
+            editorSubtitle: 'Aqui puedes crear las opciones que vendes en parrilla y su precio de venta.',
+            modeCreate: 'Registra la parrilla principal y, si quieres, agrega sus presentaciones u opciones.',
+            modeEdit: 'Estas editando una parrilla ya guardada con sus opciones.',
+            principalPlaceholder: 'Parrilla. Ej: Costilla BBQ',
+            descripcionPlaceholder: 'Detalle opcional. Ej: Incluye papa y ensalada',
+            helperEmptyLoaded: 'Crea aqui las parrillas que quieras administrar por separado del almuerzo.',
+            helperEmptyNoData: 'Todavia no hay parrillas guardadas. Empieza con una como Costilla BBQ o Parrillada mixta.',
+            helperNoMatch: 'No hay coincidencias guardadas. Si quieres, puedes crear una parrilla nueva.',
+            examplesHtml: `
+                <div class="sabor-tabla-friendly-box">
+                    <strong>Ejemplos utiles</strong>
+                    <span>Costilla BBQ</span>
+                    <span>Parrillada mixta</span>
+                    <span>1 proteina, 2 proteinas o especial de la casa</span>
+                </div>
+            `,
+            variantsTitle: 'Opciones de la parrilla',
+            addOptionLabel: 'Agregar opcion',
+            saveCreate: 'Guardar parrilla con opciones',
+            saveEdit: 'Actualizar parrilla con opciones',
+            searchPlaceholder: 'Buscar parrilla u opcion...',
+            listTitle: 'Parrillas guardadas',
+            detailTitle: 'Opciones guardadas',
+            selectedEmpty: 'Selecciona una parrilla.',
+            detailEmpty: 'Selecciona una parrilla para ver o crear sus opciones.',
+        };
+    }
+
+    return {
+        editorTitle: `${config.singular || config.label} principal`,
+        editorSubtitle: 'Este boton guarda el principal y todas las opciones llenas.',
+        modeCreate: 'Escribe en principal para ver ayudas de lo que ya esta guardado.',
+        modeEdit: 'Editando un principal ya guardado. Al guardar se actualiza el principal y sus opciones.',
+        principalPlaceholder: `Principal. Ej: ${config.singular === 'Proteina' ? 'Pechuga' : config.singular || config.label}`,
+        descripcionPlaceholder: 'Descripcion opcional',
+        helperEmptyLoaded: null,
+        helperEmptyNoData: 'Todavia no hay principales guardados en esta categoria.',
+        helperNoMatch: 'No hay coincidencias guardadas. Si quieres, puedes crear un principal nuevo.',
+        examplesHtml: '',
+        variantsTitle: 'Opciones del principal',
+        addOptionLabel: 'Agregar opcion',
+        saveCreate: 'Guardar principal con opciones',
+        saveEdit: 'Actualizar principal con opciones',
+        searchPlaceholder: 'Buscar principal o variante...',
+        listTitle: 'Principales guardados',
+        detailTitle: 'Opciones guardadas',
+        selectedEmpty: 'Selecciona un principal.',
+        detailEmpty: 'Selecciona un principal para ver o crear sus opciones.',
+    };
+}
+
+function _getSaborTablaVariantePlaceholder(section = 'entradas', index = 0, draft = null) {
+    const normalized = _normalizarSaborTablaCategoria(section);
+    if (normalized !== 'basicos') {
+        return `Opcion ${index + 1}. Ej: Al horno`;
+    }
+
+    const principal = String(draft?.nombre || '').trim().toLowerCase();
+    if (principal.includes('arroz')) return `Opcion ${index + 1}. Ej: Blanco`;
+    if (principal.includes('jugo')) return `Opcion ${index + 1}. Ej: Mora`;
+    if (principal.includes('platano')) return `Opcion ${index + 1}. Ej: Maduro`;
+    if (principal.includes('papa')) return `Opcion ${index + 1}. Ej: Francesa`;
+    return `Opcion ${index + 1}. Ej: Blanco, Mora o Francesa`;
+}
 
 function _saborTablaCategoriaRequierePrecio(section = 'entradas') {
     return SABOR_ARTESANAL_TABLAS_CON_PRECIO.includes(_normalizarSaborTablaCategoria(section));
@@ -2550,6 +2638,7 @@ function ensureSaborArtesanalTablasUI() {
                 <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaEntradas" onclick="setSaborArtesanalTablasSection('entradas')">Entradas</button>
                 <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaPrincipios" onclick="setSaborArtesanalTablasSection('principios')">Principios</button>
                 <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaProteinas" onclick="setSaborArtesanalTablasSection('proteinas')">Proteinas</button>
+                <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaParrillas" onclick="setSaborArtesanalTablasSection('parrillas')">Parrillas</button>
                 <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaBasicos" onclick="setSaborArtesanalTablasSection('basicos')">Basicos</button>
                 <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaAcompanamientos" onclick="setSaborArtesanalTablasSection('acompanamientos')">Acompanamientos</button>
                 <button type="button" class="sabor-tablas-option" id="saborArtesanalTablaEnsaladas" onclick="setSaborArtesanalTablasSection('ensaladas')">Ensaladas</button>
@@ -2570,6 +2659,7 @@ function ensureSaborArtesanalTablaCrudPanel(section = 'entradas') {
     const panel = document.getElementById('saborArtesanalTablaWorkspace');
     if (!panel) return;
     const isPrincipios = _isSaborTablaPrincipios(config.key);
+    const uiCopy = _getSaborTablaUiCopy(config.key);
     const editorBlock = isPrincipios
         ? `
             <div class="sabor-tabla-editor">
@@ -2585,13 +2675,14 @@ function ensureSaborArtesanalTablaCrudPanel(section = 'entradas') {
         : `
             <div class="sabor-tabla-editor">
                 <div class="sabor-tabla-editor-head">
-                    <strong>${config.singular || config.label} principal</strong>
-                    <span>Este boton guarda el principal y todas las opciones llenas.</span>
+                    <strong>${uiCopy.editorTitle}</strong>
+                    <span>${uiCopy.editorSubtitle}</span>
                 </div>
                 <div id="saborTabla${domKey}QuickMode" class="sabor-tabla-quick-mode"></div>
+                ${uiCopy.examplesHtml || ''}
                 <div class="sabor-tabla-capture-grid">
-                    <input type="text" id="saborTabla${domKey}PrincipalNombre" placeholder="Principal. Ej: Pechuga" autocomplete="off" onfocus="renderSaborTablaPrincipalHelper('${config.key}')" oninput="setSaborTablaDraftField('${config.key}', 'nombre', this.value)">
-                    <input type="text" id="saborTabla${domKey}PrincipalDescripcion" placeholder="Descripcion opcional" oninput="setSaborTablaDraftField('${config.key}', 'descripcion', this.value)">
+                    <input type="text" id="saborTabla${domKey}PrincipalNombre" placeholder="${uiCopy.principalPlaceholder}" autocomplete="off" onfocus="renderSaborTablaPrincipalHelper('${config.key}')" oninput="setSaborTablaDraftField('${config.key}', 'nombre', this.value)">
+                    <input type="text" id="saborTabla${domKey}PrincipalDescripcion" placeholder="${uiCopy.descripcionPlaceholder}" oninput="setSaborTablaDraftField('${config.key}', 'descripcion', this.value)">
                     ${_saborTablaCategoriaRequierePrecio(config.key) ? `<input type="number" id="saborTabla${domKey}PrincipalPrecioVenta" min="0" step="0.01" placeholder="Precio de venta" oninput="setSaborTablaDraftField('${config.key}', 'precio_venta', this.value)">` : ''}
                     <label class="sabor-tabla-inline-check">
                         <input type="checkbox" id="saborTabla${domKey}PrincipalActivo" checked onchange="setSaborTablaDraftActivo('${config.key}', this.checked)">
@@ -2601,15 +2692,15 @@ function ensureSaborArtesanalTablaCrudPanel(section = 'entradas') {
                 <div id="saborTabla${domKey}PrincipalHelper" class="sabor-tabla-helper-box"></div>
                 <div class="sabor-tabla-variants-box">
                     <div class="sabor-tabla-variants-header">
-                        <h6>Opciones del principal</h6>
-                        <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="agregarSaborTablaVarianteRow('${config.key}')">Agregar opcion</button>
+                        <h6>${uiCopy.variantsTitle}</h6>
+                        <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="agregarSaborTablaVarianteRow('${config.key}')">${uiCopy.addOptionLabel}</button>
                     </div>
                     <div id="saborTabla${domKey}VariantesEditor"></div>
                 </div>
                 <div id="saborTabla${domKey}QuickError" class="sabor-tabla-error" style="display:none;"></div>
                 <div class="sabor-tabla-capture-actions">
                     <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="limpiarSaborTablaQuickForm('${config.key}')">Limpiar</button>
-                    <button type="button" class="btn btn-primary sabor-tabla-save-btn" id="saborTabla${domKey}SaveBtn" onclick="guardarSaborTablaQuickForm('${config.key}')">Guardar principal con opciones</button>
+                    <button type="button" class="btn btn-primary sabor-tabla-save-btn" id="saborTabla${domKey}SaveBtn" onclick="guardarSaborTablaQuickForm('${config.key}')">${uiCopy.saveCreate}</button>
                 </div>
             </div>
         `;
@@ -2621,7 +2712,7 @@ function ensureSaborArtesanalTablaCrudPanel(section = 'entradas') {
                 <strong>${config.label}</strong>
             </div>
             <div class="sabor-tabla-header-line">
-                <input type="text" id="saborTabla${domKey}Busqueda" placeholder="${isPrincipios ? 'Buscar grupo, grano o verdura...' : 'Buscar principal o variante...'}" oninput="renderSaborArtesanalTabla('${config.key}')">
+                <input type="text" id="saborTabla${domKey}Busqueda" placeholder="${isPrincipios ? 'Buscar grupo, grano o verdura...' : uiCopy.searchPlaceholder}" oninput="renderSaborArtesanalTabla('${config.key}')">
                 <select id="saborTabla${domKey}Activo" onchange="renderSaborArtesanalTabla('${config.key}')">
                     <option value="true">Activos</option>
                     <option value="all">Todos</option>
@@ -2633,7 +2724,7 @@ function ensureSaborArtesanalTablaCrudPanel(section = 'entradas') {
             <div id="saborTabla${domKey}Resumen" class="sabor-tabla-resumen"></div>
             <div class="sabor-tabla-list-layout">
                 <div class="sabor-tabla-list-panel">
-                    <div class="sabor-tabla-list-title">${isPrincipios ? 'Grupos de principios' : 'Principales guardados'}</div>
+                    <div class="sabor-tabla-list-title">${isPrincipios ? 'Grupos de principios' : uiCopy.listTitle}</div>
                     <div id="saborTabla${domKey}Principales" class="sabor-tabla-listbox">
                         <div class="placeholder" style="padding:20px 12px;">Cargando items...</div>
                     </div>
@@ -2641,13 +2732,13 @@ function ensureSaborArtesanalTablaCrudPanel(section = 'entradas') {
                 <div class="sabor-tabla-list-panel">
                     <div class="sabor-tabla-list-title-row">
                         <div>
-                            <div class="sabor-tabla-list-title">${isPrincipios ? 'Opciones del grupo' : 'Opciones guardadas'}</div>
-                            <div id="saborTabla${domKey}SeleccionadoNombre" class="sabor-tabla-selected-label">${isPrincipios ? 'Selecciona Granos o Verduras.' : 'Selecciona un principal.'}</div>
+                            <div class="sabor-tabla-list-title">${isPrincipios ? 'Opciones del grupo' : uiCopy.detailTitle}</div>
+                            <div id="saborTabla${domKey}SeleccionadoNombre" class="sabor-tabla-selected-label">${isPrincipios ? 'Selecciona Granos o Verduras.' : uiCopy.selectedEmpty}</div>
                         </div>
                         <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" id="saborTabla${domKey}BtnNuevoDetalle" onclick="abrirModalDetalleSaborTabla('${config.key}')" disabled>Nueva opcion</button>
                     </div>
                     <div id="saborTabla${domKey}Detalles" class="sabor-tabla-listbox">
-                        <div class="placeholder" style="padding:20px 12px;">${isPrincipios ? 'Selecciona Granos o Verduras para ver o crear sus opciones.' : 'Selecciona un principal para ver sus opciones.'}</div>
+                        <div class="placeholder" style="padding:20px 12px;">${isPrincipios ? 'Selecciona Granos o Verduras para ver o crear sus opciones.' : uiCopy.detailEmpty}</div>
                     </div>
                 </div>
             </div>
@@ -2708,6 +2799,7 @@ function renderSaborTablaQuickForm(section = 'entradas') {
     const normalized = _normalizarSaborTablaCategoria(section);
     const domKey = _getSaborTablaDomKey(normalized);
     const draft = _getSaborTablaDraft(normalized);
+    const uiCopy = _getSaborTablaUiCopy(normalized);
     const container = document.getElementById(`saborTabla${domKey}VariantesEditor`);
     if (!container) return;
     const requierePrecio = _saborTablaCategoriaRequierePrecio(normalized);
@@ -2727,26 +2819,26 @@ function renderSaborTablaQuickForm(section = 'entradas') {
         modeBox.innerHTML = draft.editingParentId
             ? `
                 <div class="sabor-tabla-mode-pill is-editing">
-                    Editando un principal ya guardado. Al guardar se actualiza el principal y sus opciones.
+                    ${uiCopy.modeEdit}
                     <button type="button" class="btn btn-secondary sabor-tabla-mini-btn" onclick="limpiarSaborTablaQuickForm('${normalized}')">Crear nuevo</button>
                 </div>
             `
             : `
                 <div class="sabor-tabla-mode-pill">
-                    Escribe en principal para ver ayudas de lo que ya esta guardado.
+                    ${uiCopy.modeCreate}
                 </div>
             `;
     }
 
     if (saveBtn) {
         saveBtn.textContent = draft.editingParentId
-            ? 'Actualizar principal con opciones'
-            : 'Guardar principal con opciones';
+            ? uiCopy.saveEdit
+            : uiCopy.saveCreate;
     }
 
     container.innerHTML = draft.variantes.map((variante, index) => `
         <div class="sabor-tabla-variant-row">
-            <input type="text" value="${escapeHtml(variante.nombre || '')}" placeholder="Opcion ${index + 1}. Ej: Al horno" oninput="setSaborTablaVarianteField('${normalized}', ${index}, 'nombre', this.value)">
+            <input type="text" value="${escapeHtml(variante.nombre || '')}" placeholder="${escapeHtml(_getSaborTablaVariantePlaceholder(normalized, index, draft))}" oninput="setSaborTablaVarianteField('${normalized}', ${index}, 'nombre', this.value)">
             <input type="text" value="${escapeHtml(variante.descripcion || '')}" placeholder="Descripcion opcional" oninput="setSaborTablaVarianteField('${normalized}', ${index}, 'descripcion', this.value)">
             ${requierePrecio ? `<input type="number" min="0" step="0.01" value="${escapeHtml(variante.precio_venta || '')}" placeholder="Precio venta" oninput="setSaborTablaVarianteField('${normalized}', ${index}, 'precio_venta', this.value)">` : ''}
             <label class="sabor-tabla-inline-check">
@@ -2793,6 +2885,7 @@ function renderSaborTablaPrincipalHelper(section = 'entradas') {
     const domKey = _getSaborTablaDomKey(normalized);
     const state = _getSaborTablaState(normalized);
     const draft = _getSaborTablaDraft(normalized);
+    const uiCopy = _getSaborTablaUiCopy(normalized);
     const helper = document.getElementById(`saborTabla${domKey}PrincipalHelper`);
     if (!helper) return;
 
@@ -2803,16 +2896,13 @@ function renderSaborTablaPrincipalHelper(section = 'entradas') {
     }
 
     if (!query) {
-        const total = Array.isArray(state.items) ? state.items.length : 0;
-        helper.innerHTML = total > 0
-            ? `<div class="sabor-tabla-helper-tip">Escribe para buscar entre ${total} principales ya guardados.</div>`
-            : '<div class="sabor-tabla-helper-tip">Todavia no hay principales guardados en esta categoria.</div>';
+        helper.innerHTML = '';
         return;
     }
 
     const matches = _getSaborTablaPrincipalMatches(normalized, query);
     if (matches.length === 0) {
-        helper.innerHTML = '<div class="sabor-tabla-helper-tip">No hay coincidencias guardadas. Si quieres, puedes crear un principal nuevo.</div>';
+        helper.innerHTML = '';
         return;
     }
 
@@ -3076,6 +3166,7 @@ async function cargarSaborArtesanalTabla(section = 'entradas', force = false) {
 function renderSaborArtesanalTabla(section = 'entradas') {
     const normalized = _normalizarSaborTablaCategoria(section);
     const config = _getSaborTablaConfig(normalized);
+    const uiCopy = _getSaborTablaUiCopy(normalized);
     const isPrincipios = _isSaborTablaPrincipios(normalized);
     const state = _getSaborTablaState(normalized);
     const domKey = _getSaborTablaDomKey(normalized);
@@ -3151,13 +3242,13 @@ function renderSaborArtesanalTabla(section = 'entradas') {
     if (selectedLabel) {
         selectedLabel.textContent = selectedParent
             ? `${isPrincipios ? 'Grupo seleccionado' : 'Principal seleccionado'}: ${selectedParent.nombre}`
-            : (isPrincipios ? 'Selecciona Granos o Verduras.' : 'Selecciona un item principal.');
+            : (isPrincipios ? 'Selecciona Granos o Verduras.' : uiCopy.selectedEmpty);
     }
     if (btnNuevoDetalle) btnNuevoDetalle.disabled = !selectedParent;
 
     if (!detalles) return;
     if (!selectedParent) {
-        detalles.innerHTML = `<div class="placeholder" style="padding:20px 12px;">${isPrincipios ? 'Selecciona Granos o Verduras para ver o crear sus opciones.' : 'Selecciona un principal para ver o crear sus opciones.'}</div>`;
+        detalles.innerHTML = `<div class="placeholder" style="padding:20px 12px;">${isPrincipios ? 'Selecciona Granos o Verduras para ver o crear sus opciones.' : uiCopy.detailEmpty}</div>`;
         return;
     }
 

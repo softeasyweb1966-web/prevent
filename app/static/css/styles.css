@@ -1044,6 +1044,29 @@ body.body-sabor-tablas-focus .top-bar {
     max-width: none;
 }
 
+#sabor_artesanalView .sabor-artesanal-panel > .placeholder,
+#sabor_artesanalView .sabor-tablas-menu-text p,
+#sabor_artesanalView .sabor-tabla-mode-pill,
+#sabor_artesanalView .sabor-tabla-friendly-box,
+#sabor_artesanalView .sabor-tabla-editor-head span,
+#sabor_artesanalView .sabor-tabla-helper-tip,
+#sabor_artesanalView .sabor-menus-card-head p,
+#sabor_artesanalView .sabor-menu-definition-head p,
+#sabor_artesanalView .sabor-menu-definition-banner,
+#sabor_artesanalView .sabor-menu-definition-head .sabor-menu-component-pill,
+#sabor_artesanalView .sabor-pedidos-options-header span,
+#sabor_artesanalView .sabor-pedidos-summary-head span,
+#sabor_artesanalView .sabor-pedidos-builder-head small,
+#sabor_artesanalView .sabor-pedidos-builder-group-title small,
+#sabor_artesanalView .sabor-pedidos-menu-picker-meta span {
+    display: none !important;
+}
+
+#sabor_artesanalView .sabor-tabla-helper-box:empty {
+    display: none;
+    margin: 0;
+}
+
 #saborArtesanalVentasDiaPanel.is-pedidos-capture {
     margin-top: -12px;
     padding-top: 14px;
@@ -1296,6 +1319,23 @@ body.body-sabor-tablas-focus .top-bar {
 .sabor-tabla-helper-box {
     margin-top: 8px;
     margin-bottom: 8px;
+}
+
+.sabor-tabla-friendly-box {
+    display: grid;
+    gap: 4px;
+    margin: 8px 0 10px;
+    padding: 10px 12px;
+    border: 1px solid #dbe3ef;
+    border-radius: 12px;
+    background: #f8fbff;
+    color: #334155;
+    font-size: 0.84rem;
+}
+
+.sabor-tabla-friendly-box strong {
+    color: #0f172a;
+    font-size: 0.86rem;
 }
 
 .sabor-tabla-helper-title,
@@ -4030,6 +4070,16 @@ body.body-sabor-tablas-focus .top-bar {
     box-shadow: 0 18px 34px rgba(15, 23, 42, 0.06);
 }
 
+.sabor-pedidos-saved-shell {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 18px 22px;
+    border: 1px solid #d8e4da;
+    border-radius: 20px;
+    background: linear-gradient(180deg, #ffffff 0%, #f7fbf7 100%);
+    box-shadow: 0 18px 34px rgba(15, 23, 42, 0.04);
+}
+
 .sabor-pedidos-setup-grid {
     display: grid;
     grid-template-columns: 170px minmax(160px, 180px) minmax(260px, 1fr) 180px;
@@ -4111,6 +4161,13 @@ body.body-sabor-tablas-focus .top-bar {
     background: #22543d;
     color: #fff;
     font-weight: 700;
+}
+
+.sabor-pedidos-header-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
 }
 
 .sabor-pedidos-capture-body {
@@ -4253,12 +4310,141 @@ body.body-sabor-tablas-focus .top-bar {
     font-weight: 700;
 }
 
+.sabor-pedidos-item-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+}
+
 .sabor-pedidos-observacion {
     padding: 8px 10px;
     border-radius: 12px;
     background: #fff7df;
     color: #6f5614;
     font-size: 0.82rem;
+    border: 1px solid #f0dfaa;
+}
+
+.sabor-pedidos-saved-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sabor-pedidos-saved-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #dfe9df;
+    border-radius: 14px;
+    background: #fff;
+}
+
+.sabor-pedidos-saved-card.is-active {
+    border-color: #4f9d69;
+    background: linear-gradient(180deg, #ffffff 0%, #f0fbf2 100%);
+}
+
+.sabor-pedidos-saved-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+}
+
+.sabor-pedidos-saved-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.sabor-pedidos-saved-status.status-abierto {
+    background: #eef8ef;
+    color: #1f6b3b;
+}
+
+.sabor-pedidos-saved-status.status-finalizado {
+    background: #fff7df;
+    color: #8a6111;
+}
+
+.sabor-pedidos-saved-status.status-cobrado {
+    background: #e9f1ff;
+    color: #274c9c;
+}
+
+.sabor-pedidos-saved-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+    color: #5f6f67;
+    font-size: 0.84rem;
+}
+
+.sabor-pedidos-saved-meta b {
+    color: #183526;
+}
+
+.sabor-pedidos-saved-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.sabor-pedidos-active-strip {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #dce8de;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #fcfffc 0%, #f4faf5 100%);
+}
+
+.sabor-pedidos-active-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px;
+}
+
+.sabor-pedidos-active-chip {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border: 1px solid #d7e5da;
+    border-radius: 12px;
+    background: #fff;
+    color: #183526;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sabor-pedidos-active-chip strong,
+.sabor-pedidos-active-chip span {
+    overflow-wrap: anywhere;
+}
+
+.sabor-pedidos-active-chip strong {
+    font-size: 0.9rem;
+}
+
+.sabor-pedidos-active-chip span {
+    color: #607066;
+    font-size: 0.78rem;
+}
+
+.sabor-pedidos-active-chip.active {
+    border-color: #4f9d69;
+    background: #eef8ef;
 }
 
 .sabor-pedidos-category-strip {
@@ -4476,6 +4662,19 @@ body.body-sabor-tablas-focus .top-bar {
     gap: 10px;
 }
 
+.sabor-pedidos-builder-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.65fr) minmax(260px, 0.95fr);
+    gap: 12px;
+    align-items: start;
+}
+
+.sabor-pedidos-builder-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
 .sabor-pedidos-builder-head {
     padding: 10px 12px;
     border: 1px solid #d8e7db;
@@ -4502,6 +4701,10 @@ body.body-sabor-tablas-focus .top-bar {
 }
 
 .sabor-pedidos-builder-group-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
     padding: 8px 12px;
     background: #edf7ef;
     color: #193223;
@@ -4601,6 +4804,132 @@ body.body-sabor-tablas-focus .top-bar {
     padding-top: 4px;
 }
 
+.sabor-pedidos-builder-preview {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #d8e7db;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #fcfffc 0%, #f2faf3 100%);
+}
+
+.sabor-pedidos-builder-preview-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: baseline;
+}
+
+.sabor-pedidos-builder-preview-head strong {
+    color: #10281d;
+}
+
+.sabor-pedidos-builder-preview-head span {
+    color: #1f6b3b;
+    font-weight: 700;
+}
+
+.sabor-pedidos-builder-preview-empty {
+    padding: 12px;
+    border: 1px dashed #cfe0d3;
+    border-radius: 12px;
+    color: #617167;
+    background: #fff;
+    font-size: 0.84rem;
+}
+
+.sabor-pedidos-builder-preview-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sabor-pedidos-builder-preview-line {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px;
+    border: 1px solid #deebdf;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.sabor-pedidos-builder-preview-line small {
+    color: #5f6f67;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.sabor-pedidos-builder-preview-line strong {
+    color: #183526;
+    font-size: 0.9rem;
+    line-height: 1.35;
+}
+
+.sabor-pedidos-builder-preview-note {
+    color: #607066;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.sabor-pedidos-draft-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid #d9e8dc;
+    border-radius: 12px;
+    background: #f6fcf7;
+}
+
+.sabor-pedidos-draft-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: baseline;
+}
+
+.sabor-pedidos-draft-head strong {
+    color: #163423;
+    font-size: 0.84rem;
+}
+
+.sabor-pedidos-draft-head span {
+    color: #22543d;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.sabor-pedidos-draft-line {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding-top: 8px;
+    border-top: 1px solid #e4efe6;
+}
+
+.sabor-pedidos-draft-line:first-of-type {
+    border-top: 0;
+    padding-top: 0;
+}
+
+.sabor-pedidos-draft-line small {
+    color: #607066;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.sabor-pedidos-draft-line strong {
+    color: #183526;
+    font-size: 0.84rem;
+    line-height: 1.35;
+}
+
 .sabor-pedidos-observation-box {
     padding: 0 10px 10px;
 }
@@ -4652,15 +4981,129 @@ body.body-sabor-tablas-focus .top-bar {
     color: #fff;
 }
 
+.sabor-pedidos-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(15, 23, 42, 0.34);
+}
+
+.sabor-pedidos-modal-card {
+    width: min(560px, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px;
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
+}
+
+.sabor-pedidos-modal-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.sabor-pedidos-modal-head strong,
+.sabor-pedidos-modal-head span {
+    display: block;
+}
+
+.sabor-pedidos-modal-head strong {
+    color: #10281d;
+    font-size: 1rem;
+}
+
+.sabor-pedidos-modal-head span {
+    margin-top: 4px;
+    color: #617167;
+    font-size: 0.82rem;
+}
+
+.sabor-pedidos-modal-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: #f5faf6;
+    border: 1px solid #d9e7dc;
+}
+
+.sabor-pedidos-modal-total small {
+    color: #607066;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.sabor-pedidos-modal-total strong {
+    color: #1f6b3b;
+    font-size: 1.2rem;
+}
+
+.sabor-pedidos-payment-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.sabor-pedidos-payment-option {
+    padding: 10px 12px;
+    border: 1px solid #d7e5da;
+    border-radius: 12px;
+    background: #fff;
+    color: #183526;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.sabor-pedidos-payment-option.is-selected {
+    border-color: #4f9d69;
+    background: #eef8ef;
+    color: #1f6b3b;
+}
+
+.sabor-pedidos-payment-fields {
+    display: grid;
+    gap: 10px;
+}
+
+.sabor-pedidos-payment-fields input,
+.sabor-pedidos-payment-fields textarea {
+    width: 100%;
+    padding: 11px 12px;
+    border: 1px solid #c7d6cb;
+    border-radius: 12px;
+    background: #fff;
+    font: inherit;
+    color: #13251b;
+}
+
+.sabor-pedidos-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
 @media (max-width: 1200px) {
     .sabor-pedidos-header-fields,
     .sabor-pedidos-setup-grid,
-    .sabor-pedidos-options-list {
+    .sabor-pedidos-options-list,
+    .sabor-pedidos-saved-meta {
         grid-template-columns: 1fr;
     }
 
     .sabor-pedidos-capture-body,
-    .sabor-pedidos-category-strip {
+    .sabor-pedidos-category-strip,
+    .sabor-pedidos-builder-layout {
         grid-template-columns: 1fr;
         height: auto;
     }
@@ -4668,6 +5111,14 @@ body.body-sabor-tablas-focus .top-bar {
     .sabor-pedidos-setup-actions {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .sabor-pedidos-header-actions {
+        width: 100%;
+    }
+
+    .sabor-pedidos-payment-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
@@ -4678,9 +5129,15 @@ body.body-sabor-tablas-focus .top-bar {
 
     .sabor-pedidos-menu-picker-meta,
     .sabor-pedidos-bottom-bar,
-    .sabor-pedidos-item-line {
+    .sabor-pedidos-item-line,
+    .sabor-pedidos-item-side,
+    .sabor-pedidos-saved-top {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .sabor-pedidos-builder-preview {
+        position: static;
     }
 
     .sabor-pedidos-item-actions {
@@ -4694,5 +5151,18 @@ body.body-sabor-tablas-focus .top-bar {
     .sabor-artesanal-header-context {
         width: 100%;
         margin-left: 0;
+    }
+}
+
+@media (max-width: 640px) {
+    .sabor-pedidos-payment-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .sabor-pedidos-modal-head,
+    .sabor-pedidos-modal-total,
+    .sabor-pedidos-modal-actions {
+        flex-direction: column;
+        align-items: stretch;
     }
 }
