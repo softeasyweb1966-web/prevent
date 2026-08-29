@@ -1,0 +1,633 @@
+{
+  "generated_at": "2026-04-28T04:37:19.734292Z",
+  "database": "postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8",
+  "dialect": "postgresql",
+  "tables": {
+    "alembic_version": {
+      "row_count": 1
+    },
+    "areas": {
+      "row_count": 0
+    },
+    "audit_logs": {
+      "row_count": 0
+    },
+    "cargos": {
+      "row_count": 18
+    },
+    "clientes_atenciones": {
+      "row_count": 1
+    },
+    "clientes_atenciones_detalle": {
+      "row_count": 2
+    },
+    "clientes_comerciales": {
+      "row_count": 2
+    },
+    "clientes_comerciales_adjuntos": {
+      "row_count": 4
+    },
+    "clientes_comerciales_tarifas": {
+      "row_count": 6
+    },
+    "clientes_seguimiento_documentos": {
+      "row_count": 3
+    },
+    "clientes_seguimiento_pagos": {
+      "row_count": 2
+    },
+    "comercial_catalogo_items": {
+      "row_count": 8
+    },
+    "comercial_paquetes_detalle": {
+      "row_count": 6
+    },
+    "conceptos_automaticos": {
+      "row_count": 0
+    },
+    "empleado_asignaciones_laborales": {
+      "row_count": 18
+    },
+    "empleado_movimientos_laborales": {
+      "row_count": 18
+    },
+    "empleados": {
+      "row_count": 20
+    },
+    "empresa": {
+      "row_count": 0
+    },
+    "liquidos_quincena": {
+      "row_count": 79
+    },
+    "novedades": {
+      "row_count": 4
+    },
+    "novedades_aplicadas": {
+      "row_count": 3
+    },
+    "pagos": {
+      "row_count": 50
+    },
+    "parametros_descuentos": {
+      "row_count": 0
+    },
+    "permisos": {
+      "row_count": 0
+    },
+    "prestamos_empresa": {
+      "row_count": 8
+    },
+    "prestamos_novedades": {
+      "row_count": 0
+    },
+    "prestamos_pagos": {
+      "row_count": 1
+    },
+    "quincenas": {
+      "row_count": 5
+    },
+    "role_permiso": {
+      "row_count": 0
+    },
+    "roles": {
+      "row_count": 1
+    },
+    "servicios": {
+      "row_count": 16
+    },
+    "servicios_novedades": {
+      "row_count": 3
+    },
+    "servicios_pagos": {
+      "row_count": 4
+    },
+    "servicios_periodos": {
+      "row_count": 1
+    },
+    "tipos_novedad": {
+      "row_count": 10
+    },
+    "usuarios": {
+      "row_count": 2
+    },
+    "vendedores": {
+      "row_count": 3
+    }
+  },
+  "commercial": {
+    "vendedores": {
+      "exists": true,
+      "row_count": 3,
+      "sample_rows": [
+        {
+          "id": 1,
+          "nombre": "Laura Comercial",
+          "documento": "9001001",
+          "telefono": "3001112233",
+          "email": "laura.comercial@prevent.local",
+          "porcentaje_comision_venta": "4.50",
+          "porcentaje_comision_recaudo": "1.50",
+          "monto_base_comision": "0.00",
+          "descripcion": "Vendedora demo para pruebas del modulo comercial",
+          "activo": true,
+          "created_at": "2026-04-26 18:34:38.022733",
+          "updated_at": "2026-04-26 18:34:38.022733"
+        },
+        {
+          "id": 2,
+          "nombre": "Carlos Convenios",
+          "documento": "9001002",
+          "telefono": "3001112244",
+          "email": "carlos.convenios@prevent.local",
+          "porcentaje_comision_venta": "5.00",
+          "porcentaje_comision_recaudo": "2.00",
+          "monto_base_comision": "0.00",
+          "descripcion": "Gerencia comercial demo",
+          "activo": true,
+          "created_at": "2026-04-26 18:34:38.029317",
+          "updated_at": "2026-04-26 18:34:38.029317"
+        },
+        {
+          "id": 3,
+          "nombre": "Test CRUD",
+          "documento": "999001",
+          "telefono": null,
+          "email": null,
+          "porcentaje_comision_venta": "0.00",
+          "porcentaje_comision_recaudo": "0.00",
+          "monto_base_comision": "0.00",
+          "descripcion": null,
+          "activo": true,
+          "created_at": "2026-04-26 18:35:10.441865",
+          "updated_at": "2026-04-26 18:35:10.441865"
+        }
+      ]
+    },
+    "clientes_comerciales": {
+      "exists": true,
+      "row_count": 2,
+      "sample_rows": [
+        {
+          "id": 1,
+          "vendedor_id": 1,
+          "razon_social": "Empresa Demo Comercial SAS",
+          "nombre_comercial": "Demo Comercial",
+          "nit": "901234567-8",
+          "ciudad": "Bogota",
+          "direccion": "Calle 123 # 45-67",
+          "telefono_empresa": "6015550101",
+          "email_empresa": "compras@demo-comercial.local",
+          "contacto_principal": "Paula Compras",
+          "celular_contacto_principal": "3005550101",
+          "email_contacto_principal": "paula@demo-comercial.local",
+          "contacto_facturacion": "Andres Facturacion",
+          "celular_facturacion": "3005550102",
+          "email_facturacion": "facturacion@demo-comercial.local",
+          "puntos_atencion_recepcion": "Siempre paga el paciente.\r\nLas personas mayores de 50 años llevan ekg\r\nLas mujeres tienen un paquete diferente a los hombres , tanto en administrativos como operativos",
+          "condicion_comercial": "CREDITO",
+          "requiere_factura": true,
+          "fechas_facturacion": "5 y 20 de cada mes",
+          "fecha_solicitud_factura": null,
+          "examenes_convenidos": "Audiometria ocupacional\r\nConsulta ocupacional de ingreso\r\nGlicemia laboratorio interno\r\nConsulta ocupacional\r\naudiometria y glicemia",
+          "servicios_convenidos": "Paquete Alturas Básico\r\nPaquete ingreso administrativo\r\nIngreso\r\nperiodicos y retiro",
+          "tarifas_convenidas": "Audiometria ocupacional: $ 15.000\r\nConsulta ocupacional de ingreso: $ 40.000\r\nGlicemia laboratorio interno: $ 15.000\r\nPaquete Alturas Básico: $ 95.000\r\nPaquete ingreso administrativo: $ 70.000",
+          "documentos_legales_completos": true,
+          "documentos_legales_detalle": "RUT, camara de comercio y cedula del representante",
+          "pagare_firmado": true,
+          "pagare_detalle": "Pagare firmado para credito a 30 dias",
+          "observaciones": "Cliente demo para validacion de CRUD comercial",
+          "activo": true,
+          "created_at": "2026-04-26 18:34:38.054679",
+          "updated_at": "2026-04-27 23:07:23.543108"
+        },
+        {
+          "id": 2,
+          "vendedor_id": 2,
+          "razon_social": "Cliente Prueba CRUD SAS",
+          "nombre_comercial": null,
+          "nit": "900999888-1",
+          "ciudad": null,
+          "direccion": "Calle 100 N 100 - 100 fbis",
+          "telefono_empresa": "3212100100",
+          "email_empresa": "crudsas@gmail.com",
+          "contacto_principal": "Jacquelin Puin Leon",
+          "celular_contacto_principal": "3214558818",
+          "email_contacto_principal": null,
+          "contacto_facturacion": null,
+          "celular_facturacion": null,
+          "email_facturacion": null,
+          "puntos_atencion_recepcion": null,
+          "condicion_comercial": "EFECTIVO",
+          "requiere_factura": true,
+          "fechas_facturacion": "15 de cada mes",
+          "fecha_solicitud_factura": null,
+          "examenes_convenidos": "Perfil lipidico remitido",
+          "servicios_convenidos": "Paquete Alturas Básico",
+          "tarifas_convenidas": "Consulta prueba CRUD: $ 120.000",
+          "documentos_legales_completos": false,
+          "documentos_legales_detalle": null,
+          "pagare_firmado": true,
+          "pagare_detalle": null,
+          "observaciones": null,
+          "activo": true,
+          "created_at": "2026-04-26 18:35:27.277205",
+          "updated_at": "2026-04-27 22:54:28.874361"
+        }
+      ]
+    },
+    "clientes_comerciales_adjuntos": {
+      "exists": true,
+      "row_count": 4,
+      "sample_rows": [
+        {
+          "id": 1,
+          "cliente_id": 2,
+          "tipo_documento": "PAGARE",
+          "nombre_original": "2.png",
+          "nombre_guardado": "2623840282bf4554b582f05d0aecff07_2.png",
+          "ruta_relativa": "comercial\\clientes\\2\\pagare\\2623840282bf4554b582f05d0aecff07_2.png",
+          "mime_type": "image/png",
+          "tamano_bytes": 244284,
+          "created_at": "2026-04-27 02:07:48.261178"
+        },
+        {
+          "id": 2,
+          "cliente_id": 2,
+          "tipo_documento": "PAGARE",
+          "nombre_original": "2.png",
+          "nombre_guardado": "7839bca167dc45b285acd4929f2cf99e_2.png",
+          "ruta_relativa": "comercial\\clientes\\2\\pagare\\7839bca167dc45b285acd4929f2cf99e_2.png",
+          "mime_type": "image/png",
+          "tamano_bytes": 244284,
+          "created_at": "2026-04-27 02:12:15.465934"
+        },
+        {
+          "id": 3,
+          "cliente_id": 1,
+          "tipo_documento": "PAGARE",
+          "nombre_original": "2.png",
+          "nombre_guardado": "10b34b886aba4b918d2bb01d2e18b990_2.png",
+          "ruta_relativa": "comercial\\clientes\\1\\pagare\\10b34b886aba4b918d2bb01d2e18b990_2.png",
+          "mime_type": "image/png",
+          "tamano_bytes": 244284,
+          "created_at": "2026-04-27 02:48:55.789602"
+        },
+        {
+          "id": 4,
+          "cliente_id": 1,
+          "tipo_documento": "PAGARE",
+          "nombre_original": "2.png",
+          "nombre_guardado": "28fe6f0796d04c33846b3dafa00c1b21_2.png",
+          "ruta_relativa": "comercial\\clientes\\1\\pagare\\28fe6f0796d04c33846b3dafa00c1b21_2.png",
+          "mime_type": "image/png",
+          "tamano_bytes": 244284,
+          "created_at": "2026-04-27 02:50:01.859120"
+        }
+      ]
+    },
+    "clientes_comerciales_tarifas": {
+      "exists": true,
+      "row_count": 6,
+      "sample_rows": [
+        {
+          "id": 1,
+          "cliente_id": 1,
+          "catalogo_item_id": 1,
+          "tarifa_negociada": "40000.00",
+          "vigencia_desde": "2026-01-01 00:00:00",
+          "vigencia_hasta": null,
+          "observacion": "Tarifa preferencial de consulta",
+          "activo": true,
+          "created_at": "2026-04-26 18:34:38.070413",
+          "updated_at": "2026-04-27 02:57:49.208644"
+        },
+        {
+          "id": 2,
+          "cliente_id": 1,
+          "catalogo_item_id": 4,
+          "tarifa_negociada": "15000.00",
+          "vigencia_desde": "2026-01-01 00:00:00",
+          "vigencia_hasta": null,
+          "observacion": "Tarifa interna negociada",
+          "activo": true,
+          "created_at": "2026-04-26 18:34:38.070413",
+          "updated_at": "2026-04-26 18:34:38.070413"
+        },
+        {
+          "id": 4,
+          "cliente_id": 2,
+          "catalogo_item_id": 7,
+          "tarifa_negociada": "120000.00",
+          "vigencia_desde": null,
+          "vigencia_hasta": null,
+          "observacion": null,
+          "activo": true,
+          "created_at": "2026-04-26 18:35:27.322727",
+          "updated_at": "2026-04-26 20:54:16.917113"
+        },
+        {
+          "id": 5,
+          "cliente_id": 1,
+          "catalogo_item_id": 8,
+          "tarifa_negociada": "95000.00",
+          "vigencia_desde": null,
+          "vigencia_hasta": null,
+          "observacion": null,
+          "activo": true,
+          "created_at": "2026-04-27 02:59:27.991105",
+          "updated_at": "2026-04-27 02:59:27.991105"
+        },
+        {
+          "id": 6,
+          "cliente_id": 1,
+          "catalogo_item_id": 2,
+          "tarifa_negociada": "15000.00",
+          "vigencia_desde": null,
+          "vigencia_hasta": null,
+          "observacion": null,
+          "activo": true,
+          "created_at": "2026-04-27 02:59:43.616004",
+          "updated_at": "2026-04-27 02:59:43.616004"
+        }
+      ]
+    },
+    "comercial_catalogo_items": {
+      "exists": true,
+      "row_count": 8,
+      "sample_rows": [
+        {
+          "id": 1,
+          "tipo_item": "EXAMEN",
+          "tipo_examen": "CONSULTA",
+          "subtipo_laboratorio": null,
+          "clasificacion_completa": true,
+          "nombre": "Consulta ocupacional de ingreso",
+          "codigo": "CONS001",
+          "descripcion": "Consulta medica ocupacional para ingreso",
+          "tarifa_base": "45000.00",
+          "activo": true,
+          "created_at": "2026-04-26 18:34:38.029317",
+          "updated_at": "2026-04-26 18:34:38.029317"
+        },
+        {
+          "id": 2,
+          "tipo_item": "EXAMEN",
+          "tipo_examen": "PARACLINICO",
+          "subtipo_laboratorio": null,
+          "clasificacion_completa": true,
+          "nombre": "Audiometria ocupacional",
+          "codigo": "PARA001",
+          "descripcion": "Paraclinico demo para pruebas",
+          "tarifa_base": "38000.00",
+          "activo": true,
+          "created_at": "2026-04-26 18:34:38.038885",
+          "updated_at": "2026-04-26 18:34:38.038885"
+        },
+        {
+          "id": 3,
+          "tipo_item": "EXAMEN",
+          "tipo_examen": "LABORATORIO",
+          "subtipo_laboratorio": "REMITIDO",
+          "clasificacion_completa": true,
+          "nombre": "Perfil lipidico remitido",
+          "codigo": "LABR001",
+          "descripcion": "Examen de laboratorio remitido",
+          "tarifa_base": "52000.00",
+          "activo": true,
+          "created_at": "2026-04-26 18:34:38.040103",
+          "updated_at": "2026-04-26 18:34:38.040103"
+        },
+        {
+          "id": 4,
+          "tipo_item": "EXAMEN",
+          "tipo_examen": "LABORATORIO",
+          "subtipo_laboratorio": "REALIZADO",
+          "clasificacion_completa": true,
+          "nombre": "Glicemia laboratorio interno",
+          "codigo": "LABI001",
+          "descripcion": "Examen realizado en laboratorio propio",
+          "tarifa_base": "18000.00",
+          "activo": true,
+          "created_at": "2026-04-26 18:34:38.040103",
+          "updated_at": "2026-04-26 18:34:38.040103"
+        },
+        {
+          "id": 5,
+          "tipo_item": "EXAMEN",
+          "tipo_examen": null,
+          "subtipo_laboratorio": null,
+          "clasificacion_completa": false,
+          "nombre": "Examen pendiente de clasificar",
+          "codigo": "PEND001",
+          "descripcion": "Item demo para validar pendientes de clasificacion",
+          "tarifa_base": "0.00",
+          "activo": true,
+          "created_at": "2026-04-26 18:34:38.040103",
+          "updated_at": "2026-04-26 18:34:38.040103"
+        }
+      ]
+    },
+    "comercial_paquetes_detalle": {
+      "exists": true,
+      "row_count": 6,
+      "sample_rows": [
+        {
+          "id": 1,
+          "paquete_id": 6,
+          "examen_id": 1,
+          "cantidad": 1,
+          "created_at": "2026-04-26 18:34:38.040103"
+        },
+        {
+          "id": 2,
+          "paquete_id": 6,
+          "examen_id": 2,
+          "cantidad": 1,
+          "created_at": "2026-04-26 18:34:38.040103"
+        },
+        {
+          "id": 3,
+          "paquete_id": 6,
+          "examen_id": 4,
+          "cantidad": 1,
+          "created_at": "2026-04-26 18:34:38.040103"
+        },
+        {
+          "id": 4,
+          "paquete_id": 8,
+          "examen_id": 7,
+          "cantidad": 1,
+          "created_at": "2026-04-26 19:26:22.027169"
+        },
+        {
+          "id": 5,
+          "paquete_id": 8,
+          "examen_id": 2,
+          "cantidad": 1,
+          "created_at": "2026-04-26 19:26:22.027169"
+        }
+      ]
+    },
+    "clientes_atenciones": {
+      "exists": true,
+      "row_count": 1,
+      "sample_rows": [
+        {
+          "id": 1,
+          "nro_atencion": "AT-20260428-000001",
+          "cliente_id": 2,
+          "vendedor_id": 2,
+          "fecha_atencion": "2026-04-28 00:00:00",
+          "paciente_documento": "VARIOS",
+          "paciente_nombre": "2 pacientes",
+          "valor_total": "240000.00",
+          "saldo_pendiente": "240000.00",
+          "estado_cobro": "PENDIENTE",
+          "observaciones": null,
+          "created_at": "2026-04-28 02:21:30.680654",
+          "updated_at": "2026-04-28 02:21:30.710126"
+        }
+      ]
+    },
+    "clientes_atenciones_detalle": {
+      "exists": true,
+      "row_count": 2,
+      "sample_rows": [
+        {
+          "id": 1,
+          "atencion_id": 1,
+          "paciente_documento": "79100100",
+          "paciente_nombre": "PABLO PEREZ",
+          "catalogo_item_id": 7,
+          "tipo_item": "EXAMEN",
+          "nombre_item": "Consulta prueba CRUD",
+          "valor_item": "120000.00",
+          "created_at": "2026-04-28 02:21:30.711176"
+        },
+        {
+          "id": 2,
+          "atencion_id": 1,
+          "paciente_documento": "79100200",
+          "paciente_nombre": "JAIRO CARDENAS",
+          "catalogo_item_id": 7,
+          "tipo_item": "EXAMEN",
+          "nombre_item": "Consulta prueba CRUD",
+          "valor_item": "120000.00",
+          "created_at": "2026-04-28 02:21:30.711176"
+        }
+      ]
+    },
+    "clientes_seguimiento_documentos": {
+      "exists": true,
+      "row_count": 3,
+      "sample_rows": [
+        {
+          "id": 1,
+          "cliente_id": 1,
+          "vendedor_id": 1,
+          "atencion_id": null,
+          "tipo_documento": "FACTURA",
+          "numero_documento": "100",
+          "fecha_documento": "2026-04-27 00:00:00",
+          "fecha_vencimiento": "2026-05-26 00:00:00",
+          "valor_documento": "125000.00",
+          "saldo_actual": "50000.00",
+          "genera_cartera": true,
+          "estado_documento": "PARCIAL",
+          "observaciones": null,
+          "created_at": "2026-04-27 04:32:46.951309",
+          "updated_at": "2026-04-27 15:07:31.797765"
+        },
+        {
+          "id": 2,
+          "cliente_id": 1,
+          "vendedor_id": 1,
+          "atencion_id": null,
+          "tipo_documento": "VENTA_DIRECTA",
+          "numero_documento": "100",
+          "fecha_documento": "2026-04-27 00:00:00",
+          "fecha_vencimiento": "2026-04-27 00:00:00",
+          "valor_documento": "150000.00",
+          "saldo_actual": "150000.00",
+          "genera_cartera": true,
+          "estado_documento": "PENDIENTE",
+          "observaciones": null,
+          "created_at": "2026-04-27 22:55:25.399823",
+          "updated_at": "2026-04-27 22:55:25.399823"
+        },
+        {
+          "id": 4,
+          "cliente_id": 2,
+          "vendedor_id": 2,
+          "atencion_id": 1,
+          "tipo_documento": "INGRESO_SIN_FACTURA",
+          "numero_documento": "AT-20260428-000001",
+          "fecha_documento": "2026-04-28 00:00:00",
+          "fecha_vencimiento": "2026-04-28 00:00:00",
+          "valor_documento": "240000.00",
+          "saldo_actual": "240000.00",
+          "genera_cartera": true,
+          "estado_documento": "PENDIENTE",
+          "observaciones": null,
+          "created_at": "2026-04-28 02:21:30.711176",
+          "updated_at": "2026-04-28 02:21:30.711176"
+        }
+      ]
+    },
+    "clientes_seguimiento_pagos": {
+      "exists": true,
+      "row_count": 2,
+      "sample_rows": [
+        {
+          "id": 1,
+          "documento_id": 1,
+          "cliente_id": 1,
+          "vendedor_id": 1,
+          "fecha_pago": "2026-04-27 00:00:00",
+          "valor_pago": "25000.00",
+          "tipo_pago": "PAGO_TOTAL",
+          "medio_pago": "EFECTIVO",
+          "canal_transferencia": null,
+          "numero_recibo_caja": null,
+          "fecha_recibo": null,
+          "paciente_documento": null,
+          "paciente_nombre": null,
+          "fecha_atencion": null,
+          "examenes_realizados": null,
+          "nombre_comprobante": null,
+          "ruta_comprobante": null,
+          "mime_type": null,
+          "tamano_bytes": null,
+          "observaciones": null,
+          "created_at": "2026-04-27 04:43:35.572108",
+          "updated_at": "2026-04-27 04:43:35.572108"
+        },
+        {
+          "id": 2,
+          "documento_id": 1,
+          "cliente_id": 1,
+          "vendedor_id": 1,
+          "fecha_pago": "2026-04-27 00:00:00",
+          "valor_pago": "50000.00",
+          "tipo_pago": "PAGO_TOTAL",
+          "medio_pago": "TRANSFERENCIA",
+          "canal_transferencia": "NEQUI",
+          "numero_recibo_caja": null,
+          "fecha_recibo": null,
+          "paciente_documento": null,
+          "paciente_nombre": null,
+          "fecha_atencion": null,
+          "examenes_realizados": null,
+          "nombre_comprobante": "3.png",
+          "ruta_comprobante": "comercial\\clientes\\1\\seguimiento_pagos\\1ee7fbe36c294c2c830d0c80f8414b8e_3.png",
+          "mime_type": "image/png",
+          "tamano_bytes": 536135,
+          "observaciones": null,
+          "created_at": "2026-04-27 15:07:31.785711",
+          "updated_at": "2026-04-27 15:07:31.793821"
+        }
+      ]
+    }
+  }
+}

@@ -10,6 +10,8 @@ from app.models import (
     ServicioNovedad,
     ServicioPago,
     ServicioPeriodo,
+    ClienteComercial,
+    Vendedor,
     Novedad,
     NovedadAplicada,
     TipoNovedad,
@@ -66,6 +68,24 @@ def _periodo_siguiente(mes, numero_quincena, anio):
     if mes == 12:
         return 1, 1, anio + 1
     return mes + 1, 1, anio
+
+
+def _nombre_quincena(mes, numero_quincena, anio):
+    meses = {
+        1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
+        7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+    }
+    prefijo = '1a Quincena' if numero_quincena == 1 else '2a Quincena'
+    return f"{prefijo} de {meses.get(mes, mes)} {anio}"
+
+
+def _format_payment_date(value):
+    if not value:
+        return None
+    try:
+        return value.strftime('%Y-%m-%d')
+    except Exception:
+        return str(value)
 
 
 def _construir_quincena_virtual(mes, numero_quincena, anio, procesada=False, pagos_finalizados=False):
@@ -185,12 +205,28 @@ def _build_servicios_matrix(anio, hoy, mes_referencia=None, anio_referencia=None
     pagos_rows = db.session.query(
         ServicioPago.servicio_id,
         func.extract('month', ServicioPago.fecha_pago),
-        func.coalesce(func.sum(ServicioPago.valor_pagado), 0)
+        func.coalesce(func.sum(ServicioPago.valor_pagado), 0),
+        func.max(ServicioPago.fecha_pago)
     ).filter(
         func.extract('year', ServicioPago.fecha_pago) == anio
     ).group_by(
         ServicioPago.servicio_id,
         func.extract('month', ServicioPago.fecha_pago)
+    ).all()
+    pagos_detalle_rows = db.session.query(
+        ServicioPago.servicio_id,
+        func.extract('month', ServicioPago.fecha_pago),
+        ServicioPago.fecha_pago,
+        ServicioPago.valor_pagado,
+        ServicioPago.observaciones,
+        ServicioPago.id
+    ).filter(
+        func.extract('year', ServicioPago.fecha_pago) == anio
+    ).order_by(
+        ServicioPago.servicio_id.asc(),
+        func.extract('month', ServicioPago.fecha_pago).asc(),
+        ServicioPago.fecha_pago.desc(),
+        ServicioPago.id.desc()
     ).all()
 
     novedades_por_periodo = {
@@ -198,9 +234,22 @@ def _build_servicios_matrix(anio, hoy, mes_referencia=None, anio_referencia=None
         for servicio_id, mes, valor in novedades_rows
     }
     pagos_por_periodo = {
-        (servicio_id, int(mes)): Decimal(str(valor or 0))
-        for servicio_id, mes, valor in pagos_rows
+        (servicio_id, int(mes)): {
+            'total_pagado': Decimal(str(valor or 0)),
+            'ultima_fecha_pago': _format_payment_date(ultima_fecha_pago),
+        }
+        for servicio_id, mes, valor, ultima_fecha_pago in pagos_rows
     }
+    ultimo_abono_por_periodo = {}
+    for servicio_id, mes, fecha_pago, valor_pagado, observaciones, _ in pagos_detalle_rows:
+        key = (servicio_id, int(mes))
+        if key in ultimo_abono_por_periodo:
+            continue
+        ultimo_abono_por_periodo[key] = {
+            'ultima_fecha_pago': _format_payment_date(fecha_pago),
+            'ultimo_abono': Decimal(str(valor_pagado or 0)),
+            'observaciones': (observaciones or '').strip(),
+        }
 
     totales_por_periodo = {periodo['key']: Decimal('0') for periodo in periodos}
     total_base = Decimal('0')
@@ -252,7 +301,9 @@ def _build_servicios_matrix(anio, hoy, mes_referencia=None, anio_referencia=None
             cargo = novedades_por_periodo.get((servicio.id, periodo['mes']))
             if cargo is None or cargo <= 0:
                 cargo = valor_base
-            pagado = pagos_por_periodo.get((servicio.id, periodo['mes']), Decimal('0'))
+            pago_info = pagos_por_periodo.get((servicio.id, periodo['mes']), {})
+            ultimo_abono_info = ultimo_abono_por_periodo.get((servicio.id, periodo['mes']), {})
+            pagado = pago_info.get('total_pagado', Decimal('0'))
             saldo = max(Decimal('0'), cargo - pagado)
 
             if future_to_reference and pagado <= 0:
@@ -268,6 +319,12 @@ def _build_servicios_matrix(anio, hoy, mes_referencia=None, anio_referencia=None
                 f"Pagado: {float(pagado):,.2f} | "
                 f"Saldo: {float(saldo):,.2f}"
             )
+            if pagado > 0 and pago_info.get('ultima_fecha_pago'):
+                celda['titulo'] += f" | Ultimo pago: {pago_info['ultima_fecha_pago']}"
+            if ultimo_abono_info.get('ultimo_abono') is not None:
+                celda['titulo'] += f" | Ultimo abono: {float(ultimo_abono_info['ultimo_abono']):,.2f}"
+            if ultimo_abono_info.get('observaciones'):
+                celda['titulo'] += f" | Comentario ultimo abono: {ultimo_abono_info['observaciones']}"
 
             if cargo <= 0 and pagado <= 0:
                 celda['estado'] = 'NA'
@@ -345,12 +402,28 @@ def _build_bancos_matrix(anio, hoy, mes_referencia=None, anio_referencia=None):
     pagos_rows = db.session.query(
         PrestamoPago.prestamo_id,
         func.extract('month', PrestamoPago.fecha_pago),
-        func.coalesce(func.sum(PrestamoPago.valor_pagado), 0)
+        func.coalesce(func.sum(PrestamoPago.valor_pagado), 0),
+        func.max(PrestamoPago.fecha_pago)
     ).filter(
         func.extract('year', PrestamoPago.fecha_pago) == anio
     ).group_by(
         PrestamoPago.prestamo_id,
         func.extract('month', PrestamoPago.fecha_pago)
+    ).all()
+    pagos_detalle_rows = db.session.query(
+        PrestamoPago.prestamo_id,
+        func.extract('month', PrestamoPago.fecha_pago),
+        PrestamoPago.fecha_pago,
+        PrestamoPago.valor_pagado,
+        PrestamoPago.observaciones,
+        PrestamoPago.id
+    ).filter(
+        func.extract('year', PrestamoPago.fecha_pago) == anio
+    ).order_by(
+        PrestamoPago.prestamo_id.asc(),
+        func.extract('month', PrestamoPago.fecha_pago).asc(),
+        PrestamoPago.fecha_pago.desc(),
+        PrestamoPago.id.desc()
     ).all()
 
     novedades_por_periodo = {
@@ -358,9 +431,22 @@ def _build_bancos_matrix(anio, hoy, mes_referencia=None, anio_referencia=None):
         for prestamo_id, mes, valor in novedades_rows
     }
     pagos_por_periodo = {
-        (prestamo_id, int(mes)): Decimal(str(valor or 0))
-        for prestamo_id, mes, valor in pagos_rows
+        (prestamo_id, int(mes)): {
+            'total_pagado': Decimal(str(valor or 0)),
+            'ultima_fecha_pago': _format_payment_date(ultima_fecha_pago),
+        }
+        for prestamo_id, mes, valor, ultima_fecha_pago in pagos_rows
     }
+    ultimo_abono_por_periodo = {}
+    for prestamo_id, mes, fecha_pago, valor_pagado, observaciones, _ in pagos_detalle_rows:
+        key = (prestamo_id, int(mes))
+        if key in ultimo_abono_por_periodo:
+            continue
+        ultimo_abono_por_periodo[key] = {
+            'ultima_fecha_pago': _format_payment_date(fecha_pago),
+            'ultimo_abono': Decimal(str(valor_pagado or 0)),
+            'observaciones': (observaciones or '').strip(),
+        }
 
     totales_por_periodo = {periodo['key']: Decimal('0') for periodo in periodos}
     total_base = Decimal('0')
@@ -413,7 +499,9 @@ def _build_bancos_matrix(anio, hoy, mes_referencia=None, anio_referencia=None):
             if cargo is None or cargo <= 0:
                 cargo = Decimal(str(prestamo.valor_cuota or 0))
 
-            pagado = pagos_por_periodo.get((prestamo.id, periodo['mes']), Decimal('0'))
+            pago_info = pagos_por_periodo.get((prestamo.id, periodo['mes']), {})
+            ultimo_abono_info = ultimo_abono_por_periodo.get((prestamo.id, periodo['mes']), {})
+            pagado = pago_info.get('total_pagado', Decimal('0'))
             saldo = max(Decimal('0'), cargo - pagado)
 
             if future_to_reference and pagado <= 0:
@@ -436,6 +524,12 @@ def _build_bancos_matrix(anio, hoy, mes_referencia=None, anio_referencia=None):
                 f"Pagado: {float(pagado):,.2f} | "
                 f"Saldo: {float(saldo):,.2f}"
             )
+            if pagado > 0 and pago_info.get('ultima_fecha_pago'):
+                celda['titulo'] += f" | Ultimo pago: {pago_info['ultima_fecha_pago']}"
+            if ultimo_abono_info.get('ultimo_abono') is not None:
+                celda['titulo'] += f" | Ultimo abono: {float(ultimo_abono_info['ultimo_abono']):,.2f}"
+            if ultimo_abono_info.get('observaciones'):
+                celda['titulo'] += f" | Comentario ultimo abono: {ultimo_abono_info['observaciones']}"
 
             if pagado > 0 and saldo > 0:
                 celda['estado'] = 'PARTIAL'
@@ -564,14 +658,15 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
         anio_referencia
     )
     limite_mes, limite_numero, limite_anio = _periodo_siguiente(mes_referencia, numero_referencia, anio_referencia)
-
     for mes in range(1, 13):
         for numero_quincena in (1, 2):
-            if (anio, mes, numero_quincena) > (limite_anio, limite_mes, limite_numero):
+            periodo_actual = (anio, mes, numero_quincena)
+            if periodo_actual > (limite_anio, limite_mes, limite_numero):
                 continue
             fecha_inicio, fecha_fin = _periodo_quincena(anio, mes, numero_quincena)
             periodos.append({
-                'key': f'm{mes}_q{numero_quincena}',
+                'key': f'a{anio}_m{mes}_q{numero_quincena}',
+                'anio': anio,
                 'mes': mes,
                 'numero_quincena': numero_quincena,
                 'label': f"{meses[mes]} Q{numero_quincena}",
@@ -579,12 +674,12 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
                 'fecha_fin': fecha_fin,
             })
 
-    inicio_anio = datetime(anio, 1, 1)
-    fin_anio = datetime(anio, 12, 31, 23, 59, 59)
+    inicio_visible = datetime(anio, 1, 1)
+    fin_visible = max(periodo['fecha_fin'] for periodo in periodos) if periodos else datetime(anio, 12, 31, 23, 59, 59)
 
     empleados = Empleado.query.filter(
-        Empleado.fecha_inicio <= fin_anio,
-        or_(Empleado.fecha_retiro.is_(None), Empleado.fecha_retiro >= inicio_anio)
+        Empleado.fecha_inicio <= fin_visible,
+        or_(Empleado.fecha_retiro.is_(None), Empleado.fecha_retiro >= inicio_visible)
     ).order_by(
         Empleado.activo.desc(),
         Empleado.nombres.asc(),
@@ -612,16 +707,44 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
     if liquido_ids:
         pagos_rows = db.session.query(
             Pago.liquido_quincena_id,
-            func.coalesce(func.sum(Pago.valor_pagado), 0)
+            func.coalesce(func.sum(Pago.valor_pagado), 0),
+            func.max(Pago.fecha_pago)
         ).filter(
             Pago.liquido_quincena_id.in_(liquido_ids)
         ).group_by(
             Pago.liquido_quincena_id
         ).all()
         pagos_por_liquido = {
-            liquido_id: Decimal(str(total_pagado or 0))
-            for liquido_id, total_pagado in pagos_rows
+            liquido_id: {
+                'total_pagado': Decimal(str(total_pagado or 0)),
+                'ultima_fecha_pago': _format_payment_date(ultima_fecha_pago),
+            }
+            for liquido_id, total_pagado, ultima_fecha_pago in pagos_rows
         }
+        pagos_detalle_rows = db.session.query(
+            Pago.liquido_quincena_id,
+            Pago.fecha_pago,
+            Pago.valor_pagado,
+            Pago.observaciones,
+            Pago.id
+        ).filter(
+            Pago.liquido_quincena_id.in_(liquido_ids)
+        ).order_by(
+            Pago.liquido_quincena_id.asc(),
+            Pago.fecha_pago.desc(),
+            Pago.id.desc()
+        ).all()
+        ultimo_abono_por_liquido = {}
+        for liquido_id, fecha_pago, valor_pagado, observaciones, _ in pagos_detalle_rows:
+            if liquido_id in ultimo_abono_por_liquido:
+                continue
+            ultimo_abono_por_liquido[liquido_id] = {
+                'ultima_fecha_pago': _format_payment_date(fecha_pago),
+                'ultimo_abono': Decimal(str(valor_pagado or 0)),
+                'observaciones': (observaciones or '').strip(),
+            }
+    else:
+        ultimo_abono_por_liquido = {}
 
     totales_por_periodo = {periodo['key']: Decimal('0') for periodo in periodos}
     total_sueldos = Decimal('0')
@@ -684,7 +807,9 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
                 continue
 
             total_a_pagar = Decimal(str(liquido.total_a_pagar or 0))
-            total_pagado = pagos_por_liquido.get(liquido.id, Decimal('0'))
+            pago_info = pagos_por_liquido.get(liquido.id, {})
+            ultimo_abono_info = ultimo_abono_por_liquido.get(liquido.id, {})
+            total_pagado = pago_info.get('total_pagado', Decimal('0'))
             saldo_pendiente = Decimal(str(liquido.saldo_pendiente or 0))
 
             celda['valor'] = float(total_a_pagar)
@@ -696,6 +821,12 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
                 f"Pagado: {float(total_pagado):,.2f} | "
                 f"Saldo: {float(saldo_pendiente):,.2f}"
             )
+            if total_pagado > 0 and pago_info.get('ultima_fecha_pago'):
+                celda['titulo'] += f" | Ultimo pago: {pago_info['ultima_fecha_pago']}"
+            if ultimo_abono_info.get('ultimo_abono') is not None:
+                celda['titulo'] += f" | Ultimo abono: {float(ultimo_abono_info['ultimo_abono']):,.2f}"
+            if ultimo_abono_info.get('observaciones'):
+                celda['titulo'] += f" | Comentario ultimo abono: {ultimo_abono_info['observaciones']}"
 
             if total_pagado > 0 and saldo_pendiente > 0:
                 celda['estado'] = 'PARTIAL'
@@ -723,15 +854,18 @@ def _build_nomina_matrix(anio, hoy, mes_referencia=None, numero_referencia=None,
             'mes': mes_referencia,
             'numero_quincena': numero_referencia,
             'anio': anio_referencia,
+            'nombre': _nombre_quincena(mes_referencia, numero_referencia, anio_referencia),
         },
         'limite_visible': {
             'mes': limite_mes,
             'numero_quincena': limite_numero,
             'anio': limite_anio,
+            'nombre': _nombre_quincena(limite_mes, limite_numero, limite_anio),
         },
         'periodos': [
             {
                 'key': periodo['key'],
+                'anio': periodo['anio'],
                 'mes': periodo['mes'],
                 'numero_quincena': periodo['numero_quincena'],
                 'label': periodo['label'],
@@ -903,6 +1037,7 @@ def dashboard_nomina():
                 'mes': quincena_actual.mes if quincena_actual else None,
                 'numero_quincena': quincena_actual.numero_quincena if quincena_actual else None,
                 'anio': quincena_actual.anio if quincena_actual else None,
+                'nombre': _nombre_quincena(quincena_actual.mes, quincena_actual.numero_quincena, quincena_actual.anio) if quincena_actual else None,
                 'fecha_inicio': quincena_actual.fecha_inicio.strftime('%Y-%m-%d') if quincena_actual else None,
                 'fecha_fin': quincena_actual.fecha_fin.strftime('%Y-%m-%d') if quincena_actual else None,
                 'procesada': quincena_actual.procesada if quincena_actual else False,
@@ -1057,19 +1192,42 @@ def dashboard_bancos():
         return jsonify({'error': 'Error al cargar dashboard bancos'}), 500
 
 
+@dashboard_bp.route('/comercial', methods=['GET'])
+@login_required
+def dashboard_comercial():
+    try:
+        hoy = datetime.utcnow()
+        referencia_mes = request.args.get('referencia_mes', type=int) or request.args.get('mes', type=int) or hoy.month
+        referencia_anio = request.args.get('referencia_anio', type=int) or request.args.get('anio', type=int) or hoy.year
+
+        total_vendedores = Vendedor.query.count()
+        vendedores_activos = Vendedor.query.filter_by(activo=True).count()
+        clientes_activos = ClienteComercial.query.filter_by(activo=True).count()
+
+        return jsonify({
+            'nombre': 'Comercial',
+            'periodicidad': 'Mensual',
+            'total_vendedores': int(total_vendedores),
+            'vendedores_activos': int(vendedores_activos),
+            'clientes_activos': int(clientes_activos),
+            'cartera_pendiente': 0.0,
+            'comisiones_mes': 0.0,
+            'rentabilidad_mes': 0.0,
+            'periodo_actual': {
+                'mes': referencia_mes,
+                'anio': referencia_anio,
+            },
+            'mensaje': 'Modulo comercial base listo para crecer con clientes, cartera, alertas y comisiones',
+        }), 200
+    except Exception as e:
+        logger.error(f"Error dashboard comercial: {str(e)}")
+        return jsonify({'error': 'Error al cargar dashboard comercial'}), 500
+
+
 @dashboard_bp.route('/comisiones', methods=['GET'])
 @login_required
 def dashboard_comisiones():
-    try:
-        return jsonify({
-            'nombre': 'Comisiones',
-            'periodicidad': 'Mensual',
-            'total_registros': 0,
-            'mensaje': 'Modulo base de comisiones listo para desarrollo'
-        }), 200
-    except Exception as e:
-        logger.error(f"Error dashboard comisiones: {str(e)}")
-        return jsonify({'error': 'Error al cargar dashboard comisiones'}), 500
+    return dashboard_comercial()
 
 
 @dashboard_bp.route('/impuestos', methods=['GET'])

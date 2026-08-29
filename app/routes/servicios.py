@@ -95,6 +95,7 @@ def _obtener_periodo_en_proceso():
             periodo.fecha_inicio = ahora
 
     # Asegurar que los demás periodos no queden marcados como en_proceso
+    db.session.flush()
     ServicioPeriodo.query.filter(ServicioPeriodo.id != periodo.id).update({"en_proceso": False}, synchronize_session=False)
     db.session.commit()
 
@@ -730,9 +731,11 @@ def finalizar_periodo_servicios():
                 siguiente.fecha_inicio = ahora
 
         # Asegurar que ningún otro periodo quede marcado como en_proceso
-        ServicioPeriodo.query.filter(ServicioPeriodo.id.notin_([periodo.id, siguiente.id])).update(
+        db.session.flush()
+        ServicioPeriodo.query.filter(ServicioPeriodo.id != siguiente.id).update(
             {"en_proceso": False}, synchronize_session=False
         )
+        siguiente.en_proceso = True
 
         db.session.commit()
 

@@ -3,14 +3,18 @@ from datetime import timedelta
 
 
 def _normalize_database_url(url):
-    """Normaliza URLs de Postgres compatibles con SQLAlchemy."""
+    """Normaliza URLs de PostgreSQL compatibles con SQLAlchemy."""
     if not url:
-        return 'sqlite:///prevent.db'
+        return None
 
     if url.startswith('postgres://'):
         return 'postgresql://' + url[len('postgres://'):]
 
     return url
+
+
+def _env_flag(name, default='false'):
+    return os.environ.get(name, default).lower() == 'true'
 
 
 class Config:
@@ -20,7 +24,6 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
 
     # Base de datos
-    # SQLite para desarrollo, PostgreSQL para produccion.
     SQLALCHEMY_DATABASE_URI = _normalize_database_url(os.environ.get('DATABASE_URL'))
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ECHO = os.environ.get('SQLALCHEMY_ECHO', 'false').lower() == 'true'
@@ -36,7 +39,7 @@ class Config:
 
     # Sesiones
     PERMANENT_SESSION_LIFETIME = timedelta(hours=24)
-    SESSION_COOKIE_SECURE = False
+    SESSION_COOKIE_SECURE = _env_flag('SESSION_COOKIE_SECURE', 'false')
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
 
@@ -58,15 +61,17 @@ class DevelopmentConfig(Config):
 
     DEBUG = True
     TESTING = False
-    AUTO_CREATE_TABLES = os.environ.get('AUTO_CREATE_TABLES', 'true').lower() == 'true'
-    AUTO_SEED_ADMIN = os.environ.get('AUTO_SEED_ADMIN', 'true').lower() == 'true'
+    AUTO_CREATE_TABLES = os.environ.get('AUTO_CREATE_TABLES', 'false').lower() == 'true'
+    AUTO_SEED_ADMIN = os.environ.get('AUTO_SEED_ADMIN', 'false').lower() == 'true'
 
 
 class TestingConfig(Config):
     """Configuracion para pruebas."""
 
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    SQLALCHEMY_DATABASE_URI = _normalize_database_url(
+        os.environ.get('TEST_DATABASE_URL') or os.environ.get('DATABASE_URL')
+    )
     WTF_CSRF_ENABLED = False
     AUTO_CREATE_TABLES = True
     AUTO_SEED_ADMIN = False
@@ -77,7 +82,6 @@ class ProductionConfig(Config):
 
     DEBUG = False
     TESTING = False
-    SESSION_COOKIE_SECURE = True
     AUTO_CREATE_TABLES = os.environ.get('AUTO_CREATE_TABLES', 'false').lower() == 'true'
     AUTO_SEED_ADMIN = os.environ.get('AUTO_SEED_ADMIN', 'false').lower() == 'true'
 

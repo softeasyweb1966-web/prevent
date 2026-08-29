@@ -1,0 +1,25 @@
+Debemos implementar el módulo de vendedores, es algo que toma una importancia mayúscula dentro del aplicativo, a continuación explico lo que se espera de ese módulo.
+
+OBJETIVO GENERAL
+
+Se debe registrar todo lo de los clientes nuevos, esto incluye el vendedor, quien es el responsable del registro de la información, el vendedor carga todas las condiciones del negocio, eso incluye Tarifas de exámenes y paquetes, formas de pago, contactos en la empresa y los documentos de la empresa cédula representante legal, camara y comercio , Rut y si la negociación es a crédito se debe subir el pagaré debidamente autenticado y firmado por ambas partes.
+
+ALCANCE
+
+Se debe poder crear un vendedor, importante dejar campos para porcentaje de comisión por venta y por recaudo, pueden estar sujetos a montos específicos.
+
+El vendedor es el responsable de alimentar el módulo y debe informar si la información del cliente ya está incluida en el software administrativo y el contable.
+
+Se debe permitir generar o importar las atenciones a los diferentes pacientes del cliente, así como los datos de las facturas y de los recibos, para poder generar por vendedor un estado de cuenta de cada uno de sus clientes.
+
+La trazabilidad como siempre es un factor muy importante, las alarmas si un cliente debe una factura y ya pasa a mora encender alarma, esta alarma no solo va al vendedor si no se debe mostrar la campanita en el menú principal
+
+
+Ya en otros reportes a nivel administrativo, debemos poder tener información general y detallada de este módulo. Este módulo debe evaluar el vendedor que se logueo y mostrar el dashboard de sus clientes, igual si un cliente deja de enviar pacientes debe haber una alarma para el vendedor.
+
+De este módulo sale la liquidación de comisiones
+
+  
+
+
+ 

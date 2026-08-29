@@ -95,6 +95,9 @@ def _serialize_vendedor(vendedor):
         'documento': vendedor.documento,
         'telefono': vendedor.telefono,
         'email': vendedor.email,
+        'porcentaje_comision_venta': float(vendedor.porcentaje_comision_venta or 0),
+        'porcentaje_comision_recaudo': float(vendedor.porcentaje_comision_recaudo or 0),
+        'monto_base_comision': float(vendedor.monto_base_comision or 0),
         'descripcion': vendedor.descripcion,
         'activo': vendedor.activo
     }
@@ -788,6 +791,9 @@ def crear_vendedor():
             documento=documento,
             telefono=(data.get('telefono') or '').strip() or None,
             email=(data.get('email') or '').strip() or None,
+            porcentaje_comision_venta=Decimal(str(data.get('porcentaje_comision_venta') or 0)),
+            porcentaje_comision_recaudo=Decimal(str(data.get('porcentaje_comision_recaudo') or 0)),
+            monto_base_comision=Decimal(str(data.get('monto_base_comision') or 0)),
             descripcion=(data.get('descripcion') or '').strip() or None,
             activo=bool(data.get('activo', True))
         )
@@ -820,6 +826,12 @@ def actualizar_vendedor(vendedor_id):
         vendedor.documento = documento
         vendedor.telefono = (data.get('telefono') if 'telefono' in data else vendedor.telefono)
         vendedor.email = (data.get('email') if 'email' in data else vendedor.email)
+        if 'porcentaje_comision_venta' in data:
+            vendedor.porcentaje_comision_venta = Decimal(str(data.get('porcentaje_comision_venta') or 0))
+        if 'porcentaje_comision_recaudo' in data:
+            vendedor.porcentaje_comision_recaudo = Decimal(str(data.get('porcentaje_comision_recaudo') or 0))
+        if 'monto_base_comision' in data:
+            vendedor.monto_base_comision = Decimal(str(data.get('monto_base_comision') or 0))
         vendedor.descripcion = (data.get('descripcion') if 'descripcion' in data else vendedor.descripcion)
         if 'activo' in data:
             vendedor.activo = bool(data.get('activo'))

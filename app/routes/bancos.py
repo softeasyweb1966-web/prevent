@@ -1,11 +1,86 @@
 from flask import jsonify, request
 from app.routes import bancos_bp
-from app.models import db, PrestamoEmpresa, PrestamoNovedad, PrestamoPago
+from app.models import db, BancoPeriodo, PrestamoEmpresa, PrestamoNovedad, PrestamoPago
 from flask_login import login_required
 from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _calcular_siguiente_mes(mes: int, anio: int):
+    if mes == 12:
+        return 1, anio + 1
+    return mes + 1, anio
+
+
+def _primer_mes_con_cuotas_pendientes():
+    """Detecta el primer mes/año con cuotas de préstamos sin pagar.
+    Busca el préstamo activo más antiguo y retorna su mes/año de inicio.
+    Si no hay préstamos, retorna el mes actual.
+    """
+    ahora = datetime.utcnow()
+    prestamo_mas_antiguo = (
+        PrestamoEmpresa.query
+        .filter_by(activo=True)
+        .order_by(PrestamoEmpresa.fecha_inicio.asc())
+        .first()
+    )
+    if prestamo_mas_antiguo and prestamo_mas_antiguo.fecha_inicio:
+        return prestamo_mas_antiguo.fecha_inicio.month, prestamo_mas_antiguo.fecha_inicio.year
+    return ahora.month, ahora.year
+
+
+def _obtener_periodo_en_proceso():
+    """Retorna el BancoPeriodo en proceso, creándolo si no existe.
+
+    Si no hay ningún periodo registrado, detecta automáticamente el primer
+    mes con cuotas pendientes en lugar de usar el mes calendario actual.
+    """
+    ahora = datetime.utcnow()
+
+    actual = (
+        BancoPeriodo.query
+        .filter_by(en_proceso=True)
+        .order_by(BancoPeriodo.anio.desc(), BancoPeriodo.mes.desc())
+        .first()
+    )
+    if actual:
+        return actual
+
+    ultimo_finalizado = (
+        BancoPeriodo.query
+        .filter_by(finalizado=True)
+        .order_by(BancoPeriodo.anio.desc(), BancoPeriodo.mes.desc())
+        .first()
+    )
+
+    if ultimo_finalizado:
+        # Hay periodos finalizados: el siguiente es el mes posterior al último cerrado
+        sig_mes, sig_anio = _calcular_siguiente_mes(ultimo_finalizado.mes, ultimo_finalizado.anio)
+    else:
+        # Sin historial: arrancar desde el primer mes con cuotas pendientes
+        sig_mes, sig_anio = _primer_mes_con_cuotas_pendientes()
+
+    periodo = BancoPeriodo.query.filter_by(mes=sig_mes, anio=sig_anio).first()
+    if not periodo:
+        periodo = BancoPeriodo(
+            mes=sig_mes, anio=sig_anio,
+            en_proceso=True, finalizado=False,
+            fecha_inicio=ahora,
+        )
+        db.session.add(periodo)
+    else:
+        periodo.en_proceso = True
+        periodo.finalizado = False
+        if not periodo.fecha_inicio:
+            periodo.fecha_inicio = ahora
+
+    BancoPeriodo.query.filter(BancoPeriodo.id != periodo.id).update(
+        {'en_proceso': False}, synchronize_session=False
+    )
+    db.session.commit()
+    return periodo
 
 
 def _parse_date(value):
@@ -445,3 +520,108 @@ def historial_prestamos():
     except Exception:
         logger.exception('Error consultando historial de préstamos')
         return jsonify({'error': 'Error al consultar historial de préstamos'}), 500
+
+
+# ===========================================================================
+# ENDPOINTS DE PERIODO MENSUAL — BANCOS
+# ===========================================================================
+
+@bancos_bp.route('/periodo-actual', methods=['GET'])
+@login_required
+def get_periodo_actual_bancos():
+    """Devuelve el periodo mensual en proceso de Bancos.
+    Si no existe, lo inicializa automáticamente igual que Servicios.
+    """
+    try:
+        periodo = _obtener_periodo_en_proceso()
+        meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+        return jsonify({
+            'mes':              periodo.mes,
+            'anio':             periodo.anio,
+            'en_proceso':       periodo.en_proceso,
+            'finalizado':       periodo.finalizado,
+            'nombre_mes':       meses[periodo.mes] if 1 <= periodo.mes <= 12 else str(periodo.mes),
+            'fecha_inicio':     periodo.fecha_inicio.strftime('%Y-%m-%d') if periodo.fecha_inicio else None,
+            'fecha_finalizacion': periodo.fecha_finalizacion.strftime('%Y-%m-%d') if periodo.fecha_finalizacion else None,
+        }), 200
+    except Exception as exc:
+        logger.exception('Error obteniendo periodo actual de bancos')
+        return jsonify({'error': str(exc)}), 500
+
+
+@bancos_bp.route('/periodos/finalizar', methods=['POST'])
+@login_required
+def finalizar_periodo_bancos():
+    """Cierra el mes en proceso y abre automáticamente el siguiente."""
+    data = request.get_json() or {}
+    mes  = data.get('mes')
+    anio = data.get('anio')
+
+    if not mes or not anio:
+        return jsonify({'error': 'Se requieren mes y anio'}), 400
+
+    try:
+        periodo = BancoPeriodo.query.filter_by(mes=int(mes), anio=int(anio), en_proceso=True).first()
+        if not periodo:
+            return jsonify({'error': f'No hay periodo en proceso para {mes}/{anio}'}), 404
+
+        ahora = datetime.utcnow()
+        periodo.en_proceso        = False
+        periodo.finalizado        = True
+        periodo.fecha_finalizacion = ahora
+
+        # Crear/marcar el siguiente periodo
+        sig_mes, sig_anio = _calcular_siguiente_mes(int(mes), int(anio))
+        siguiente = BancoPeriodo.query.filter_by(mes=sig_mes, anio=sig_anio).first()
+        if not siguiente:
+            siguiente = BancoPeriodo(
+                mes=sig_mes, anio=sig_anio,
+                en_proceso=True, finalizado=False,
+                fecha_inicio=ahora,
+            )
+            db.session.add(siguiente)
+        else:
+            siguiente.en_proceso  = True
+            siguiente.finalizado  = False
+            if not siguiente.fecha_inicio:
+                siguiente.fecha_inicio = ahora
+
+        db.session.commit()
+
+        meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+        return jsonify({
+            'mensaje':           f'Mes {meses[int(mes)]} {anio} finalizado',
+            'siguiente_periodo': {'mes': sig_mes, 'anio': sig_anio,
+                                  'nombre_mes': meses[sig_mes]},
+        }), 200
+    except Exception as exc:
+        db.session.rollback()
+        logger.exception('Error finalizando periodo de bancos')
+        return jsonify({'error': str(exc)}), 500
+
+
+@bancos_bp.route('/periodos', methods=['GET'])
+@login_required
+def listar_periodos_bancos():
+    """Lista todos los periodos de bancos (historial)."""
+    try:
+        periodos = BancoPeriodo.query.order_by(
+            BancoPeriodo.anio.desc(), BancoPeriodo.mes.desc()
+        ).all()
+        meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+        return jsonify([{
+            'id':                p.id,
+            'mes':               p.mes,
+            'anio':              p.anio,
+            'nombre_mes':        meses[p.mes] if 1 <= p.mes <= 12 else str(p.mes),
+            'en_proceso':        p.en_proceso,
+            'finalizado':        p.finalizado,
+            'fecha_inicio':      p.fecha_inicio.strftime('%Y-%m-%d') if p.fecha_inicio else None,
+            'fecha_finalizacion': p.fecha_finalizacion.strftime('%Y-%m-%d') if p.fecha_finalizacion else None,
+        } for p in periodos]), 200
+    except Exception as exc:
+        logger.exception('Error listando periodos de bancos')
+        return jsonify({'error': str(exc)}), 500

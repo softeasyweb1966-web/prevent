@@ -1,0 +1,5 @@
+Ventas
+
+Documentos de venta
+
+Genera "Ventas.xlsx"

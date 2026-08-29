@@ -1,0 +1,29 @@
+
+============================================================
+PREVENT - Arranque local
+============================================================
+Entorno : production
+Puerto  : 8080
+Base    : PostgreSQL local
+URL DB  : postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+============================================================
+
+
+============================================================
+PREVENT - SISTEMA DE GESTION INTEGRAL PARA IPS
+============================================================
+{
+  "mensaje": "Bienvenido a PREVENT",
+  "version": "0.1.0",
+  "status": "OK",
+  "endpoints": {
+    "auth": "/api/auth",
+    "dashboard": "/api/dashboard",
+    "nomina": "/api/nomina",
+    "usuarios": "/api/usuarios",
+    "chat": "/api/chat"
+  }
+}
+============================================================
+ * Serving Flask app 'app'
+ * Debug mode: off

@@ -24,7 +24,7 @@ if os.name == "nt":
         pass
 
 
-app = create_app(os.getenv("FLASK_ENV", "production"))
+app = create_app(os.getenv("FLASK_ENV", "development"))
 
 
 if __name__ == "__main__":
@@ -37,6 +37,7 @@ if __name__ == "__main__":
             "dashboard": "/api/dashboard",
             "nomina": "/api/nomina",
             "usuarios": "/api/usuarios",
+            "chat": "/api/chat",
         },
     }
 
@@ -50,5 +51,5 @@ if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=port,
-        debug=False,
+        debug=app.config.get("DEBUG", False),
     )

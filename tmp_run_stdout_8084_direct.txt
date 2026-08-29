@@ -1,0 +1,19 @@
+
+============================================================
+PREVENT - SISTEMA DE GESTION INTEGRAL PARA IPS
+============================================================
+{
+  "mensaje": "Bienvenido a PREVENT",
+  "version": "0.1.0",
+  "status": "OK",
+  "endpoints": {
+    "auth": "/api/auth",
+    "dashboard": "/api/dashboard",
+    "nomina": "/api/nomina",
+    "usuarios": "/api/usuarios",
+    "chat": "/api/chat"
+  }
+}
+============================================================
+ * Serving Flask app 'app'
+ * Debug mode: off
