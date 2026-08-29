@@ -45,7 +45,7 @@ def upgrade():
     op.execute(
         """
         UPDATE comercial_catalogo_items
-        SET clasificacion_completa = 0
+        SET clasificacion_completa = false
         WHERE tipo_item = 'EXAMEN'
           AND (
             tipo_examen IS NULL
