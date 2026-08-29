@@ -67,7 +67,7 @@ def upgrade():
         for foreign_key in inspector.get_foreign_keys('clientes_seguimiento_documentos')
     }
     if 'fk_clientes_seguimiento_documentos_atencion_id' not in existing_foreign_keys:
-        with op.batch_alter_table('clientes_seguimiento_documentos', recreate='always') as batch_op:
+        with op.batch_alter_table('clientes_seguimiento_documentos') as batch_op:
             batch_op.create_foreign_key(
                 'fk_clientes_seguimiento_documentos_atencion_id',
                 'clientes_atenciones',
