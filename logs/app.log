@@ -48343,3 +48343,120 @@ WHERE bancos_periodos.en_proceso = true ORDER BY bancos_periodos.anio DESC, banc
 2026-06-27 17:19:38,754 - werkzeug - INFO - 127.0.0.1 - - [27/Jun/2026 17:19:38] "GET /api/chat/conversaciones HTTP/1.1" 200 -
 2026-06-27 17:19:45,752 - werkzeug - INFO - 127.0.0.1 - - [27/Jun/2026 17:19:45] "GET /api/chat/conversaciones HTTP/1.1" 200 -
 2026-06-27 17:19:52,813 - werkzeug - INFO - 127.0.0.1 - - [27/Jun/2026 17:19:52] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:20:02,760 - app - INFO - [DB] DATABASE_URL configurada: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-08-30 11:20:03,385 - app - INFO - [DB] Conexion activa: postgresql+psycopg2://postgres:***@127.0.0.1:5432/prevent_utf8
+2026-08-30 11:20:03,387 - app - INFO - [DB] Dialecto activo: postgresql
+2026-08-30 11:20:03,387 - app - INFO - [DB] AUTO_CREATE_TABLES deshabilitado; usa migraciones controladas con 'flask db upgrade'
+2026-08-30 11:20:04,010 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8084
+ * Running on http://192.168.0.14:8084
+2026-08-30 11:20:04,011 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-08-30 11:20:04,451 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:04] "GET /api HTTP/1.1" 200 -
+2026-08-30 11:20:06,543 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:06] "GET / HTTP/1.1" 200 -
+2026-08-30 11:20:06,597 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:06] "[36mGET /static/js/main.js?v=1770570564 HTTP/1.1[0m" 304 -
+2026-08-30 11:20:06,633 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:06] "GET /static/css/styles.css?v=1787978176 HTTP/1.1" 200 -
+2026-08-30 11:20:06,802 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:06] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-08-30 11:20:22,100 - app.routes.auth - INFO - Usuario logueado: admin
+2026-08-30 11:20:22,128 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:22] "POST /api/auth/login HTTP/1.1" 200 -
+2026-08-30 11:20:22,442 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:22] "GET /dashboard HTTP/1.1" 200 -
+2026-08-30 11:20:22,475 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:22] "GET /static/js/dashboard.js?v=1787978176 HTTP/1.1" 200 -
+2026-08-30 11:20:22,476 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:22] "[36mGET /static/css/styles.css?v=1787978176 HTTP/1.1[0m" 304 -
+2026-08-30 11:20:22,490 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:22] "GET /static/js/sabor_artesanal_menus.js?v=1787978176 HTTP/1.1" 200 -
+2026-08-30 11:20:22,499 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:22] "GET /static/js/sabor_artesanal_pedidos.js?v=1787978176 HTTP/1.1" 200 -
+2026-08-30 11:20:22,506 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:22] "GET /static/js/servicios.js?v=1787978176 HTTP/1.1" 200 -
+2026-08-30 11:20:22,512 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:22] "GET /static/js/prestamos.js?v=1787978176 HTTP/1.1" 200 -
+2026-08-30 11:20:22,517 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:22] "[36mGET /static/js/main.js?v=1770570564 HTTP/1.1[0m" 304 -
+2026-08-30 11:20:23,033 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:23] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:20:23,083 - app.routes.bancos - ERROR - Error obteniendo periodo actual de bancos
+Traceback (most recent call last):
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+psycopg2.errors.UndefinedTable: no existe la relación «bancos_periodos»
+LINE 2: FROM bancos_periodos 
+             ^
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\python\PREVENT\app\routes\bancos.py", line 536, in get_periodo_actual_bancos
+    periodo = _obtener_periodo_en_proceso()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\app\routes\bancos.py", line 46, in _obtener_periodo_en_proceso
+    .first()
+     ^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2759, in first
+    return self.limit(1)._iter().first()  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2857, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+                                                  ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\orm\context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\python\PREVENT\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.ProgrammingError: (psycopg2.errors.UndefinedTable) no existe la relación «bancos_periodos»
+LINE 2: FROM bancos_periodos 
+             ^
+
+[SQL: SELECT bancos_periodos.id AS bancos_periodos_id, bancos_periodos.mes AS bancos_periodos_mes, bancos_periodos.anio AS bancos_periodos_anio, bancos_periodos.en_proceso AS bancos_periodos_en_proceso, bancos_periodos.finalizado AS bancos_periodos_finalizado, bancos_periodos.fecha_inicio AS bancos_periodos_fecha_inicio, bancos_periodos.fecha_finalizacion AS bancos_periodos_fecha_finalizacion, bancos_periodos.created_at AS bancos_periodos_created_at, bancos_periodos.updated_at AS bancos_periodos_updated_at 
+FROM bancos_periodos 
+WHERE bancos_periodos.en_proceso = true ORDER BY bancos_periodos.anio DESC, bancos_periodos.mes DESC 
+ LIMIT %(param_1)s]
+[parameters: {'param_1': 1}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+2026-08-30 11:20:23,121 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:23] "GET /api/bancos/prestamos?activos=true HTTP/1.1" 200 -
+2026-08-30 11:20:23,126 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:23] "GET /api/auth/me HTTP/1.1" 200 -
+2026-08-30 11:20:23,213 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:23] "[35m[1mGET /api/bancos/periodo-actual HTTP/1.1[0m" 500 -
+2026-08-30 11:20:23,229 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:23] "GET /api/servicios/list HTTP/1.1" 200 -
+2026-08-30 11:20:23,338 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:23] "GET /api/dashboard/servicios?anio=2026&referencia_mes=2&referencia_anio=2026 HTTP/1.1" 200 -
+2026-08-30 11:20:23,338 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:23] "GET /api/dashboard/bancos?anio=2026&referencia_mes=8&referencia_anio=2026 HTTP/1.1" 200 -
+2026-08-30 11:20:30,280 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:30] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:20:37,327 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:37] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:20:44,363 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:44] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:20:51,351 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:51] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:20:58,375 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:20:58] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:21:05,273 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:21:05] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:21:13,054 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:21:13] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:21:20,058 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:21:20] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:21:27,049 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:21:27] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:21:34,035 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:21:34] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:21:41,034 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:21:41] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:21:48,052 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:21:48] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:21:55,056 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:21:55] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:22:02,054 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:22:02] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:22:09,050 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:22:09] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:22:44,045 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:22:44] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:23:44,064 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:23:44] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:24:44,052 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:24:44] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:25:44,031 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:25:44] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:25:54,378 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:25:54] "GET /api/chat/conversaciones HTTP/1.1" 200 -
+2026-08-30 11:25:59,296 - werkzeug - INFO - 127.0.0.1 - - [30/Aug/2026 11:25:59] "GET /api/chat/conversaciones HTTP/1.1" 200 -

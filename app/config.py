@@ -49,7 +49,7 @@ class Config:
 
     # Uploads
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024
-    UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
+    UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER') or os.path.join(os.path.dirname(__file__), 'uploads')
 
     # Configuracion de nomina
     PAYROLL_FREQUENCY_OPTIONS = ['QUINCENAL', 'MENSUAL']
