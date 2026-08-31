@@ -1,3 +1,4 @@
+import argparse
 import csv
 import json
 import os
@@ -9,6 +10,31 @@ from urllib.parse import urlsplit
 import psycopg2
 from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
+
+
+DEFAULT_BACKUP_ROOT = Path("backups")
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Crea un respaldo logico de PostgreSQL para PREVENT."
+    )
+    parser.add_argument(
+        "--database-url",
+        default=os.environ.get("DATABASE_URL", ""),
+        help="URL origen de PostgreSQL. Si no se envia, usa DATABASE_URL.",
+    )
+    parser.add_argument(
+        "--output-root",
+        default=str(DEFAULT_BACKUP_ROOT),
+        help=f"Carpeta base para respaldos con timestamp. Default: {DEFAULT_BACKUP_ROOT}",
+    )
+    parser.add_argument(
+        "--backup-dir",
+        default="",
+        help="Directorio exacto donde se creara el respaldo. Si se envia, ignora --output-root.",
+    )
+    return parser.parse_args()
 
 
 def json_default(value):
@@ -36,13 +62,24 @@ def fetch_all(cursor, query, params=None):
 
 
 def main():
-    database_url = os.environ.get("DATABASE_URL")
+    args = parse_args()
+    database_url = args.database_url
     if not database_url:
         raise SystemExit("DATABASE_URL no esta definida.")
 
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    root = Path("backups") / f"pg_logical_backup_{timestamp}"
-    root.mkdir(parents=True, exist_ok=True)
+    if args.backup_dir:
+        root = Path(args.backup_dir)
+    else:
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        root = Path(args.output_root) / f"pg_logical_backup_{timestamp}"
+
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except PermissionError as exc:
+        raise SystemExit(
+            f"No fue posible crear el directorio del respaldo: {root}. "
+            "Prueba con --backup-dir o --output-root en una ruta escribible."
+        ) from exc
 
     manifest = {
         "created_at_utc": datetime.utcnow().isoformat() + "Z",
@@ -173,7 +210,7 @@ def main():
     with manifest_path.open("w", encoding="utf-8") as manifest_file:
         json.dump(manifest, manifest_file, ensure_ascii=False, indent=2, default=json_default)
 
-    print(str(root.resolve()))
+    print(f"BACKUP_DIR={root.resolve()}")
     print(json.dumps(manifest, ensure_ascii=False, indent=2, default=json_default))
 
 

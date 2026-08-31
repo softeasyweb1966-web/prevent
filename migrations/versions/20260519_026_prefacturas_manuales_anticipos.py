@@ -16,16 +16,26 @@ depends_on = None
 
 
 def upgrade():
-    with op.batch_alter_table('prefacturas_comerciales', recreate='always') as batch_op:
-        batch_op.add_column(sa.Column('origen', sa.String(length=30), nullable=False, server_default='ATENCIONES'))
-        batch_op.add_column(sa.Column('fecha_programada', sa.DateTime(), nullable=True))
-        batch_op.add_column(sa.Column('bloqueada_por_pago', sa.Boolean(), nullable=False, server_default=sa.false()))
-        batch_op.add_column(sa.Column('fecha_bloqueo_pago', sa.DateTime(), nullable=True))
-        batch_op.drop_constraint('uq_prefactura_empresa_periodo_forma', type_='unique')
-        batch_op.create_unique_constraint(
-            'uq_prefactura_empresa_periodo_forma_origen',
-            ['nombre_empresa', 'fecha_desde', 'fecha_hasta', 'forma_pago', 'origen'],
-        )
+    op.add_column(
+        'prefacturas_comerciales',
+        sa.Column('origen', sa.String(length=30), nullable=False, server_default='ATENCIONES'),
+    )
+    op.add_column('prefacturas_comerciales', sa.Column('fecha_programada', sa.DateTime(), nullable=True))
+    op.add_column(
+        'prefacturas_comerciales',
+        sa.Column('bloqueada_por_pago', sa.Boolean(), nullable=False, server_default=sa.false()),
+    )
+    op.add_column('prefacturas_comerciales', sa.Column('fecha_bloqueo_pago', sa.DateTime(), nullable=True))
+    op.drop_constraint(
+        'uq_prefactura_empresa_periodo_forma',
+        'prefacturas_comerciales',
+        type_='unique',
+    )
+    op.create_unique_constraint(
+        'uq_prefactura_empresa_periodo_forma_origen',
+        'prefacturas_comerciales',
+        ['nombre_empresa', 'fecha_desde', 'fecha_hasta', 'forma_pago', 'origen'],
+    )
 
     op.create_index('ix_prefacturas_comerciales_origen', 'prefacturas_comerciales', ['origen'])
     op.create_index('ix_prefacturas_comerciales_fecha_programada', 'prefacturas_comerciales', ['fecha_programada'])
@@ -62,12 +72,11 @@ def upgrade():
     op.create_index('ix_prefacturas_comerciales_detalle_estado_cruce', 'prefacturas_comerciales_detalle', ['estado_cruce'])
     op.create_index('ix_prefacturas_comerciales_detalle_atencion_dia_id', 'prefacturas_comerciales_detalle', ['atencion_dia_id'])
 
-    with op.batch_alter_table('cartera_prefacturas', recreate='always') as batch_op:
-        batch_op.add_column(sa.Column('canal_transferencia', sa.String(length=20), nullable=True))
-        batch_op.add_column(sa.Column('nombre_comprobante', sa.String(length=255), nullable=True))
-        batch_op.add_column(sa.Column('ruta_comprobante', sa.String(length=500), nullable=True))
-        batch_op.add_column(sa.Column('mime_type', sa.String(length=120), nullable=True))
-        batch_op.add_column(sa.Column('tamano_bytes', sa.Integer(), nullable=True))
+    op.add_column('cartera_prefacturas', sa.Column('canal_transferencia', sa.String(length=20), nullable=True))
+    op.add_column('cartera_prefacturas', sa.Column('nombre_comprobante', sa.String(length=255), nullable=True))
+    op.add_column('cartera_prefacturas', sa.Column('ruta_comprobante', sa.String(length=500), nullable=True))
+    op.add_column('cartera_prefacturas', sa.Column('mime_type', sa.String(length=120), nullable=True))
+    op.add_column('cartera_prefacturas', sa.Column('tamano_bytes', sa.Integer(), nullable=True))
 
     op.create_index('ix_cartera_prefacturas_canal_transferencia', 'cartera_prefacturas', ['canal_transferencia'])
 
@@ -75,12 +84,11 @@ def upgrade():
 def downgrade():
     op.drop_index('ix_cartera_prefacturas_canal_transferencia', table_name='cartera_prefacturas')
 
-    with op.batch_alter_table('cartera_prefacturas', recreate='always') as batch_op:
-        batch_op.drop_column('tamano_bytes')
-        batch_op.drop_column('mime_type')
-        batch_op.drop_column('ruta_comprobante')
-        batch_op.drop_column('nombre_comprobante')
-        batch_op.drop_column('canal_transferencia')
+    op.drop_column('cartera_prefacturas', 'tamano_bytes')
+    op.drop_column('cartera_prefacturas', 'mime_type')
+    op.drop_column('cartera_prefacturas', 'ruta_comprobante')
+    op.drop_column('cartera_prefacturas', 'nombre_comprobante')
+    op.drop_column('cartera_prefacturas', 'canal_transferencia')
 
     op.drop_index('ix_prefacturas_comerciales_detalle_atencion_dia_id', table_name='prefacturas_comerciales_detalle')
     op.drop_index('ix_prefacturas_comerciales_detalle_estado_cruce', table_name='prefacturas_comerciales_detalle')
@@ -96,13 +104,17 @@ def downgrade():
     op.drop_index('ix_prefacturas_comerciales_fecha_programada', table_name='prefacturas_comerciales')
     op.drop_index('ix_prefacturas_comerciales_origen', table_name='prefacturas_comerciales')
 
-    with op.batch_alter_table('prefacturas_comerciales', recreate='always') as batch_op:
-        batch_op.drop_constraint('uq_prefactura_empresa_periodo_forma_origen', type_='unique')
-        batch_op.create_unique_constraint(
-            'uq_prefactura_empresa_periodo_forma',
-            ['nombre_empresa', 'fecha_desde', 'fecha_hasta', 'forma_pago'],
-        )
-        batch_op.drop_column('fecha_bloqueo_pago')
-        batch_op.drop_column('bloqueada_por_pago')
-        batch_op.drop_column('fecha_programada')
-        batch_op.drop_column('origen')
+    op.drop_constraint(
+        'uq_prefactura_empresa_periodo_forma_origen',
+        'prefacturas_comerciales',
+        type_='unique',
+    )
+    op.create_unique_constraint(
+        'uq_prefactura_empresa_periodo_forma',
+        'prefacturas_comerciales',
+        ['nombre_empresa', 'fecha_desde', 'fecha_hasta', 'forma_pago'],
+    )
+    op.drop_column('prefacturas_comerciales', 'fecha_bloqueo_pago')
+    op.drop_column('prefacturas_comerciales', 'bloqueada_por_pago')
+    op.drop_column('prefacturas_comerciales', 'fecha_programada')
+    op.drop_column('prefacturas_comerciales', 'origen')

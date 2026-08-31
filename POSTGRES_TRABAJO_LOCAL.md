@@ -29,6 +29,21 @@ Ejemplo para nube:
 $env:DATABASE_URL = "postgresql+psycopg2://usuario:password@host:puerto/base?sslmode=require"
 ```
 
+## 1.1 Copiar la base local directamente a Railway
+
+Si quieres que la base web quede igual a la base local actual:
+
+```powershell
+$env:RAILWAY_DATABASE_URL = "postgresql://usuario:password@host:puerto/base?sslmode=require"
+.\sync_local_postgres_to_railway.ps1
+```
+
+Si prefieres reutilizar un respaldo ya existente:
+
+```powershell
+.\sync_local_postgres_to_railway.ps1 -RailwayDatabaseUrl "postgresql://usuario:password@host:puerto/base?sslmode=require" -BackupDir ".\backups\pg_logical_backup_20260830_163128"
+```
+
 ## 2. Crear el esquema actual del proyecto
 
 ```powershell

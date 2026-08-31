@@ -65,6 +65,28 @@ Con eso Railway tomara el codigo nuevo y ejecutara la migracion antes de arranca
 Si quieres que la base de Railway quede como la que tienes local, no basta con deploy.
 Tienes que exportar tu PostgreSQL local y restaurarlo en la base PostgreSQL de Railway.
 
+### Opcion rapida: copiar la BD local completa hacia Railway
+
+Si lo que quieres es que la web quede igual a tu PostgreSQL local actual, ya puedes hacerlo con un solo script:
+
+```powershell
+$env:RAILWAY_DATABASE_URL = "postgresql://usuario:password@host:puerto/base?sslmode=require"
+.\sync_local_postgres_to_railway.ps1
+```
+
+Ese flujo hace esto:
+
+1. crea un backup logico nuevo desde tu PostgreSQL local
+2. corre `db upgrade` contra Railway
+3. reemplaza la base web con `--clean-target`
+4. migra a Railway cualquier remanente que aun exista solo en `instance\prevent.db`
+
+Si ya tienes un backup exacto que quieres reutilizar:
+
+```powershell
+.\sync_local_postgres_to_railway.ps1 -RailwayDatabaseUrl "postgresql://usuario:password@host:puerto/base?sslmode=require" -BackupDir ".\backups\pg_logical_backup_20260830_163128"
+```
+
 ### 4.1 Crear backup logico desde tu PostgreSQL local
 
 Primero apunta `DATABASE_URL` a tu PostgreSQL local:
