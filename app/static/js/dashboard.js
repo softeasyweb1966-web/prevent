@@ -1744,7 +1744,7 @@ async function loadRoles() {
     if (!tableBody) return;
 
     try {
-        const response = await fetch('/api/usuarios/roles', { credentials: 'include' });
+        const response = await fetchUsuariosEndpoint('/api/usuarios/roles');
         const roles = await response.json();
         if (!response.ok) {
             throw new Error(roles.error || 'No se pudo cargar la lista de roles');
@@ -8791,14 +8791,42 @@ async function loadUsuariosManagement() {
     ]);
 }
 
+async function fetchUsuariosEndpoint(url, options = {}) {
+    let lastError = null;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 8000);
+
+        try {
+            return await fetch(url, {
+                ...options,
+                credentials: 'include',
+                signal: controller.signal
+            });
+        } catch (error) {
+            lastError = error;
+            if (attempt === 0) {
+                await new Promise(resolve => window.setTimeout(resolve, 300));
+            }
+        } finally {
+            window.clearTimeout(timeout);
+        }
+    }
+
+    throw new Error(
+        lastError?.name === 'AbortError'
+            ? 'La consulta de usuarios tardo demasiado. Intente nuevamente.'
+            : 'No fue posible conectar con el modulo de usuarios.'
+    );
+}
+
 async function loadUsuarios() {
     const tableBody = document.getElementById('usuariosTable');
     if (!tableBody) return;
 
     try {
-        const response = await fetch('/api/usuarios/', {
-            credentials: 'include'
-        });
+        const response = await fetchUsuariosEndpoint('/api/usuarios/');
         const usuarios = await response.json();
 
         if (!response.ok) {
@@ -8853,9 +8881,7 @@ async function loadRoles() {
     if (!tableBody) return;
 
     try {
-        const response = await fetch('/api/usuarios/roles', {
-            credentials: 'include'
-        });
+        const response = await fetchUsuariosEndpoint('/api/usuarios/roles');
         const roles = await response.json();
 
         if (!response.ok) {
@@ -8892,9 +8918,7 @@ async function loadRoles() {
 
 async function loadMenuOptions() {
     try {
-        const response = await fetch('/api/usuarios/menu-options', {
-            credentials: 'include'
-        });
+        const response = await fetchUsuariosEndpoint('/api/usuarios/menu-options');
         const data = await response.json();
 
         if (!response.ok) {
@@ -15284,7 +15308,7 @@ async function loadRoles() {
     if (!tableBody) return;
 
     try {
-        const response = await fetch('/api/usuarios/roles', { credentials: 'include' });
+        const response = await fetchUsuariosEndpoint('/api/usuarios/roles');
         const roles = await response.json();
         if (!response.ok) {
             throw new Error(roles.error || 'No se pudo cargar la lista de roles');
