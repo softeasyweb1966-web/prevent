@@ -7754,8 +7754,27 @@ function renderConsultaComercialResults(sectionName, query = '') {
         return;
     }
 
-    const items = Array.isArray(config.getItems?.()) ? config.getItems() : [];
-    const filtered = items.filter(item => config.matchFields(item).some(value => String(value || '').toLowerCase().includes(normalizedQuery)));
+    const rawItems = (typeof config.getItems === 'function') ? config.getItems() : [];
+    const items = Array.isArray(rawItems) ? rawItems : [];
+    const matchFn = (typeof config.matchFields === 'function')
+        ? config.matchFields
+        : (item => [item && item.nombre]);
+    const filtered = items.filter(item => {
+        const campos = matchFn(item) || [];
+        return campos.some(value => String(value || '').toLowerCase().includes(normalizedQuery));
+    });
+
+    // Si aun no hay datos cargados en memoria, los traemos y re-renderizamos.
+    if (items.length === 0 && typeof config.load === 'function') {
+        Promise.resolve(config.load())
+            .then(() => {
+                const nuevos = (typeof config.getItems === 'function') ? config.getItems() : [];
+                if (Array.isArray(nuevos) && nuevos.length > 0) {
+                    renderConsultaComercialResults(sectionName, query);
+                }
+            })
+            .catch(err => console.error('No se pudieron cargar los datos de la consulta:', err));
+    }
 
     if (filtered.length === 0) {
         summary.textContent = 'No encontramos resultados con esa búsqueda.';
