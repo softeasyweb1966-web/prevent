@@ -29,11 +29,11 @@ function mostrarVigenciaComprobantes(vigencia) {
     const atraso = vigencia?.dias_atraso;
     panel.className = 'siigo-vigencia-comprobantes siigo-vigencia-alerta';
     if (atraso == null) {
-        panel.innerHTML = `<strong>Alerta: comprobantes sin actualizar</strong><span>Aun no hay comprobantes cargados. Debe existir informacion al menos hasta el ${escapeSiigo(fechaRequerida)}.</span>`;
+        panel.innerHTML = `<strong>Alerta: comprobantes sin actualizar</strong><span>Aun no hay comprobantes cargados. Debe existir informacion al menos hasta el ${escapeSiigo(fechaRequerida)}. En SIIGO genere el Excel desde: <strong>Informes &gt; Contables &gt; Consecutivo de comprobantes</strong>, y luego carguelo aqui.</span>`;
         return;
     }
     const detalleAtraso = `Hay ${atraso} dia${atraso === 1 ? '' : 's'} de atraso frente al minimo requerido.`;
-    panel.innerHTML = `<strong>Alerta: comprobantes sin actualizar</strong><span>Informacion cargada hasta el ${escapeSiigo(ultimaFecha)}. Debe estar cargada al menos hasta el ${escapeSiigo(fechaRequerida)}. ${escapeSiigo(detalleAtraso)}</span>`;
+    panel.innerHTML = `<strong>Alerta: comprobantes sin actualizar</strong><span>Informacion cargada hasta el ${escapeSiigo(ultimaFecha)}. Debe estar cargada al menos hasta el ${escapeSiigo(fechaRequerida)}. ${escapeSiigo(detalleAtraso)} En SIIGO genere el Excel desde: <strong>Informes &gt; Contables &gt; Consecutivo de comprobantes</strong>, y luego carguelo aqui.</span>`;
 }
 
 async function leerRespuestaSiigo(response) {
