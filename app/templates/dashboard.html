@@ -3980,9 +3980,12 @@
                     Vendedor activo
                 </label>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeVendedorModal()">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Guardar</button>
+            <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                <button type="button" class="btn btn-danger" id="vendedorEliminarBtn" style="display:none;" onclick="eliminarVendedorDesdeModal()">Eliminar</button>
+                <div style="display:flex; gap:10px; margin-left:auto;">
+                    <button type="button" class="btn btn-secondary" onclick="closeVendedorModal()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </div>
             </div>
         </form>
     </div>

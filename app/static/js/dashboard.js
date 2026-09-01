@@ -10946,6 +10946,9 @@ function mostrarAgregarVendedor() {
     document.getElementById('vendedorComisionRecaudo').value = '0';
     document.getElementById('vendedorMontoBaseComision').value = '0';
     document.getElementById('vendedorActivo').checked = true;
+    // Al crear un vendedor nuevo no aplica el boton eliminar.
+    const eliminarBtn = document.getElementById('vendedorEliminarBtn');
+    if (eliminarBtn) eliminarBtn.style.display = 'none';
     // Abrimos el modal de inmediato; la lista de usuarios asignables se carga
     // en segundo plano para no bloquear la apertura si el endpoint falla.
     document.getElementById('vendedorModal').classList.add('active');
@@ -10972,9 +10975,20 @@ async function editarVendedorConfig(id) {
     document.getElementById('vendedorDescripcion').value = vendedor.descripcion || '';
     document.getElementById('vendedorActivo').checked = vendedor.activo !== false;
     document.getElementById('vendedorModalTitle').textContent = 'Editar Vendedor';
+    // Mostrar el boton eliminar solo si el usuario tiene permiso.
+    const eliminarBtn = document.getElementById('vendedorEliminarBtn');
+    if (eliminarBtn) {
+        eliminarBtn.style.display = canManageComercial('vendedores', 'delete') ? '' : 'none';
+    }
     document.getElementById('vendedorModal').classList.add('active');
     cargarUsuariosAsignablesVendedor(vendedor.id, vendedor.usuario_id)
         .catch(err => console.error('Usuarios asignables:', err));
+}
+
+function eliminarVendedorDesdeModal() {
+    const id = document.getElementById('vendedorId').value;
+    if (!id) return;
+    eliminarVendedorConfig(Number(id));
 }
 
 function editarAsignacionLaboral(id) {
@@ -11830,14 +11844,18 @@ async function eliminarVendedorConfig(vendedorId) {
         }
 
         showSuccess('Vendedor eliminado.');
+        closeVendedorModal();
         await Promise.all([
             cargarVendedoresConfig(),
             cargarClientesComercialesConfig(),
             loadComercialDashboard()
         ]);
+        // Refrescar la consulta de vendedores si esta abierta.
+        const input = document.getElementById('comercialVendedoresSearch');
+        if (input) renderConsultaComercialResults('vendedores', input.value || '');
     } catch (error) {
         console.error('Error eliminando vendedor:', error);
-        showError('Error de conexiÃ³n al eliminar el vendedor.');
+        showError('Error de conexion al eliminar el vendedor.');
     }
 }
 
