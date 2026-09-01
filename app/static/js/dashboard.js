@@ -8784,7 +8784,7 @@ function setupUsuariosModule() {
 }
 
 async function loadUsuariosManagement() {
-    await Promise.all([
+    await Promise.allSettled([
         loadMenuOptions(),
         loadRoles(),
         loadUsuarios()
@@ -9217,11 +9217,13 @@ async function showNewRoleForm() {
     document.getElementById('rolForm').reset();
     document.getElementById('rolId').value = '';
     document.getElementById('rolModalTitle').textContent = 'Nuevo Rol';
+    document.getElementById('rolMenuPermissions').innerHTML = '<div class="loading">Cargando menus y subopciones...</div>';
+    document.getElementById('rolModal').classList.add('active');
+
     if (!menuOptionsData.length) {
         await loadMenuOptions();
     }
     renderRoleMenuPermissions();
-    document.getElementById('rolModal').classList.add('active');
 }
 
 function closeRolModal() {
