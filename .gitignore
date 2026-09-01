@@ -6,3 +6,10 @@ __pycache__/
 *.pyo
 *.pyd
 backups/
+
+# Archivos de trabajo y registros locales; no forman parte del codigo fuente.
+*.xlsx
+*.zip
+logs/*.log
+documentos.txt
+implementaci*.txt
