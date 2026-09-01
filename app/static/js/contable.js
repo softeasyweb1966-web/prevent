@@ -175,6 +175,46 @@ function crearPanelVentasMensualesSiigo() {
     return panel;
 }
 
+function crearPanelCarteraDinamicaSiigo(tipo) {
+    const id = tipo === 'pagos' ? 'siigoPagosClientesPanel' : 'siigoCarteraRecaudoPanel';
+    let panel = document.getElementById(id);
+    if (panel) return panel;
+    const anchor = crearPanelVentasMensualesSiigo();
+    const esPagos = tipo === 'pagos';
+    panel = document.createElement('section');
+    panel.id = id;
+    panel.className = 'recent-section';
+    panel.style.marginTop = '16px';
+    panel.innerHTML = esPagos
+        ? `<h3 style="margin-top:0;">Analisis de pago de clientes</h3><p class="form-help">Cruza cada recibo de caja RC con la factura FV indicada en la descripcion. El promedio considera facturas totalmente pagadas.</p><form data-siigo-cartera="pagos"><div class="form-row"><div class="form-group"><label>Fecha de corte</label><input type="date" required value="${new Date().toISOString().slice(0, 10)}"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar analisis</button></div></div></form><div class="table-container" style="margin-top:16px;"></div>`
+        : `<h3 style="margin-top:0;">Cartera y recaudo por periodo</h3><p class="form-help">Calculado desde las facturas FV y sus recibos de caja RC. La fecha de vencimiento corresponde a la cuota indicada por SIIGO.</p><form data-siigo-cartera="recaudo"><div class="form-row"><div class="form-group"><label>Fecha de corte</label><input type="date" required value="${new Date().toISOString().slice(0, 10)}"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar cartera</button></div></div></form><div class="table-container" style="margin-top:16px;"></div>`;
+    anchor.insertAdjacentElement('afterend', panel);
+    panel.querySelector('form').addEventListener('submit', event => consultarCarteraDinamicaSiigo(event, tipo));
+    return panel;
+}
+
+async function consultarCarteraDinamicaSiigo(event, tipo) {
+    event.preventDefault();
+    const panel = event.currentTarget.closest('.recent-section');
+    const result = panel.querySelector('.table-container');
+    const fechaCorte = event.currentTarget.querySelector('input[type="date"]').value;
+    result.textContent = 'Calculando desde los comprobantes cargados...';
+    try {
+        const response = await fetch(`/api/contable/cartera-dinamica?fecha_corte=${encodeURIComponent(fechaCorte)}`, { credentials: 'include' });
+        const data = await leerRespuestaSiigo(response);
+        if (!response.ok) throw new Error(data.error || 'No fue posible calcular la cartera.');
+        if (tipo === 'pagos') {
+            const rows = data.pagos_clientes || [];
+            result.innerHTML = rows.length ? `<table class="data-table"><thead><tr><th>Cliente</th><th>Facturas pagadas</th><th>Promedio dias</th><th>Mas rapida</th><th>Dias</th><th>Mas lenta</th><th>Dias</th></tr></thead><tbody>${rows.map(item => `<tr><td>${escapeSiigo(item.cliente)}</td><td>${item.facturas_pagadas}</td><td>${item.promedio_dias}</td><td>${escapeSiigo(item.mas_rapida)}</td><td>${item.dias_mas_rapida}</td><td>${escapeSiigo(item.mas_lenta)}</td><td>${item.dias_mas_lenta}</td></tr>`).join('')}</tbody></table>` : 'No hay facturas totalmente pagadas para la fecha seleccionada.';
+        } else {
+            const rows = data.periodos || [];
+            result.innerHTML = `<p class="form-help">Fecha de corte: ${escapeSiigo(data.fecha_corte)}. Facturas analizadas: ${data.facturas}. Recibos sin factura cargada: ${data.pagos_sin_factura}. Notas credito sin asignar: ${formatoSiigoNumero(data.notas_credito_sin_asignar)}.</p>${rows.length ? `<table class="data-table"><thead><tr><th>Periodo</th><th>Facturado</th><th>Recaudado</th><th>Por vencer</th><th>1 a 30</th><th>31 a 60</th><th>61 a 90</th><th>Mas de 90</th><th>Saldo</th></tr></thead><tbody>${rows.map(item => `<tr><td>${item.periodo}</td><td>${formatoSiigoNumero(item.facturado)}</td><td>${formatoSiigoNumero(item.recaudado)}</td><td>${formatoSiigoNumero(item.por_vencer)}</td><td>${formatoSiigoNumero(item.vencido_1_30)}</td><td>${formatoSiigoNumero(item.vencido_31_60)}</td><td>${formatoSiigoNumero(item.vencido_61_90)}</td><td>${formatoSiigoNumero(item.vencido_91_mas)}</td><td>${formatoSiigoNumero(item.saldo)}</td></tr>`).join('')}</tbody></table>` : 'No se encontraron facturas para la fecha seleccionada.'}`;
+        }
+    } catch (error) {
+        result.textContent = error.message;
+    }
+}
+
 async function cargarConfiguracionVentasSiigo() {
     const container = document.getElementById('siigoConfiguracionVentas');
     if (!container) return;
@@ -236,6 +276,8 @@ function configurarNavegacionVentasSiigo() {
     const consulta = document.getElementById('siigoConsultaResultado').closest('.recent-section');
     const comparativo = crearPanelComparativoSiigo();
     const analisis = crearPanelVentasMensualesSiigo();
+    const pagos = crearPanelCarteraDinamicaSiigo('pagos');
+    const cartera = crearPanelCarteraDinamicaSiigo('recaudo');
     if (!cargas || !historial || !consulta || document.getElementById('siigoVentasNavegacion')) return;
 
     cargas.id = 'siigoCarguePanel';
@@ -255,12 +297,12 @@ function configurarNavegacionVentasSiigo() {
     reportNavigation.id = 'siigoInformesNavegacion';
     reportNavigation.className = 'button-group module-actions';
     reportNavigation.style.cssText = 'margin-bottom:16px; display:none;';
-    reportNavigation.innerHTML = `<button type="button" class="btn btn-secondary" data-siigo-report="comparativo">Comparativo</button><button type="button" class="btn btn-secondary" data-siigo-report="consulta">Consulta por cliente</button><button type="button" class="btn btn-secondary" data-siigo-report="analisis">Analisis de ventas</button>`;
+    reportNavigation.innerHTML = `<button type="button" class="btn btn-secondary" data-siigo-report="comparativo">Comparativo</button><button type="button" class="btn btn-secondary" data-siigo-report="consulta">Consulta por cliente</button><button type="button" class="btn btn-secondary" data-siigo-report="analisis">Analisis de ventas</button><button type="button" class="btn btn-secondary" data-siigo-report="pagos">Analisis de pagos</button><button type="button" class="btn btn-secondary" data-siigo-report="cartera">Cartera y recaudo</button>`;
     consulta.insertAdjacentElement('beforebegin', reportNavigation);
 
     navigation.querySelectorAll('button').forEach(button => button.addEventListener('click', () => mostrarSeccionVentasSiigo(button.dataset.siigoSection)));
     reportNavigation.querySelectorAll('button').forEach(button => button.addEventListener('click', () => mostrarInformeSiigo(button.dataset.siigoReport)));
-    window._siigoPanels = { cargas, historial, consulta, comparativo, analisis, navigation, reportNavigation };
+    window._siigoPanels = { cargas, historial, consulta, comparativo, analisis, pagos, cartera, navigation, reportNavigation };
     mostrarSeccionVentasSiigo(window._siigoSeccionActual || 'cargue');
 }
 
@@ -275,6 +317,8 @@ function mostrarSeccionVentasSiigo(section) {
     panels.consulta.style.display = 'none';
     panels.comparativo.style.display = 'none';
     panels.analisis.style.display = 'none';
+    panels.pagos.style.display = 'none';
+    panels.cartera.style.display = 'none';
     panels.navigation.querySelectorAll('button').forEach(button => {
         button.className = button.dataset.siigoSection === section ? 'btn btn-primary' : 'btn btn-secondary';
     });
@@ -292,6 +336,8 @@ function mostrarInformeSiigo(informe) {
     panels.consulta.style.display = informe === 'consulta' ? '' : 'none';
     panels.comparativo.style.display = informe === 'comparativo' ? '' : 'none';
     panels.analisis.style.display = informe === 'analisis' ? '' : 'none';
+    panels.pagos.style.display = informe === 'pagos' ? '' : 'none';
+    panels.cartera.style.display = informe === 'cartera' ? '' : 'none';
     panels.navigation.querySelectorAll('button').forEach(button => {
         button.className = button.dataset.siigoSection === 'informes' ? 'btn btn-primary' : 'btn btn-secondary';
     });
