@@ -189,7 +189,15 @@ function crearPanelCarteraDinamicaSiigo(tipo) {
         ? `<h3 style="margin-top:0;">Analisis de pago de clientes</h3><p class="form-help">Cruza cada recibo de caja RC con la factura FV indicada en la descripcion. El promedio considera facturas totalmente pagadas.</p><form data-siigo-cartera="pagos"><div class="form-row"><div class="form-group"><label>Fecha de corte</label><input type="date" required value="${new Date().toISOString().slice(0, 10)}"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar analisis</button></div></div></form><div class="table-container" style="margin-top:16px;"></div>`
         : `<h3 style="margin-top:0;">Cartera y recaudo por periodo</h3><p class="form-help">Calculado desde las facturas FV y sus recibos de caja RC. La fecha de vencimiento corresponde a la cuota indicada por SIIGO.</p><form data-siigo-cartera="recaudo"><div class="form-row"><div class="form-group"><label>Fecha de corte</label><input type="date" required value="${new Date().toISOString().slice(0, 10)}"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar cartera</button></div></div></form><div class="table-container" style="margin-top:16px;"></div>`;
     const form = panel.querySelector('form');
-    form.querySelector('.form-row > :last-child').insertAdjacentHTML('beforebegin', `<div class="form-group"><label>Facturado desde</label><input name="desde" type="date"></div><div class="form-group"><label>Facturado hasta</label><input name="hasta" type="date"></div><div class="form-group" style="align-self:end;"><label>Analizar</label><div><label style="margin-right:12px;"><input name="modoCliente" type="radio" value="todos" checked> Todos los clientes</label><label><input name="modoCliente" type="radio" value="uno"> Un cliente</label></div></div><div class="form-group" data-siigo-cliente-grupo style="display:none;"><label>Cliente</label><input name="cliente" type="text" autocomplete="off"></div>`);
+    const filaFechas = form.querySelector('.form-row');
+    const grupoBoton = filaFechas.lastElementChild;
+    filaFechas.insertAdjacentHTML('beforeend', `<div class="form-group"><label>Facturado desde</label><input name="desde" type="date"></div><div class="form-group"><label>Facturado hasta</label><input name="hasta" type="date"></div>`);
+    const filaCliente = document.createElement('div');
+    filaCliente.className = 'form-row';
+    filaCliente.style.marginTop = '12px';
+    filaCliente.innerHTML = `<div class="form-group" style="min-width:300px;"><label>Analizar</label><div style="display:flex; gap:18px; align-items:center; min-height:42px;"><label style="display:flex; align-items:center; gap:6px; margin:0;"><input name="modoCliente" type="radio" value="todos" checked> Todos los clientes</label><label style="display:flex; align-items:center; gap:6px; margin:0;"><input name="modoCliente" type="radio" value="uno"> Un cliente</label></div></div><div class="form-group" data-siigo-cliente-grupo style="display:none; min-width:360px;"><label>Cliente</label><input name="cliente" type="text" autocomplete="off"></div>`;
+    filaCliente.appendChild(grupoBoton);
+    form.appendChild(filaCliente);
     anchor.insertAdjacentElement('afterend', panel);
     configurarAutocompletadoCarteraSiigo(form.querySelector('[name="cliente"]'));
     form.querySelectorAll('[name="modoCliente"]').forEach(radio => radio.addEventListener('change', () => {
@@ -202,7 +210,13 @@ function crearPanelCarteraDinamicaSiigo(tipo) {
             delete inputCliente.dataset.identificacion;
         }
     }));
-    form.addEventListener('submit', event => consultarCarteraDinamicaSiigo(event, tipo));
+    const boton = form.querySelector('button[type="submit"]');
+    boton.type = 'button';
+    boton.addEventListener('click', () => consultarCarteraDinamicaSiigo(form, tipo));
+    form.addEventListener('submit', event => {
+        event.preventDefault();
+        consultarCarteraDinamicaSiigo(form, tipo);
+    });
     return panel;
 }
 
@@ -241,18 +255,17 @@ function configurarAutocompletadoCarteraSiigo(input) {
     input.addEventListener('blur', () => setTimeout(() => { suggestions.style.display = 'none'; }, 180));
 }
 
-async function consultarCarteraDinamicaSiigo(event, tipo) {
-    event.preventDefault();
-    const panel = event.currentTarget.closest('.recent-section');
+async function consultarCarteraDinamicaSiigo(form, tipo) {
+    const panel = form.closest('.recent-section');
     const result = panel.querySelector('.table-container');
-    const fechaCorte = event.currentTarget.querySelector('input[type="date"]').value;
-    const clienteInput = event.currentTarget.querySelector('[name="cliente"]');
+    const fechaCorte = form.querySelector('input[type="date"]').value;
+    const clienteInput = form.querySelector('[name="cliente"]');
     const params = new URLSearchParams({ fecha_corte: fechaCorte });
     ['desde', 'hasta'].forEach(name => {
-        const value = event.currentTarget.querySelector(`[name="${name}"]`).value;
+        const value = form.querySelector(`[name="${name}"]`).value;
         if (value) params.set(name, value);
     });
-    const esUnCliente = event.currentTarget.querySelector('[name="modoCliente"]:checked').value === 'uno';
+    const esUnCliente = form.querySelector('[name="modoCliente"]:checked').value === 'uno';
     const cliente = clienteInput.dataset.identificacion || clienteInput.value.trim();
     if (esUnCliente && !cliente) {
         result.textContent = 'Seleccione un cliente o marque Todos los clientes.';
