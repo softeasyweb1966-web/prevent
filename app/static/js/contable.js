@@ -8,6 +8,34 @@ function formatoSiigoNumero(value) {
     return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 2 }).format(value || 0);
 }
 
+function formatoSiigoFecha(value) {
+    if (!value) return 'Sin comprobantes cargados';
+    const [year, month, day] = value.split('-');
+    return `${day}/${month}/${year}`;
+}
+
+function mostrarVigenciaComprobantes(vigencia) {
+    const panel = document.getElementById('siigoVigenciaComprobantes');
+    if (!panel) return;
+
+    const ultimaFecha = formatoSiigoFecha(vigencia?.fecha_ultimo_comprobante);
+    const fechaRequerida = formatoSiigoFecha(vigencia?.fecha_minima_requerida);
+    if (vigencia?.al_dia) {
+        panel.className = 'siigo-vigencia-comprobantes siigo-vigencia-ok';
+        panel.innerHTML = `<strong>Comprobantes al dia</strong><span>Informacion cargada hasta el ${escapeSiigo(ultimaFecha)}. La fecha minima requerida es ${escapeSiigo(fechaRequerida)}.</span>`;
+        return;
+    }
+
+    const atraso = vigencia?.dias_atraso;
+    panel.className = 'siigo-vigencia-comprobantes siigo-vigencia-alerta';
+    if (atraso == null) {
+        panel.innerHTML = `<strong>Alerta: comprobantes sin actualizar</strong><span>Aun no hay comprobantes cargados. Debe existir informacion al menos hasta el ${escapeSiigo(fechaRequerida)}.</span>`;
+        return;
+    }
+    const detalleAtraso = `Hay ${atraso} dia${atraso === 1 ? '' : 's'} de atraso frente al minimo requerido.`;
+    panel.innerHTML = `<strong>Alerta: comprobantes sin actualizar</strong><span>Informacion cargada hasta el ${escapeSiigo(ultimaFecha)}. Debe estar cargada al menos hasta el ${escapeSiigo(fechaRequerida)}. ${escapeSiigo(detalleAtraso)}</span>`;
+}
+
 async function leerRespuestaSiigo(response) {
     const contentType = response.headers.get('content-type') || '';
     if (contentType.includes('application/json')) return response.json();
@@ -24,6 +52,7 @@ async function cargarResumenSiigo() {
     document.getElementById('siigoCuentasCount').textContent = data.cuentas || 0;
     document.getElementById('siigoComprobantesCount').textContent = data.comprobantes || 0;
     document.getElementById('siigoMovimientosCount').textContent = data.movimientos || 0;
+    mostrarVigenciaComprobantes(data.vigencia_comprobantes);
     const cargas = data.cargas || [];
     document.getElementById('siigoCargasRecientes').innerHTML = cargas.length ? cargas.map(carga => `<div><strong>${escapeSiigo(carga.tipo)}</strong> - ${escapeSiigo(carga.archivo)} (${escapeSiigo(carga.fecha)}): ${carga.importados} importados, ${carga.omitidos} omitidos.</div>`).join('') : 'Aun no hay cargues registrados.';
 }

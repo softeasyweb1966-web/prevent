@@ -393,6 +393,46 @@ body.body-sabor-tablas-focus .top-bar {
     font-size: 1.25rem;
 }
 
+.siigo-vigencia-comprobantes {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 18px 0;
+    padding: 18px 22px;
+    border: 1px solid;
+    border-radius: 10px;
+    font-size: 1rem;
+}
+
+.siigo-vigencia-comprobantes strong {
+    flex: 0 0 270px;
+    font-size: 1.08rem;
+}
+
+.siigo-vigencia-ok {
+    color: #065f46;
+    background: #ecfdf5;
+    border-color: #6ee7b7;
+}
+
+.siigo-vigencia-alerta {
+    color: #991b1b;
+    background: #fef2f2;
+    border-color: #f87171;
+    box-shadow: 0 5px 18px rgba(185, 28, 28, 0.16);
+}
+
+@media (max-width: 640px) {
+    .siigo-vigencia-comprobantes {
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .siigo-vigencia-comprobantes strong {
+        flex-basis: auto;
+    }
+}
+
 .action-buttons {
     display: flex;
     gap: 12px;

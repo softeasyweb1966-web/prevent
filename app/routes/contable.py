@@ -1,11 +1,12 @@
 """Importación y consulta de la información contable exportada desde SIIGO."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from io import BytesIO
 import re
 import unicodedata
+from zoneinfo import ZoneInfo
 
 from flask import jsonify, request
 from flask_login import current_user, login_required
@@ -69,6 +70,25 @@ def _referencia_factura(descripcion):
 def _fecha_vencimiento(descripcion):
     match = FECHA_REFERENCIA_RE.search(_texto(descripcion))
     return _fecha(match.group(1)) if match else None
+
+
+def _estado_actualizacion_comprobantes():
+    """Resume la vigencia con base en la fecha contable, no en la del archivo."""
+    fecha_ultimo_comprobante = db.session.query(
+        func.max(SiigoComprobante.fecha_elaboracion)
+    ).scalar()
+    fecha_minima_requerida = datetime.now(ZoneInfo('America/Bogota')).date() - timedelta(days=1)
+    al_dia = bool(
+        fecha_ultimo_comprobante
+        and fecha_ultimo_comprobante >= fecha_minima_requerida
+    )
+    return {
+        'fecha_ultimo_comprobante': fecha_ultimo_comprobante.isoformat() if fecha_ultimo_comprobante else None,
+        'fecha_minima_requerida': fecha_minima_requerida.isoformat(),
+        'al_dia': al_dia,
+        'dias_atraso': max((fecha_minima_requerida - fecha_ultimo_comprobante).days, 0)
+        if fecha_ultimo_comprobante else None,
+    }
 
 
 def _puede_usar_ventas():
@@ -221,6 +241,7 @@ def resumen():
             'cuentas': SiigoCuentaContable.query.count(),
             'comprobantes': SiigoComprobante.query.count(),
             'movimientos': SiigoMovimiento.query.count(),
+            'vigencia_comprobantes': _estado_actualizacion_comprobantes(),
             'cargas': SiigoCarga.query.order_by(SiigoCarga.created_at.desc()).limit(8).all() and [
                 {
                     'tipo': carga.tipo_archivo,
