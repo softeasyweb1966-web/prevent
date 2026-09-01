@@ -243,7 +243,7 @@ async function consultarCarteraDinamicaSiigo(event, tipo) {
         if (value) params.set(name, value);
     });
     const cliente = clienteInput.dataset.identificacion || clienteInput.value.trim();
-    if (cliente) params.set('cliente', cliente);
+    if (cliente && !['todos', 'todos los clientes'].includes(cliente.toLowerCase())) params.set('cliente', cliente);
     result.textContent = 'Calculando desde los comprobantes cargados...';
     try {
         const response = await fetch(`/api/contable/cartera-dinamica?${params.toString()}`, { credentials: 'include' });

@@ -621,6 +621,8 @@ def cartera_dinamica():
         desde = _fecha(request.args.get('desde')) if request.args.get('desde') else None
         hasta = _fecha(request.args.get('hasta')) if request.args.get('hasta') else None
         cliente = _texto(request.args.get('cliente'))
+        if _normalizar(cliente) in {'todos', 'todos los clientes'}:
+            cliente = ''
         if desde and hasta and desde > hasta:
             raise ValueError('La fecha inicial no puede ser posterior a la fecha final.')
         facturas = {}
