@@ -1968,6 +1968,39 @@ body.body-siigo-cartera-focus .main-content {
     padding: 24px;
 }
 
+/* La ficha de vendedor es corta: en pantallas de escritorio debe caber completa. */
+#vendedorModal .modal-content {
+    max-height: none;
+    overflow-y: visible;
+}
+
+#vendedorModal .modal-header {
+    padding: 18px 24px;
+}
+
+#vendedorModal form {
+    padding: 16px 24px 12px;
+}
+
+#vendedorModal .form-row {
+    margin-bottom: 8px;
+}
+
+#vendedorModal .form-group {
+    margin-bottom: 8px;
+}
+
+#vendedorModal .modal-footer {
+    padding: 8px 0 0;
+}
+
+@media (max-height: 760px) {
+    #vendedorModal .modal-content {
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+}
+
 .form-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
