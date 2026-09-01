@@ -13,6 +13,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.utils import secure_filename
 
 from app.models import (
+    AtencionDiaDetalle,
     ClienteComercial,
     ClienteComercialAdjunto,
     ClienteAtencion,
@@ -1298,6 +1299,27 @@ def _serialize_cliente(cliente):
     }
 
 
+def _cliente_ya_existe_en_interfaces(nit, razon_social):
+    nit = (nit or '').strip()
+    nit_base = nit.split('-', 1)[0].strip()
+    if nit and SiigoCliente.query.filter(SiigoCliente.identificacion.in_([nit, nit_base])).first():
+        return 'Contable (SIIGO)'
+    if razon_social and AtencionDiaDetalle.query.filter(
+        AtencionDiaDetalle.acuerdo_comercial.ilike(razon_social.strip())
+    ).first():
+        return 'Administrativo'
+    return None
+
+
+def _cliente_habilitado_para_atenciones(cliente):
+    nit = (cliente.nit or '').strip()
+    nit_sin_digito = nit.split('-', 1)[0].strip()
+    confirmado_contable = bool(nit and SiigoCliente.query.filter(
+        SiigoCliente.identificacion.in_([nit, nit_sin_digito])
+    ).first())
+    return bool(cliente.confirmado_administrativo and confirmado_contable)
+
+
 def _guardar_adjuntos(cliente, archivos, tipo_documento):
     upload_root = current_app.config['UPLOAD_FOLDER']
     cliente_dir = os.path.join(upload_root, 'comercial', 'clientes', str(cliente.id), tipo_documento.lower())
@@ -1849,6 +1871,9 @@ def crear_cliente():
         nit = payload['nit']
         if nit and ClienteComercial.query.filter_by(nit=nit).first():
             return jsonify({'error': 'Ya existe un cliente con ese NIT'}), 409
+        origen_existente = _cliente_ya_existe_en_interfaces(nit, payload['razon_social'])
+        if origen_existente:
+            return jsonify({'error': f'El cliente ya existe en {origen_existente}. Debe gestionarse como cliente existente, no crearse de nuevo.'}), 409
 
         _validar_pagare_cliente(payload)
 
@@ -2047,6 +2072,8 @@ def crear_atencion_cliente(cliente_id):
     try:
         _require_commercial_permission('atenciones', 'create')
         cliente = _obtener_cliente_comercial_en_scope(cliente_id)
+        if not _cliente_habilitado_para_atenciones(cliente):
+            return jsonify({'error': 'El cliente esta pendiente de confirmacion en Administrativo y/o Contable. No se pueden registrar atenciones todavia.'}), 409
         payload = _build_atencion_payload(data, cliente)
         detalles_payload = payload.pop('detalles')
 

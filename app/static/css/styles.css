@@ -2714,6 +2714,34 @@ body.body-siigo-cartera-focus .main-content {
     line-height: 1.35;
 }
 
+.role-permission-section {
+    grid-column: 1 / -1;
+}
+
+.role-permission-section + .role-permission-section {
+    margin-top: 12px;
+}
+
+.role-permission-group {
+    margin: 0 0 14px;
+    padding: 12px;
+    border: 1px solid #dbe3ef;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.role-permission-group-title {
+    margin: 0 0 4px;
+    color: #0f172a;
+    font-size: 0.96rem;
+}
+
+.role-permission-group-help {
+    margin: 0 0 10px;
+    color: #64748b;
+    font-size: 0.82rem;
+}
+
 .recepcion-cliente-item-price {
     color: #1d4ed8;
     font-size: 1rem;

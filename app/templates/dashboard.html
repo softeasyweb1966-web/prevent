@@ -1278,7 +1278,7 @@
 
                 <div class="recent-section" style="margin-bottom: 16px;">
                     <h2 style="margin-bottom: 4px;">Gestión de Usuarios</h2>
-                    <p style="margin:0; color:#555; font-size:0.95rem;">Cree roles, relacione accesos del menu y permisos comerciales, y luego asigne esos roles a los usuarios del sistema.</p>
+                    <p style="margin:0; color:#555; font-size:0.95rem;">El administrador crea los roles, define los menus y subopciones disponibles, y despues asigna un rol a cada usuario.</p>
                 </div>
 
                 <div class="table-container">
@@ -1415,6 +1415,7 @@
                         </div>
                         <div class="form-group">
                             <label>Accesos y permisos del rol</label>
+                            <small class="form-help">Seleccione primero los menus principales. Para Comercial, marque las subopciones que el usuario podra consultar o administrar.</small>
                             <div id="rolMenuPermissions" class="role-menu-grid">
                                 <div class="loading">Cargando opciones...</div>
                             </div>
@@ -2305,13 +2306,19 @@
                 <div id="comercialVendedoresSection" class="comercial-section-panels">
                     <div class="recent-section comercial-section-entry" style="margin-bottom: 16px;">
                         <h3 style="margin-top:0;">Vendedores</h3>
-                        <p style="margin-top:0; color:#555;">Crea vendedores nuevos o consulta uno existente para editar su información.</p>
+                        <p style="margin-top:0; color:#555;">Administra vendedores, sus clientes y el proceso de habilitación en Administrativo y Contable.</p>
                         <div class="button-group module-actions">
                             <button class="btn btn-secondary" onclick="mostrarAgregarVendedor()" aria-label="Nuevo Vendedor">
                                 <span class="btn-icon">+</span><span class="btn-label">Nuevo</span>
                             </button>
                             <button class="btn btn-secondary" onclick="consultarComercial('vendedores')" aria-label="Consultar Vendedores">
                                 <span class="btn-icon">?</span><span class="btn-label">Consultar</span>
+                            </button>
+                            <button class="btn btn-secondary" onclick="switchComercialSection('clientes').then(() => mostrarAgregarClienteComercial())" aria-label="Crear Cliente">
+                                <span class="btn-icon">+</span><span class="btn-label">Nuevo Cliente</span>
+                            </button>
+                            <button class="btn btn-secondary" onclick="switchComercialSection('clientes').then(() => consultarComercial('clientes'))" aria-label="Solicitudes de creación">
+                                <span class="btn-label">Solicitudes de creación</span>
                             </button>
                         </div>
                     </div>

@@ -1796,7 +1796,7 @@ function renderRoleMenuPermissions(selectedIds = []) {
     const selected = new Set((selectedIds || []).map(id => String(id)));
     const renderOption = option => `
         <label class="role-menu-option">
-            <input type="checkbox" value="${option.permiso_id}" ${selected.has(String(option.permiso_id)) ? 'checked' : ''}>
+            <input type="checkbox" value="${option.permiso_id}" data-permission-name="${escapeHtml(option.permiso_nombre || '')}" ${selected.has(String(option.permiso_id)) ? 'checked' : ''}>
             <div>
                 <strong>${escapeHtml(option.nombre || option.group || 'Permiso')}</strong>
                 <span>${escapeHtml(option.descripcion || '')}</span>
@@ -1813,24 +1813,52 @@ function renderRoleMenuPermissions(selectedIds = []) {
     });
 
     container.innerHTML = `
-        <div style="grid-column:1 / -1;">
-            <h4 style="margin:0 0 10px 0;">Menu lateral</h4>
+        <section class="role-permission-section">
+            <h4 class="role-permission-group-title">Menus principales</h4>
+            <p class="role-permission-group-help">Definen las opciones que aparecen en el menu lateral.</p>
             <div class="role-menu-grid">
                 ${menuOptions.map(renderOption).join('')}
             </div>
-        </div>
-        <div style="grid-column:1 / -1; margin-top:12px;">
-            <h4 style="margin:0 0 10px 0;">Permisos comerciales</h4>
+        </section>
+        <section class="role-permission-section">
+            <h4 class="role-permission-group-title">Comercial: subopciones</h4>
+            <p class="role-permission-group-help">Al seleccionar una subopcion se habilita tambien el menu Comercial.</p>
             ${Object.entries(commercialGroups).map(([groupName, options]) => `
-                <div style="margin-bottom:14px;">
-                    <div style="font-weight:700; margin-bottom:8px;">${escapeHtml(groupName)}</div>
+                <div class="role-permission-group">
+                    <h5 class="role-permission-group-title">${escapeHtml(groupName)}</h5>
                     <div class="role-menu-grid">
                         ${options.map(renderOption).join('')}
                     </div>
                 </div>
             `).join('')}
-        </div>
+        </section>
     `;
+
+    const comercialMenu = menuOptions.find(option => option.module === 'comercial');
+    const commercialMenuCheckbox = comercialMenu
+        ? container.querySelector(`input[value="${comercialMenu.permiso_id}"]`)
+        : null;
+    const commercialOptionCheckboxes = Array.from(
+        container.querySelectorAll('input[data-permission-name^="comercial_"]')
+    );
+
+    commercialOptionCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', () => {
+            if (checkbox.checked && commercialMenuCheckbox) {
+                commercialMenuCheckbox.checked = true;
+            }
+        });
+    });
+
+    if (commercialMenuCheckbox) {
+        commercialMenuCheckbox.addEventListener('change', () => {
+            if (!commercialMenuCheckbox.checked) {
+                commercialOptionCheckboxes.forEach(checkbox => {
+                    checkbox.checked = false;
+                });
+            }
+        });
+    }
 }
 
 async function cargarVendedoresConfig() {
@@ -8896,7 +8924,7 @@ function fillRoleSelect(selectedId = '') {
     }
 }
 
-function renderRoleMenuPermissions(selectedIds = []) {
+function renderRoleMenuPermissionsLegacyDuplicadoDos(selectedIds = []) {
     const container = document.getElementById('rolMenuPermissions');
     if (!container) return;
 
@@ -15294,7 +15322,7 @@ async function loadRoles() {
     }
 }
 
-function renderRoleMenuPermissions(selectedIds = []) {
+function renderRoleMenuPermissionsLegacyDuplicadoTres(selectedIds = []) {
     const container = document.getElementById('rolMenuPermissions');
     if (!container) return;
 
