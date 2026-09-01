@@ -12,18 +12,22 @@
         
         <ul class="menu">
             <!-- Dashboard menu removed: initial screen shows application banner -->
-            <li><a href="#" class="menu-item" data-module="nomina">
+            {# <li><a href="#" class="menu-item" data-module="nomina">
                 <span class="icon">💰</span> Nómina
             </a></li>
-            <li><a href="#" class="menu-item" data-module="servicios">
+            #}
+            {# <li><a href="#" class="menu-item" data-module="servicios">
                 <span class="icon">🏥</span> Servicios
             </a></li>
-            <li><a href="#" class="menu-item" data-module="bancos">
+            #}
+            {# <li><a href="#" class="menu-item" data-module="bancos">
                 <span class="icon">🏦</span> Bancos
             </a></li>
-            <li><a href="#" class="menu-item" data-module="impuestos">
+            #}
+            {# <li><a href="#" class="menu-item" data-module="impuestos">
                 <span class="icon">📋</span> Impuestos
             </a></li>
+            #}
             <li><a href="#" class="menu-item" data-module="compras">
                 <span class="icon">🛒</span> Compras
             </a></li>
@@ -33,7 +37,7 @@
             <li><a href="#" class="menu-item" data-module="gestion_informacion">
                 <span class="icon">GI</span> Gestión Información
             </a></li>
-            <li class="menu-group">
+            {# <li class="menu-group">
                 <a href="#" class="menu-item menu-item-parent" data-module="sabor_artesanal" data-toggle-submenu="saborArtesanalSubmenu">
                     <span class="icon">SA</span> Sabor Artesanal
                     <span class="submenu-caret">+</span>
@@ -47,6 +51,7 @@
                     <li><a href="#" class="menu-subitem" data-module="sabor_artesanal" data-section="informes">Informes</a></li>
                 </ul>
             </li>
+            </li> #}
             <li><a href="#" class="menu-item" data-module="informes">
                 <span class="icon">📈</span> Informes
             </a></li>
@@ -93,7 +98,7 @@
                 </div>
             </div>
 
-            <div id="sabor_artesanalView" class="module-view">
+            {# <div id="sabor_artesanalView" class="module-view">
                 <div class="recent-section sabor-artesanal-header-card">
                     <h2 style="margin-top:0;">Sabor Artesanal</h2>
                     <div id="saborArtesanalHeaderContext" class="sabor-artesanal-header-context" style="display:none;"></div>
@@ -132,6 +137,7 @@
                 </div>
             </div>
 
+            </div> #}
             <!-- Dashboard View (will show when explicitly selected, if present) -->
             <div id="dashboardView" class="module-view">
                 <div class="stats-grid">
@@ -5298,9 +5304,6 @@
 <script src="{{ asset_url('js/dashboard.js') }}"></script>
 <script src="{{ asset_url('js/contable.js') }}"></script>
 <script src="{{ asset_url('js/sabor_artesanal_menus.js') }}"></script>
-<script src="{{ asset_url('js/sabor_artesanal_pedidos.js') }}"></script>
-<script src="{{ asset_url('js/servicios.js') }}"></script>
-<script src="{{ asset_url('js/prestamos.js') }}"></script>
 <script>
 // Auto-load services list when serviciosView is active (debug helper)
 document.addEventListener('DOMContentLoaded', function(){

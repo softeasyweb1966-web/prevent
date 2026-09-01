@@ -98,6 +98,12 @@ MENU_OPTION_DEFINITIONS = [
 ]
 
 
+MENU_OPTION_DEFINITIONS = [
+    definition for definition in MENU_OPTION_DEFINITIONS
+    if definition['module'] not in {'nomina', 'servicios', 'bancos', 'impuestos', 'sabor_artesanal'}
+]
+
+
 def _build_commercial_crud_definitions(entity: str, nombre: str, orden_base: int):
     acciones = [
         ('read', 'Consultar', f'Puede consultar {nombre.lower()}'),

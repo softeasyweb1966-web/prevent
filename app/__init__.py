@@ -661,15 +661,11 @@ def register_blueprints(app):
 
     from app.routes import (
         auth_bp,
-        bancos_bp,
         chat_bp,
         comercial_bp,
         contable_bp,
         dashboard_bp,
-        nomina_bp,
         parametros_bp,
-        sabor_artesanal_bp,
-        servicios_bp,
         usuarios_bp,
     )
 
@@ -690,11 +686,8 @@ def register_blueprints(app):
             'endpoints': {
                 'auth': '/api/auth',
                 'dashboard': '/api/dashboard',
-                'nomina': '/api/nomina',
                 'usuarios': '/api/usuarios',
                 'parametros': '/api/parametros',
-                'servicios': '/api/servicios',
-                'bancos': '/api/bancos',
                 'comercial': '/api/comercial',
                 'contable': '/api/contable',
                 'chat': '/api/chat',
@@ -702,44 +695,13 @@ def register_blueprints(app):
             'instrucciones': 'Primero: POST /api/auth/login con usuario y contrasena',
         }
 
-    @app.route('/api/test/empleados', methods=['GET'])
-    def test_empleados():
-        """Endpoint de prueba sin autenticacion - lista empleados."""
-        try:
-            from app.models import Empleado
-
-            empleados = Empleado.query.filter_by(activo=True).all()
-            datos = [
-                {
-                    'id': empleado.id,
-                    'nro_documento': empleado.nro_documento,
-                    'nombres': empleado.nombres,
-                    'apellidos': empleado.apellidos,
-                    'cargo': empleado.cargo,
-                    'sueldo_base': float(empleado.sueldo_base),
-                }
-                for empleado in empleados
-            ]
-
-            return {
-                'total': len(datos),
-                'empleados': datos,
-                'mensaje': 'Para acceso protegido, usa /api/nomina/empleados',
-            }, 200
-        except Exception as exc:
-            return {'error': str(exc)}, 500
-
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
-    app.register_blueprint(nomina_bp)
     app.register_blueprint(usuarios_bp)
     app.register_blueprint(parametros_bp)
-    app.register_blueprint(servicios_bp)
-    app.register_blueprint(bancos_bp)
     app.register_blueprint(comercial_bp)
     app.register_blueprint(contable_bp)
     app.register_blueprint(chat_bp)
-    app.register_blueprint(sabor_artesanal_bp)
 
 
 def setup_logging():
