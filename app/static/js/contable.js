@@ -14,6 +14,12 @@ function formatoSiigoFecha(value) {
     return `${day}/${month}/${year}`;
 }
 
+function actualizarModoCarteraSiigo(ocultarMenu) {
+    document.body.classList.toggle('body-siigo-cartera-focus', ocultarMenu);
+    const boton = document.getElementById('siigoAlternarMenuCartera');
+    if (boton) boton.textContent = ocultarMenu ? 'Mostrar menu lateral' : 'Ocultar menu lateral';
+}
+
 function mostrarVigenciaComprobantes(vigencia) {
     const panel = document.getElementById('siigoVigenciaComprobantes');
     if (!panel) return;
@@ -47,13 +53,12 @@ function mostrarDetalleCarteraClienteSiigo(result, cliente, button) {
 
     const filas = (cliente.facturas || []).map(factura => `<tr><td>${escapeSiigo(factura.referencia)}</td><td>${escapeSiigo(formatoSiigoFecha(factura.fecha_factura))}</td><td>${escapeSiigo(formatoSiigoFecha(factura.fecha_vencimiento))}</td><td>${formatoSiigoNumero(factura.facturado)}</td><td>${formatoSiigoNumero(factura.recaudado)}</td><td>${formatoSiigoNumero(factura.saldo)}</td><td>${factura.dias_vencido}</td></tr>`).join('');
     panel.hidden = false;
-    document.body.classList.add('body-siigo-cartera-focus');
+    actualizarModoCarteraSiigo(true);
     panel.innerHTML = `<div class="siigo-detalle-cartera-header"><div><h4>Detalle de ${escapeSiigo(cliente.cliente)}</h4><p>${escapeSiigo(cliente.identificacion || 'Sin identificacion')} | Saldo: <strong>${formatoSiigoNumero(cliente.saldo)}</strong></p></div><button type="button" class="btn btn-secondary" data-siigo-cerrar-detalle>Cerrar detalle</button></div><div class="siigo-tabla-con-encabezado-fijo siigo-tabla-detalle"><table class="data-table"><thead><tr><th>Factura</th><th>Fecha</th><th>Vencimiento</th><th>Facturado</th><th>Recaudado</th><th>Saldo</th><th>Dias vencido</th></tr></thead><tbody>${filas}</tbody></table></div>`;
     result.querySelectorAll('[data-siigo-cliente-index]').forEach(item => { item.textContent = 'Ver detalle'; });
     button.textContent = 'Viendo detalle';
     panel.querySelector('[data-siigo-cerrar-detalle]').addEventListener('click', () => {
         panel.hidden = true;
-        document.body.classList.remove('body-siigo-cartera-focus');
         button.textContent = 'Ver detalle';
         button.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
@@ -261,6 +266,17 @@ function crearPanelCarteraDinamicaSiigo(tipo) {
         event.preventDefault();
         consultarCarteraDinamicaSiigo(form, tipo);
     });
+    if (!esPagos) {
+        const alternarMenu = document.createElement('button');
+        alternarMenu.id = 'siigoAlternarMenuCartera';
+        alternarMenu.type = 'button';
+        alternarMenu.className = 'btn btn-secondary';
+        alternarMenu.textContent = 'Mostrar menu lateral';
+        form.querySelector('.form-row').appendChild(alternarMenu);
+        alternarMenu.addEventListener('click', () => {
+            actualizarModoCarteraSiigo(!document.body.classList.contains('body-siigo-cartera-focus'));
+        });
+    }
     return panel;
 }
 
@@ -269,7 +285,7 @@ async function consultarCarteraDinamicaSiigo(form, tipo) {
     const result = panel.querySelector('.table-container');
     const fechaCorte = form.querySelector('input[type="date"]').value;
     const params = new URLSearchParams({ fecha_corte: fechaCorte });
-    document.body.classList.remove('body-siigo-cartera-focus');
+    if (tipo !== 'recaudo') actualizarModoCarteraSiigo(false);
     result.textContent = 'Calculando desde los comprobantes cargados...';
     try {
         const response = await fetch(`/api/contable/cartera-dinamica?${params.toString()}`, { credentials: 'include' });
@@ -388,7 +404,7 @@ function configurarNavegacionVentasSiigo() {
 function mostrarSeccionVentasSiigo(section) {
     const panels = window._siigoPanels;
     if (!panels) return;
-    document.body.classList.remove('body-siigo-cartera-focus');
+    actualizarModoCarteraSiigo(false);
     window._siigoSeccionActual = section;
     const esCargue = section === 'cargue';
     panels.cargas.style.display = esCargue ? '' : 'none';
@@ -408,7 +424,7 @@ function mostrarSeccionVentasSiigo(section) {
 function mostrarInformeSiigo(informe) {
     const panels = window._siigoPanels;
     if (!panels) return;
-    document.body.classList.remove('body-siigo-cartera-focus');
+    actualizarModoCarteraSiigo(informe === 'cartera');
     window._siigoSeccionActual = 'informes';
     window._siigoInformeActual = informe;
     panels.cargas.style.display = 'none';
