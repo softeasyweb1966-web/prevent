@@ -507,25 +507,55 @@ def comparativo_clientes():
                 SiigoMovimiento.identificacion,
                 func.max(SiigoMovimiento.nombre_tercero),
                 func.count(func.distinct(SiigoComprobante.id)),
+                func.coalesce(func.sum(SiigoMovimiento.debito - SiigoMovimiento.credito), 0),
             ).join(SiigoComprobante).filter(
                 SiigoComprobante.tipo_documento == 'FV',
                 SiigoComprobante.fecha_elaboracion.between(desde, hasta),
                 SiigoMovimiento.identificacion.isnot(None),
+                SiigoMovimiento.codigo_contable == '13050501',
             ).group_by(SiigoMovimiento.identificacion).all()
             return {
-                identificacion: {'identificacion': identificacion, 'nombre': nombre or '', 'facturas': int(facturas)}
-                for identificacion, nombre, facturas in rows
+                identificacion: {
+                    'identificacion': identificacion,
+                    'nombre': nombre or '',
+                    'facturas': int(facturas),
+                    'facturacion': valor or Decimal('0'),
+                }
+                for identificacion, nombre, facturas, valor in rows
             }
 
         periodo_a = terceros_del_periodo(periodo_a_desde, periodo_a_hasta)
         periodo_b = terceros_del_periodo(periodo_b_desde, periodo_b_hasta)
         nuevos = sorted((periodo_b[key] for key in periodo_b.keys() - periodo_a.keys()), key=lambda item: item['nombre'])
         no_volvieron = sorted((periodo_a[key] for key in periodo_a.keys() - periodo_b.keys()), key=lambda item: item['nombre'])
+
+        identificaciones = list((periodo_b.keys() - periodo_a.keys()) | (periodo_a.keys() - periodo_b.keys()))
+        saldos_cartera = {}
+        if identificaciones:
+            filas_cartera = db.session.query(
+                SiigoMovimiento.identificacion,
+                func.coalesce(func.sum(SiigoMovimiento.debito - SiigoMovimiento.credito), 0),
+            ).join(SiigoComprobante).filter(
+                SiigoMovimiento.codigo_contable == '13050501',
+                SiigoMovimiento.identificacion.in_(identificaciones),
+                SiigoComprobante.fecha_elaboracion <= date.today(),
+            ).group_by(SiigoMovimiento.identificacion).all()
+            saldos_cartera = {identificacion: saldo or Decimal('0') for identificacion, saldo in filas_cartera}
+
+        def totales(items):
+            return {
+                'facturacion': float(sum((item['facturacion'] for item in items), Decimal('0'))),
+                'cartera': float(sum((saldos_cartera.get(item['identificacion'], Decimal('0')) for item in items), Decimal('0'))),
+            }
+
         return jsonify({
             'clientes_periodo_a': len(periodo_a),
             'clientes_periodo_b': len(periodo_b),
-            'nuevos': nuevos,
-            'no_volvieron': no_volvieron,
+            'nuevos': [{**item, 'facturacion': float(item['facturacion'])} for item in nuevos],
+            'no_volvieron': [{**item, 'facturacion': float(item['facturacion'])} for item in no_volvieron],
+            'totales_nuevos': totales(nuevos),
+            'totales_no_volvieron': totales(no_volvieron),
+            'fecha_cartera': date.today().isoformat(),
         })
     except (ValueError, PermissionError) as exc:
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
