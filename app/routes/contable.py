@@ -499,6 +499,7 @@ def comparativo_clientes():
         periodo_a_hasta = _fecha(request.args.get('periodo_a_hasta'))
         periodo_b_desde = _fecha(request.args.get('periodo_b_desde'))
         periodo_b_hasta = _fecha(request.args.get('periodo_b_hasta'))
+        fecha_corte_cartera = _fecha(request.args.get('fecha_corte_cartera')) if request.args.get('fecha_corte_cartera') else periodo_b_hasta
         if periodo_a_desde > periodo_a_hasta or periodo_b_desde > periodo_b_hasta:
             raise ValueError('La fecha inicial no puede ser posterior a la fecha final.')
 
@@ -537,7 +538,7 @@ def comparativo_clientes():
                 SiigoComprobante.tipo_documento == 'FV',
                 SiigoMovimiento.codigo_contable == '13050501',
                 SiigoMovimiento.identificacion.in_(identificaciones),
-                SiigoComprobante.fecha_elaboracion <= date.today(),
+                SiigoComprobante.fecha_elaboracion <= fecha_corte_cartera,
                 SiigoMovimiento.debito > 0,
             ).all()
             for comprobante, movimiento in filas_factura:
@@ -553,7 +554,7 @@ def comparativo_clientes():
                 SiigoComprobante.tipo_documento == 'RC',
                 SiigoMovimiento.codigo_contable == '13050501',
                 SiigoMovimiento.identificacion.in_(identificaciones),
-                SiigoComprobante.fecha_elaboracion <= date.today(),
+                SiigoComprobante.fecha_elaboracion <= fecha_corte_cartera,
                 SiigoMovimiento.credito > 0,
             ).all()
             for comprobante, movimiento in filas_pago:
@@ -587,7 +588,7 @@ def comparativo_clientes():
             'no_volvieron': [{**item, 'facturacion': float(item['facturacion'])} for item in no_volvieron],
             'totales_nuevos': totales(nuevos),
             'totales_no_volvieron': totales(no_volvieron),
-            'fecha_cartera': date.today().isoformat(),
+            'fecha_cartera': fecha_corte_cartera.isoformat(),
         })
     except (ValueError, PermissionError) as exc:
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403

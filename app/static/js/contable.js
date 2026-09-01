@@ -128,7 +128,7 @@ function crearPanelComparativoSiigo() {
     panel.id = 'siigoComparativoPanel';
     panel.className = 'recent-section';
     panel.style.marginTop = '16px';
-    panel.innerHTML = `<h3 style="margin-top:0;">Clientes nuevos y clientes que no volvieron</h3><p class="form-help">Se comparan las facturas FV de dos periodos. Un cliente nuevo factura en el segundo periodo y no en el primero.</p><form id="siigoComparativoForm"><div class="form-row"><div class="form-group"><label>Periodo 1: desde</label><input id="siigoPeriodoADesde" type="date" required></div><div class="form-group"><label>Periodo 1: hasta</label><input id="siigoPeriodoAHasta" type="date" required></div><div class="form-group"><label>Periodo 2: desde</label><input id="siigoPeriodoBDesde" type="date" required></div><div class="form-group"><label>Periodo 2: hasta</label><input id="siigoPeriodoBHasta" type="date" required></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar comparativo</button></div></div></form><div id="siigoComparativoResultado" class="table-container" style="margin-top:16px;"></div>`;
+    panel.innerHTML = `<h3 style="margin-top:0;">Clientes nuevos y clientes que no volvieron</h3><p class="form-help">Se comparan las facturas FV de dos periodos. La cartera cruza facturas y recibos de caja hasta la fecha de corte indicada.</p><form id="siigoComparativoForm"><div class="form-row"><div class="form-group"><label>Periodo 1: desde</label><input id="siigoPeriodoADesde" type="date" required></div><div class="form-group"><label>Periodo 1: hasta</label><input id="siigoPeriodoAHasta" type="date" required></div><div class="form-group"><label>Periodo 2: desde</label><input id="siigoPeriodoBDesde" type="date" required></div><div class="form-group"><label>Periodo 2: hasta</label><input id="siigoPeriodoBHasta" type="date" required></div><div class="form-group"><label>Cartera a fecha de corte</label><input id="siigoComparativoFechaCorte" type="date"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar comparativo</button></div></div></form><div id="siigoComparativoResultado" class="table-container" style="margin-top:16px;"></div>`;
     consulta.insertAdjacentElement('afterend', panel);
     panel.querySelector('form').addEventListener('submit', consultarComparativoClientesSiigo);
     return panel;
@@ -148,6 +148,8 @@ async function consultarComparativoClientesSiigo(event) {
         periodo_b_desde: document.getElementById('siigoPeriodoBDesde').value,
         periodo_b_hasta: document.getElementById('siigoPeriodoBHasta').value,
     });
+    const fechaCorte = document.getElementById('siigoComparativoFechaCorte').value;
+    if (fechaCorte) params.set('fecha_corte_cartera', fechaCorte);
     const result = document.getElementById('siigoComparativoResultado');
     result.textContent = 'Generando comparativo...';
     try {
