@@ -354,6 +354,8 @@ def _build_vendedor_payload(data):
 
     return {
         'nombre': nombre,
+        'cargo': _normalize_optional_text(data.get('cargo')),
+        'cargo': _normalize_optional_text(data.get('cargo')),
         'documento': _normalize_optional_text(data.get('documento')),
         'telefono': _normalize_optional_text(data.get('telefono')),
         'email': _normalize_optional_text(data.get('email')),
@@ -1041,6 +1043,7 @@ def _serialize_vendedor(vendedor):
     return {
         'id': vendedor.id,
         'nombre': vendedor.nombre,
+        'cargo': vendedor.cargo,
         'documento': vendedor.documento,
         'telefono': vendedor.telefono,
         'email': vendedor.email,

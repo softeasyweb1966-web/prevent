@@ -1986,6 +1986,14 @@ body.body-siigo-cartera-focus .main-content {
     margin-bottom: 8px;
 }
 
+#vendedorModal .vendedor-form-row-triple {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+#vendedorModal .vendedor-form-row-triple {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 #vendedorModal .form-group {
     margin-bottom: 8px;
 }
@@ -1998,6 +2006,12 @@ body.body-siigo-cartera-focus .main-content {
     #vendedorModal .modal-content {
         max-height: 90vh;
         overflow-y: auto;
+    }
+}
+
+@media (max-width: 760px) {
+    #vendedorModal .vendedor-form-row-triple {
+        grid-template-columns: 1fr;
     }
 }
 

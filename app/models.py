@@ -295,6 +295,7 @@ class Vendedor(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(200), nullable=False, index=True)
+    cargo = db.Column(db.String(150), index=True)
     documento = db.Column(db.String(30), unique=True, index=True)
     telefono = db.Column(db.String(50))
     email = db.Column(db.String(120))

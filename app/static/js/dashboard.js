@@ -11700,6 +11700,9 @@ function editarVendedorConfig(id) {
 
     document.getElementById('vendedorId').value = vendedor.id;
     document.getElementById('vendedorNombre').value = vendedor.nombre || '';
+    document.getElementById('vendedorCargo').value = vendedor.cargo || '';
+    document.getElementById('vendedorCargo').value = vendedor.cargo || '';
+    document.getElementById('vendedorCargo').value = vendedor.cargo || '';
     document.getElementById('vendedorDocumento').value = vendedor.documento || '';
     document.getElementById('vendedorTelefono').value = vendedor.telefono || '';
     document.getElementById('vendedorEmail').value = vendedor.email || '';
@@ -11825,6 +11828,9 @@ async function guardarVendedorConfig(event) {
             credentials: 'include',
             body: JSON.stringify({
                 nombre: document.getElementById('vendedorNombre').value.trim(),
+                cargo: document.getElementById('vendedorCargo').value.trim() || null,
+                cargo: document.getElementById('vendedorCargo').value.trim() || null,
+                cargo: document.getElementById('vendedorCargo').value.trim() || null,
                 documento: document.getElementById('vendedorDocumento').value.trim() || null,
                 telefono: document.getElementById('vendedorTelefono').value.trim() || null,
                 email: document.getElementById('vendedorEmail').value.trim() || null,
