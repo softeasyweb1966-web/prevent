@@ -135,6 +135,7 @@ function crearPanelComparativoSiigo() {
 }
 
 function mostrarComparativoClientes() {
+    mostrarInformeSiigo('comparativo');
     const panel = crearPanelComparativoSiigo();
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -229,6 +230,76 @@ async function consultarVentasMensualesSiigo(event) {
     }
 }
 
+function configurarNavegacionVentasSiigo() {
+    const cargas = document.getElementById('siigoCargaResultado').closest('.recent-section');
+    const historial = document.getElementById('siigoCargasRecientes').closest('.recent-section');
+    const consulta = document.getElementById('siigoConsultaResultado').closest('.recent-section');
+    const comparativo = crearPanelComparativoSiigo();
+    const analisis = crearPanelVentasMensualesSiigo();
+    if (!cargas || !historial || !consulta || document.getElementById('siigoVentasNavegacion')) return;
+
+    cargas.id = 'siigoCarguePanel';
+    historial.id = 'siigoHistorialCargasPanel';
+    consulta.id = 'siigoConsultaClientePanel';
+    const consultaTitulo = consulta.querySelector('h3');
+    if (consultaTitulo) consultaTitulo.textContent = 'Consulta por cliente y comprobante';
+
+    const navigation = document.createElement('div');
+    navigation.id = 'siigoVentasNavegacion';
+    navigation.className = 'module-header';
+    navigation.style.marginBottom = '16px';
+    navigation.innerHTML = `<div class="button-group module-actions"><button type="button" class="btn" data-siigo-section="cargue">Cargue de informacion</button><button type="button" class="btn" data-siigo-section="informes">Informes</button></div>`;
+    cargas.insertAdjacentElement('beforebegin', navigation);
+
+    const reportNavigation = document.createElement('div');
+    reportNavigation.id = 'siigoInformesNavegacion';
+    reportNavigation.className = 'button-group module-actions';
+    reportNavigation.style.cssText = 'margin-bottom:16px; display:none;';
+    reportNavigation.innerHTML = `<button type="button" class="btn btn-secondary" data-siigo-report="comparativo">Comparativo</button><button type="button" class="btn btn-secondary" data-siigo-report="consulta">Consulta por cliente</button><button type="button" class="btn btn-secondary" data-siigo-report="analisis">Analisis de ventas</button>`;
+    consulta.insertAdjacentElement('beforebegin', reportNavigation);
+
+    navigation.querySelectorAll('button').forEach(button => button.addEventListener('click', () => mostrarSeccionVentasSiigo(button.dataset.siigoSection)));
+    reportNavigation.querySelectorAll('button').forEach(button => button.addEventListener('click', () => mostrarInformeSiigo(button.dataset.siigoReport)));
+    window._siigoPanels = { cargas, historial, consulta, comparativo, analisis, navigation, reportNavigation };
+    mostrarSeccionVentasSiigo(window._siigoSeccionActual || 'cargue');
+}
+
+function mostrarSeccionVentasSiigo(section) {
+    const panels = window._siigoPanels;
+    if (!panels) return;
+    window._siigoSeccionActual = section;
+    const esCargue = section === 'cargue';
+    panels.cargas.style.display = esCargue ? '' : 'none';
+    panels.historial.style.display = esCargue ? '' : 'none';
+    panels.reportNavigation.style.display = esCargue ? 'none' : 'flex';
+    panels.consulta.style.display = 'none';
+    panels.comparativo.style.display = 'none';
+    panels.analisis.style.display = 'none';
+    panels.navigation.querySelectorAll('button').forEach(button => {
+        button.className = button.dataset.siigoSection === section ? 'btn btn-primary' : 'btn btn-secondary';
+    });
+    if (!esCargue) mostrarInformeSiigo(window._siigoInformeActual || 'comparativo');
+}
+
+function mostrarInformeSiigo(informe) {
+    const panels = window._siigoPanels;
+    if (!panels) return;
+    window._siigoSeccionActual = 'informes';
+    window._siigoInformeActual = informe;
+    panels.cargas.style.display = 'none';
+    panels.historial.style.display = 'none';
+    panels.reportNavigation.style.display = 'flex';
+    panels.consulta.style.display = informe === 'consulta' ? '' : 'none';
+    panels.comparativo.style.display = informe === 'comparativo' ? '' : 'none';
+    panels.analisis.style.display = informe === 'analisis' ? '' : 'none';
+    panels.navigation.querySelectorAll('button').forEach(button => {
+        button.className = button.dataset.siigoSection === 'informes' ? 'btn btn-primary' : 'btn btn-secondary';
+    });
+    panels.reportNavigation.querySelectorAll('button').forEach(button => {
+        button.className = button.dataset.siigoReport === informe ? 'btn btn-primary' : 'btn btn-secondary';
+    });
+}
+
 async function consultarClientesSiigo() {
     const query = document.getElementById('siigoClienteFiltro').value.trim();
     const container = document.getElementById('siigoConsultaResultado');
@@ -253,6 +324,7 @@ function inicializarVentasSiigo() {
     configurarAutocompletadoTercerosSiigo();
     crearPanelComparativoSiigo();
     crearPanelVentasMensualesSiigo();
+    configurarNavegacionVentasSiigo();
     cargarConfiguracionVentasSiigo();
     cargarResumenSiigo().catch(error => {
         const result = document.getElementById('siigoCargaResultado');
