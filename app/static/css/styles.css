@@ -655,18 +655,32 @@ body.body-siigo-cartera-focus .main-content {
     width: 100%;
 }
 
+.comercial-main-nav {
+    gap: 4px;
+    padding: 4px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+}
+
 .comercial-main-nav .btn {
     max-width: none;
-    padding: 10px 14px;
-    min-height: 48px;
-    background: linear-gradient(90deg, var(--primary-color) 0%, var(--primary-dark) 100%);
-    color: #ffffff;
+    padding: 9px 14px;
+    min-height: 40px;
+    background: transparent;
+    color: #475569;
+    font-weight: 500;
     font-size: 0.84rem;
-    box-shadow: 0 12px 24px rgba(37, 99, 235, 0.14);
+    border: none;
+    border-radius: 7px;
+    box-shadow: none;
+    transition: background 0.15s ease, color 0.15s ease;
 }
 
 .comercial-main-nav .btn:hover {
-    box-shadow: 0 14px 28px rgba(37, 99, 235, 0.18);
+    background: #e2e8f0;
+    color: #1e293b;
+    box-shadow: none;
 }
 
 .comercial-main-nav .btn .btn-label {
@@ -675,11 +689,11 @@ body.body-siigo-cartera-focus .main-content {
 }
 
 .comercial-main-nav .btn.active {
-    background: linear-gradient(90deg, var(--primary-color) 0%, var(--primary-dark) 100%);
-    color: #ffffff;
-    box-shadow: 0 16px 30px rgba(37, 99, 235, 0.22);
-    outline: 2px solid rgba(255, 255, 255, 0.22);
-    outline-offset: -2px;
+    background: #ffffff;
+    color: var(--primary-color);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+    outline: none;
 }
 
 .comercial-section-panels {
@@ -692,6 +706,24 @@ body.body-siigo-cartera-focus .main-content {
 
 .comercial-section-entry {
     border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+/* Botones de accion dentro de las tarjetas comerciales: estilo claro y
+   limpio (outline) en lugar del gris pesado por defecto. */
+.comercial-section-entry .module-actions .btn.btn-secondary {
+    background: #ffffff;
+    color: var(--primary-color);
+    border: 1px solid #cbd5e1;
+    box-shadow: none;
+    font-weight: 500;
+}
+
+.comercial-section-entry .module-actions .btn.btn-secondary:hover {
+    background: #f8fafc;
+    border-color: var(--primary-color);
+    color: var(--primary-dark);
+    transform: none;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.10);
 }
 
 .comercial-consulta-panel {

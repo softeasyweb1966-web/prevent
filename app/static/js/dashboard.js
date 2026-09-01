@@ -2043,8 +2043,11 @@ function setupMenuNavigation() {
                     window._saborArtesanalSeccionActual = '';
                     setSidebarGroupOpen('sabor_artesanal', true);
                 }
-            } else if (module === 'comercial' && section) {
-                window._comercialSeccionActual = section;
+            } else if (module === 'comercial') {
+                // Al entrar al modulo comercial desde el menu lateral siempre
+                // abrimos en 'inicio' (sin seccion seleccionada), para no
+                // mostrar tarjetas hasta que el usuario elija una pestana.
+                window._comercialSeccionActual = section || 'inicio';
             }
             switchModule(module);
         });
@@ -4461,6 +4464,10 @@ async function switchComercialSection(sectionName = 'inicio', options = {}) {
     if (homeHeader) homeHeader.style.display = '';
     actualizarNavegacionComercial(normalizedSection);
     mostrarPanelesComercial(normalizedSection);
+
+    // El panel de bienvenida solo se muestra cuando no hay seccion elegida.
+    const inicioPanel = document.getElementById('comercialInicioPanel');
+    if (inicioPanel) inicioPanel.style.display = normalizedSection === 'inicio' ? '' : 'none';
     ['vendedores', 'examenes', 'clientes'].forEach(section => {
         if (section !== normalizedSection) {
             resetConsultaComercial(section);
