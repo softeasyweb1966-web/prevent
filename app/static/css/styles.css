@@ -440,13 +440,33 @@ body.body-sabor-tablas-focus .top-bar {
     box-shadow: 0 1px 0 var(--border-color);
 }
 
-.siigo-detalle-cliente > td {
-    padding: 12px;
-    background: #f8fafc;
-}
-
 .siigo-tabla-detalle {
     max-height: 280px;
+}
+
+.siigo-detalle-cartera {
+    margin-top: 20px;
+    padding: 18px;
+    border: 1px solid #93c5fd;
+    border-radius: 10px;
+    background: #eff6ff;
+}
+
+.siigo-detalle-cartera-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+    margin-bottom: 14px;
+}
+
+.siigo-detalle-cartera-header h4,
+.siigo-detalle-cartera-header p {
+    margin: 0;
+}
+
+.siigo-detalle-cartera-header p {
+    color: #475569;
 }
 
 @media (max-width: 640px) {
@@ -457,6 +477,10 @@ body.body-sabor-tablas-focus .top-bar {
 
     .siigo-vigencia-comprobantes strong {
         flex-basis: auto;
+    }
+
+    .siigo-detalle-cartera-header {
+        flex-direction: column;
     }
 }
 
