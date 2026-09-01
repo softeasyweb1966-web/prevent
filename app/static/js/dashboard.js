@@ -8799,11 +8799,18 @@ async function fetchUsuariosEndpoint(url, options = {}) {
         const timeout = window.setTimeout(() => controller.abort(), 8000);
 
         try {
-            return await fetch(url, {
+            const response = await fetch(url, {
                 ...options,
                 credentials: 'include',
+                cache: 'no-store',
                 signal: controller.signal
             });
+            const data = await response.json();
+
+            // El limite de espera cubre tambien la lectura del JSON. Algunos
+            // navegadores conservan una respuesta pendiente aunque el servidor ya respondio.
+            response.json = async () => data;
+            return response;
         } catch (error) {
             lastError = error;
             if (attempt === 0) {
