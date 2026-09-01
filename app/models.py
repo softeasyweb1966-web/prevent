@@ -615,6 +615,106 @@ class ClienteComercialTarifa(db.Model):
         return f'<ClienteComercialTarifa cliente={self.cliente_id} item={self.catalogo_item_id}>'
 
 
+class SiigoCarga(db.Model):
+    """Audita cada archivo SIIGO importado para asegurar trazabilidad e idempotencia."""
+    __tablename__ = 'siigo_cargas'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tipo_archivo = db.Column(db.String(20), nullable=False, index=True)
+    nombre_archivo = db.Column(db.String(255), nullable=False)
+    hash_archivo = db.Column(db.String(64), nullable=False, unique=True)
+    registros_leidos = db.Column(db.Integer, nullable=False, default=0)
+    registros_importados = db.Column(db.Integer, nullable=False, default=0)
+    registros_omitidos = db.Column(db.Integer, nullable=False, default=0)
+    total_debito = db.Column(Numeric(18, 2), nullable=False, default=0)
+    total_credito = db.Column(Numeric(18, 2), nullable=False, default=0)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class SiigoCliente(db.Model):
+    """Terceros importados desde SIIGO, independientes de la ficha comercial manual."""
+    __tablename__ = 'siigo_clientes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    identificacion = db.Column(db.String(50), nullable=False, index=True)
+    sucursal = db.Column(db.String(30), nullable=False, default='0')
+    tipo_identificacion = db.Column(db.String(30))
+    digito_verificacion = db.Column(db.String(10))
+    nombre = db.Column(db.String(255), nullable=False, index=True)
+    direccion = db.Column(db.String(255))
+    ciudad = db.Column(db.String(120))
+    telefono = db.Column(db.String(80))
+    estado = db.Column(db.String(30))
+    carga_id = db.Column(db.Integer, db.ForeignKey('siigo_cargas.id'), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('identificacion', 'sucursal', name='uq_siigo_cliente_identificacion_sucursal'),
+    )
+
+
+class SiigoCuentaContable(db.Model):
+    """Catálogo de consulta de cuentas contables proveniente de SIIGO."""
+    __tablename__ = 'siigo_cuentas_contables'
+
+    id = db.Column(db.Integer, primary_key=True)
+    codigo = db.Column(db.String(30), nullable=False, unique=True, index=True)
+    nombre = db.Column(db.String(255), nullable=False)
+    categoria = db.Column(db.String(120))
+    clase = db.Column(db.String(80))
+    relacion_con = db.Column(db.String(120))
+    maneja_vencimientos = db.Column(db.String(80))
+    activo = db.Column(db.Boolean, nullable=False, default=True)
+    carga_id = db.Column(db.Integer, db.ForeignKey('siigo_cargas.id'), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SiigoComprobante(db.Model):
+    """Encabezado de los comprobantes relevantes para ventas y cartera."""
+    __tablename__ = 'siigo_comprobantes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tipo_documento = db.Column(db.String(10), nullable=False, index=True)
+    codigo_comprobante = db.Column(db.String(30), nullable=False)
+    numero_comprobante = db.Column(db.String(50), nullable=False)
+    fecha_elaboracion = db.Column(db.Date, nullable=False, index=True)
+    total_debito = db.Column(Numeric(18, 2), nullable=False, default=0)
+    total_credito = db.Column(Numeric(18, 2), nullable=False, default=0)
+    carga_id = db.Column(db.Integer, db.ForeignKey('siigo_cargas.id'), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    movimientos = db.relationship('SiigoMovimiento', backref='comprobante', lazy='select', cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.UniqueConstraint('tipo_documento', 'codigo_comprobante', 'numero_comprobante', name='uq_siigo_comprobante_origen'),
+    )
+
+
+class SiigoMovimiento(db.Model):
+    """Línea contable de un comprobante; conserva el contexto original de SIIGO."""
+    __tablename__ = 'siigo_movimientos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    comprobante_id = db.Column(db.Integer, db.ForeignKey('siigo_comprobantes.id'), nullable=False, index=True)
+    secuencia = db.Column(db.Integer, nullable=False)
+    codigo_contable = db.Column(db.String(30), nullable=False, index=True)
+    cuenta_contable = db.Column(db.String(255), nullable=False)
+    identificacion = db.Column(db.String(50), index=True)
+    sucursal = db.Column(db.String(30))
+    nombre_tercero = db.Column(db.String(255), index=True)
+    descripcion = db.Column(db.String(255))
+    detalle = db.Column(db.Text)
+    centro_costo = db.Column(db.String(80))
+    debito = db.Column(Numeric(18, 2), nullable=False, default=0)
+    credito = db.Column(Numeric(18, 2), nullable=False, default=0)
+
+    __table_args__ = (
+        db.UniqueConstraint('comprobante_id', 'secuencia', name='uq_siigo_movimiento_secuencia'),
+    )
+
+
 class TipoNovedad(db.Model):
     """Tabla maestra de tipos de novedad"""
     __tablename__ = 'tipos_novedad'

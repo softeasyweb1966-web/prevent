@@ -2588,119 +2588,16 @@
             </div>
             
             <div id="ventasView" class="module-view">
-                <div class="module-header" id="ventasHomeHeader">
-                    <div class="button-group module-actions">
-                        <button class="btn btn-primary" onclick="notImplemented('Ventas: Nueva Venta')" aria-label="Nueva Venta">
-                            <span class="btn-icon">＋</span><span class="btn-label">Nueva Venta</span>
-                        </button>
-                        <button class="btn btn-primary" onclick="notImplemented('Ventas: Consultar')" aria-label="Consultar Ventas">
-                            <span class="btn-icon">?</span><span class="btn-label">Consultar</span>
-                        </button>
-                        <button class="btn btn-primary" onclick="toggleVentasMesPanel()" aria-label="Mes">
-                            <span class="btn-icon">📅</span><span class="btn-label">Mes</span>
-                        </button>
-                        <button class="btn btn-primary" onclick="notImplemented('Ventas: Historial')" aria-label="Ver Historial">
-                            <span class="btn-icon">📜</span><span class="btn-label">Ver Historial</span>
-                        </button>
-                    </div>
+                <div class="module-header"><div><h2 style="margin:0;">Informacion SIIGO</h2><p style="margin:6px 0 0; color:#555;">Cargue clientes, plan de cuentas y comprobantes para ventas y cartera.</p></div></div>
+                <div class="stats-grid" style="margin:16px 0;">
+                    <div class="stat-card"><h3>Clientes</h3><p class="stat-number" id="siigoClientesCount">0</p></div>
+                    <div class="stat-card"><h3>Plan de cuentas</h3><p class="stat-number" id="siigoCuentasCount">0</p></div>
+                    <div class="stat-card"><h3>Comprobantes</h3><p class="stat-number" id="siigoComprobantesCount">0</p></div>
+                    <div class="stat-card"><h3>Movimientos</h3><p class="stat-number" id="siigoMovimientosCount">0</p></div>
                 </div>
-
-                <!-- Mes en proceso (similar a Servicios) -->
-                <div id="ventasMesActualPanel" class="recent-section" style="margin-bottom: 16px;">
-                    <h2 style="margin-bottom: 4px;">Mes en proceso</h2>
-                    <p id="ventasMesActual" style="margin:0; color:#555; font-size:0.95rem;">No hay mes en proceso registrado.</p>
-                </div>
-
-                <div id="ventasDashboardResumen" class="stats-grid" style="margin-bottom: 16px;">
-                    <div class="stat-card">
-                        <h3>Clientes activos</h3>
-                        <p class="stat-number">-</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Ventas del mes</h3>
-                        <p class="stat-number">-</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Total facturado</h3>
-                        <p class="stat-number">-</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Estado periodo</h3>
-                        <p class="stat-number">Pend.</p>
-                    </div>
-                </div>
-
-                <!-- Modal selección de período de Ventas (Año-Mes) -->
-                <div id="ventasPeriodoSeleccionModal" class="modal">
-                    <div class="modal-content" style="max-width: 520px; width: 95%;">
-                        <div class="modal-header">
-                            <h2>Seleccionar Período de Ventas</h2>
-                            <span class="close" onclick="closeVentasPeriodoSeleccion()">&times;</span>
-                        </div>
-                        <form id="ventasPeriodoSeleccionForm">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="ventas_periodo_anio">Año *</label>
-                                    <input id="ventas_periodo_anio" type="number" min="2000" required />
-                                </div>
-                                <div class="form-group">
-                                    <label for="ventas_periodo_mes">Mes *</label>
-                                    <select id="ventas_periodo_mes" required>
-                                        <option value="">Seleccione mes...</option>
-                                        <option value="1">Enero</option>
-                                        <option value="2">Febrero</option>
-                                        <option value="3">Marzo</option>
-                                        <option value="4">Abril</option>
-                                        <option value="5">Mayo</option>
-                                        <option value="6">Junio</option>
-                                        <option value="7">Julio</option>
-                                        <option value="8">Agosto</option>
-                                        <option value="9">Septiembre</option>
-                                        <option value="10">Octubre</option>
-                                        <option value="11">Noviembre</option>
-                                        <option value="12">Diciembre</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" onclick="closeVentasPeriodoSeleccion()">Cancelar</button>
-                                <button type="submit" class="btn btn-primary">Confirmar período</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-
-                <div id="ventasMesPanel" class="module-header" style="margin-bottom: 16px; display: none;">
-                    <div class="button-group module-actions" style="display:none;">
-                        <button class="btn btn-primary" onclick="notImplemented('Ventas: Nueva Novedad')" aria-label="Nueva Novedad">
-                            <span class="btn-icon">＋</span><span class="btn-label">+ Nueva Novedad</span>
-                        </button>
-                        <button class="btn btn-primary" onclick="notImplemented('Ventas: Liquidar Mes')" aria-label="Liquidar Mes">
-                            <span class="btn-icon">📅</span><span class="btn-label">Liquidar Mes</span>
-                        </button>
-                        <button class="btn btn-primary" onclick="notImplemented('Ventas: Pagos')" aria-label="Pagos">
-                            <span class="btn-icon">💸</span><span class="btn-label">Pagos</span>
-                        </button>
-                    </div>
-                    <div class="period-aux period-aux-center">
-                        <h3 class="quincena-title">Gestión de Mes</h3>
-                        <p id="ventasMesSeleccionadoLabel" style="margin-top:0; margin-bottom:4px; color:#555; font-size:0.9rem;">Período Ventas (Mes/Año) · selección pendiente</p>
-                        <div class="period-workflow">
-                            <div class="period-workflow-steps">
-                                <button type="button" class="btn btn-step active" data-module="ventas" data-step="resumen" onclick="setGenericWorkflowStep('ventas', 'resumen')">1. Pre-Liquidación</button>
-                                <button type="button" class="btn btn-step" data-module="ventas" data-step="novedades" onclick="setGenericWorkflowStep('ventas', 'novedades')">2. Novedades</button>
-                                <button type="button" class="btn btn-step" data-module="ventas" data-step="pagos" onclick="setGenericWorkflowStep('ventas', 'pagos')">3. Pagos</button>
-                            </div>
-                            <div class="period-workflow-actions">
-                                <button id="btnVentasFinalizarNovedadesPanel" type="button" class="btn btn-outline btn-step" style="display:none;" onclick="notImplemented('Ventas: FINALIZAR NOVEDADES mes')">Finalizar Novedades</button>
-                                <button id="btnVentasFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="notImplemented('Ventas: FINALIZAR PAGO mes')">Finalizar Pago Mes</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <h2>Módulo Ventas</h2>
-                <p class="placeholder">Este módulo está en desarrollo. La barra de botones ya sigue la filosofía de períodos (Mes / Historial).</p>
+                <section class="recent-section" style="margin-bottom:16px;"><h3 style="margin-top:0;">Cargues de informacion</h3><p class="form-help">Los comprobantes admitidos son FV, RC, NC y ND. El sistema valida cada comprobante y no permite repetir un archivo.</p><div class="button-group module-actions"><button class="btn btn-primary" type="button" onclick="seleccionarArchivoSiigo('clientes')">Cargar clientes</button><button class="btn btn-primary" type="button" onclick="seleccionarArchivoSiigo('cuentas')">Cargar plan de cuentas</button><button class="btn btn-primary" type="button" onclick="seleccionarArchivoSiigo('comprobantes')">Cargar comprobantes</button><input id="siigoArchivoInput" type="file" accept=".xlsx" style="display:none;"></div><div id="siigoCargaResultado" class="form-help" style="margin-top:12px;"></div></section>
+                <section class="recent-section"><h3 style="margin-top:0;">Consultas</h3><form id="siigoConsultaForm"><div class="form-row"><div class="form-group"><label for="siigoClienteFiltro">Cliente o identificacion</label><input id="siigoClienteFiltro" type="text" maxlength="120"></div><div class="form-group"><label for="siigoTipoFiltro">Tipo</label><select id="siigoTipoFiltro"><option value="">Todos</option><option value="FV">FV</option><option value="RC">RC</option><option value="NC">NC</option><option value="ND">ND</option></select></div><div class="form-group"><label for="siigoNumeroFiltro">Numero comprobante</label><input id="siigoNumeroFiltro" type="text" maxlength="50"></div></div><div class="form-row"><div class="form-group"><label for="siigoDesdeFiltro">Desde</label><input id="siigoDesdeFiltro" type="date"></div><div class="form-group"><label for="siigoHastaFiltro">Hasta</label><input id="siigoHastaFiltro" type="date"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Consultar comprobantes</button> <button class="btn btn-secondary" type="button" onclick="consultarClientesSiigo()">Buscar clientes</button></div></div></form><div id="siigoConsultaResultado" class="table-container" style="margin-top:16px;"></div></section>
+                <section class="recent-section" style="margin-top:16px;"><h3 style="margin-top:0;">Ultimos cargues</h3><div id="siigoCargasRecientes" class="form-help">Aun no hay cargues registrados.</div></section>
             </div>
             
             <div id="informesView" class="module-view">
@@ -5399,6 +5296,7 @@
 </div>
 
 <script src="{{ asset_url('js/dashboard.js') }}"></script>
+<script src="{{ asset_url('js/contable.js') }}"></script>
 <script src="{{ asset_url('js/sabor_artesanal_menus.js') }}"></script>
 <script src="{{ asset_url('js/sabor_artesanal_pedidos.js') }}"></script>
 <script src="{{ asset_url('js/servicios.js') }}"></script>

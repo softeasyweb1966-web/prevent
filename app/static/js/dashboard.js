@@ -3739,7 +3739,7 @@ function switchModule(moduleName) {
         displayName = 'Gestión de Compras';
         if (userMenu) userMenu.style.display = '';
     } else if (moduleName === 'ventas') {
-        displayName = 'Gestión de Ventas';
+        displayName = 'Informacion SIIGO';
         if (userMenu) userMenu.style.display = '';
     } else {
         displayName = moduleName.charAt(0).toUpperCase() + moduleName.slice(1);
@@ -3857,7 +3857,13 @@ function switchModule(moduleName) {
             } catch (e) {
                 console.error('Error inicializando módulo Bancos/Préstamos', e);
             }
-        } else if (moduleName === 'impuestos' || moduleName === 'compras' || moduleName === 'ventas') {
+    } else if (moduleName === 'ventas') {
+        try {
+            inicializarVentasSiigo();
+        } catch (e) {
+            console.error('Error inicializando modulo Ventas/SIIGO', e);
+        }
+    } else if (moduleName === 'impuestos' || moduleName === 'compras') {
             try {
                 const panelMes = document.getElementById(`${moduleName}MesPanel`);
                 const homeHeader = document.getElementById(`${moduleName}HomeHeader`);

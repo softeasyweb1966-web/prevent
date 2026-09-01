@@ -664,6 +664,7 @@ def register_blueprints(app):
         bancos_bp,
         chat_bp,
         comercial_bp,
+        contable_bp,
         dashboard_bp,
         nomina_bp,
         parametros_bp,
@@ -695,6 +696,7 @@ def register_blueprints(app):
                 'servicios': '/api/servicios',
                 'bancos': '/api/bancos',
                 'comercial': '/api/comercial',
+                'contable': '/api/contable',
                 'chat': '/api/chat',
             },
             'instrucciones': 'Primero: POST /api/auth/login con usuario y contrasena',
@@ -735,6 +737,7 @@ def register_blueprints(app):
     app.register_blueprint(servicios_bp)
     app.register_blueprint(bancos_bp)
     app.register_blueprint(comercial_bp)
+    app.register_blueprint(contable_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(sabor_artesanal_bp)
 
