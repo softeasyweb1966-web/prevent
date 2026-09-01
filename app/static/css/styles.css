@@ -42,6 +42,15 @@ body.body-sabor-tablas-focus .top-bar {
     padding-right: 20px;
 }
 
+body.body-siigo-cartera-focus .sidebar {
+    display: none;
+}
+
+body.body-siigo-cartera-focus .main-content {
+    margin-left: 0;
+    width: 100%;
+}
+
 /* Login Page Styles */
 .login-container {
     min-height: 100vh;
