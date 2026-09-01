@@ -543,9 +543,11 @@ def comparativo_clientes():
             saldos_cartera = {identificacion: saldo or Decimal('0') for identificacion, saldo in filas_cartera}
 
         def totales(items):
+            saldos = [saldos_cartera.get(item['identificacion'], Decimal('0')) for item in items]
             return {
                 'facturacion': float(sum((item['facturacion'] for item in items), Decimal('0'))),
-                'cartera': float(sum((saldos_cartera.get(item['identificacion'], Decimal('0')) for item in items), Decimal('0'))),
+                'cartera': float(sum((max(saldo, Decimal('0')) for saldo in saldos), Decimal('0'))),
+                'saldo_favor': float(sum((-min(saldo, Decimal('0')) for saldo in saldos), Decimal('0'))),
             }
 
         return jsonify({
