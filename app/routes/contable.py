@@ -768,6 +768,7 @@ def cartera_dinamica():
         ).scalar()
 
         periodos = {}
+        cartera_por_cliente = {}
         pagos_completos = []
         for item in facturas.values():
             saldo = max(item['valor_factura'] - item['recaudado'], Decimal('0'))
@@ -794,6 +795,44 @@ def cartera_dinamica():
             else:
                 resumen['vencido_91_mas'] += saldo
 
+            cliente_nombre = item['cliente'] or 'Sin nombre'
+            cliente_clave = item['identificacion'] or _normalizar(cliente_nombre) or item['referencia']
+            resumen_cliente = cartera_por_cliente.setdefault(cliente_clave, {
+                'identificacion': item['identificacion'],
+                'cliente': cliente_nombre,
+                'facturado': Decimal('0'),
+                'recaudado': Decimal('0'),
+                'saldo': Decimal('0'),
+                'por_vencer': Decimal('0'),
+                'vencido_1_30': Decimal('0'),
+                'vencido_31_60': Decimal('0'),
+                'vencido_61_90': Decimal('0'),
+                'vencido_91_mas': Decimal('0'),
+                'facturas': [],
+            })
+            resumen_cliente['facturado'] += item['valor_factura']
+            resumen_cliente['recaudado'] += item['recaudado']
+            resumen_cliente['saldo'] += saldo
+            if dias_vencido <= 0:
+                resumen_cliente['por_vencer'] += saldo
+            elif dias_vencido <= 30:
+                resumen_cliente['vencido_1_30'] += saldo
+            elif dias_vencido <= 60:
+                resumen_cliente['vencido_31_60'] += saldo
+            elif dias_vencido <= 90:
+                resumen_cliente['vencido_61_90'] += saldo
+            else:
+                resumen_cliente['vencido_91_mas'] += saldo
+            resumen_cliente['facturas'].append({
+                'referencia': item['referencia'],
+                'fecha_factura': item['fecha_factura'].isoformat(),
+                'fecha_vencimiento': vencimiento.isoformat(),
+                'facturado': item['valor_factura'],
+                'recaudado': item['recaudado'],
+                'saldo': saldo,
+                'dias_vencido': dias_vencido,
+            })
+
             if saldo == 0 and item['pagos']:
                 fecha_pago_total = max(pago['fecha'] for pago in item['pagos'])
                 pagos_completos.append({
@@ -803,19 +842,19 @@ def cartera_dinamica():
                     'fecha_pago': fecha_pago_total,
                 })
 
-        clientes = {}
+        clientes_pagos = {}
         for pago in pagos_completos:
-            cliente = clientes.setdefault(pago['identificacion'] or pago['cliente'], {
+            cliente_pago = clientes_pagos.setdefault(pago['identificacion'] or pago['cliente'], {
                 'cliente': pago['cliente'], 'pagos': [],
             })
-            cliente['pagos'].append(pago)
+            cliente_pago['pagos'].append(pago)
         analisis_pagos = []
-        for cliente in clientes.values():
-            pagos = cliente['pagos']
+        for cliente_pago in clientes_pagos.values():
+            pagos = cliente_pago['pagos']
             rapido = min(pagos, key=lambda pago: pago['dias'])
             lento = max(pagos, key=lambda pago: pago['dias'])
             analisis_pagos.append({
-                'cliente': cliente['cliente'], 'facturas_pagadas': len(pagos),
+                'cliente': cliente_pago['cliente'], 'facturas_pagadas': len(pagos),
                 'promedio_dias': round(sum(pago['dias'] for pago in pagos) / len(pagos), 1),
                 'mas_rapida': rapido['referencia'], 'dias_mas_rapida': rapido['dias'],
                 'mas_lenta': lento['referencia'], 'dias_mas_lenta': lento['dias'],
@@ -825,12 +864,28 @@ def cartera_dinamica():
         def serializar(items):
             return [{clave: (float(valor) if isinstance(valor, Decimal) else valor) for clave, valor in item.items()} for item in items]
 
+        def serializar_cartera_clientes():
+            resultado = []
+            for cliente_cartera in sorted(cartera_por_cliente.values(), key=lambda item: item['saldo'], reverse=True):
+                registro = {
+                    clave: (float(valor) if isinstance(valor, Decimal) else valor)
+                    for clave, valor in cliente_cartera.items()
+                    if clave != 'facturas'
+                }
+                registro['facturas'] = serializar(sorted(
+                    cliente_cartera['facturas'],
+                    key=lambda item: (item['fecha_factura'], item['referencia']),
+                ))
+                resultado.append(registro)
+            return resultado
+
         return jsonify({
             'fecha_corte': fecha_corte.isoformat(),
             'desde': desde.isoformat() if desde else None,
             'hasta': hasta.isoformat() if hasta else None,
             'cliente': cliente or None,
             'periodos': serializar(sorted(periodos.values(), key=lambda item: item['periodo'])),
+            'cartera_clientes': serializar_cartera_clientes(),
             'pagos_clientes': analisis_pagos,
             'pagos_sin_factura': pagos_sin_factura,
             'notas_credito_sin_asignar': float(notas_credito_sin_asignar or 0),

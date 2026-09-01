@@ -422,6 +422,33 @@ body.body-sabor-tablas-focus .top-bar {
     box-shadow: 0 5px 18px rgba(185, 28, 28, 0.16);
 }
 
+.siigo-tabla-con-encabezado-fijo {
+    max-height: 65vh;
+    overflow: auto;
+    border: 1px solid var(--border-color);
+}
+
+.siigo-tabla-con-encabezado-fijo .data-table {
+    margin: 0;
+}
+
+.siigo-tabla-con-encabezado-fijo .data-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f8fafc;
+    box-shadow: 0 1px 0 var(--border-color);
+}
+
+.siigo-detalle-cliente > td {
+    padding: 12px;
+    background: #f8fafc;
+}
+
+.siigo-tabla-detalle {
+    max-height: 280px;
+}
+
 @media (max-width: 640px) {
     .siigo-vigencia-comprobantes {
         flex-direction: column;

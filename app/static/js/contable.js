@@ -36,6 +36,17 @@ function mostrarVigenciaComprobantes(vigencia) {
     panel.innerHTML = `<strong>Alerta: comprobantes sin actualizar</strong><span>Informacion cargada hasta el ${escapeSiigo(ultimaFecha)}. Debe estar cargada al menos hasta el ${escapeSiigo(fechaRequerida)}. ${escapeSiigo(detalleAtraso)} En SIIGO genere el Excel desde: <strong>Informes &gt; Contables &gt; Consecutivo de comprobantes</strong>, y luego carguelo aqui.</span>`;
 }
 
+function tablaCarteraClientesSiigo(clientes) {
+    if (!clientes.length) return '';
+    const filas = clientes.map((cliente, index) => {
+        const detalleId = `siigoCarteraClienteDetalle${index}`;
+        const facturas = cliente.facturas || [];
+        const detalle = facturas.map(factura => `<tr><td>${escapeSiigo(factura.referencia)}</td><td>${escapeSiigo(formatoSiigoFecha(factura.fecha_factura))}</td><td>${escapeSiigo(formatoSiigoFecha(factura.fecha_vencimiento))}</td><td>${formatoSiigoNumero(factura.facturado)}</td><td>${formatoSiigoNumero(factura.recaudado)}</td><td>${formatoSiigoNumero(factura.saldo)}</td><td>${factura.dias_vencido}</td></tr>`).join('');
+        return `<tr><td>${escapeSiigo(cliente.identificacion)}</td><td>${escapeSiigo(cliente.cliente)}</td><td>${formatoSiigoNumero(cliente.facturado)}</td><td>${formatoSiigoNumero(cliente.recaudado)}</td><td>${formatoSiigoNumero(cliente.por_vencer)}</td><td>${formatoSiigoNumero(cliente.vencido_1_30)}</td><td>${formatoSiigoNumero(cliente.vencido_31_60)}</td><td>${formatoSiigoNumero(cliente.vencido_61_90)}</td><td>${formatoSiigoNumero(cliente.vencido_91_mas)}</td><td>${formatoSiigoNumero(cliente.saldo)}</td><td><button type="button" class="action-btn" data-siigo-detalle="${detalleId}">Ver detalle</button></td></tr><tr id="${detalleId}" class="siigo-detalle-cliente" hidden><td colspan="11"><div class="siigo-tabla-con-encabezado-fijo siigo-tabla-detalle"><table class="data-table"><thead><tr><th>Factura</th><th>Fecha</th><th>Vencimiento</th><th>Facturado</th><th>Recaudado</th><th>Saldo</th><th>Dias vencido</th></tr></thead><tbody>${detalle}</tbody></table></div></td></tr>`;
+    }).join('');
+    return `<h4 style="margin:20px 0 8px;">Detalle de cartera por cliente</h4><p class="form-help">Seleccione “Ver detalle” para consultar las facturas que componen cada saldo.</p><div class="siigo-tabla-con-encabezado-fijo"><table class="data-table"><thead><tr><th>Identificacion</th><th>Cliente</th><th>Facturado</th><th>Recaudado</th><th>Por vencer</th><th>1 a 30</th><th>31 a 60</th><th>61 a 90</th><th>Mas de 90</th><th>Saldo</th><th>Detalle</th></tr></thead><tbody>${filas}</tbody></table></div>`;
+}
+
 async function leerRespuestaSiigo(response) {
     const contentType = response.headers.get('content-type') || '';
     if (contentType.includes('application/json')) return response.json();
@@ -247,7 +258,15 @@ async function consultarCarteraDinamicaSiigo(form, tipo) {
             result.innerHTML = rows.length ? `<table class="data-table"><thead><tr><th>Cliente</th><th>Facturas pagadas</th><th>Promedio dias</th><th>Mas rapida</th><th>Dias</th><th>Mas lenta</th><th>Dias</th></tr></thead><tbody>${rows.map(item => `<tr><td>${escapeSiigo(item.cliente)}</td><td>${item.facturas_pagadas}</td><td>${item.promedio_dias}</td><td>${escapeSiigo(item.mas_rapida)}</td><td>${item.dias_mas_rapida}</td><td>${escapeSiigo(item.mas_lenta)}</td><td>${item.dias_mas_lenta}</td></tr>`).join('')}</tbody></table>` : 'No hay facturas totalmente pagadas para la fecha seleccionada.';
         } else {
             const rows = data.periodos || [];
-            result.innerHTML = `<p class="form-help">Fecha de corte: ${escapeSiigo(data.fecha_corte)}. Facturas analizadas: ${data.facturas}. Recibos sin factura cargada: ${data.pagos_sin_factura}. Notas credito sin asignar: ${formatoSiigoNumero(data.notas_credito_sin_asignar)}.</p>${rows.length ? `<table class="data-table"><thead><tr><th>Periodo</th><th>Facturado</th><th>Recaudado</th><th>Por vencer</th><th>1 a 30</th><th>31 a 60</th><th>61 a 90</th><th>Mas de 90</th><th>Saldo</th></tr></thead><tbody>${rows.map(item => `<tr><td>${item.periodo}</td><td>${formatoSiigoNumero(item.facturado)}</td><td>${formatoSiigoNumero(item.recaudado)}</td><td>${formatoSiigoNumero(item.por_vencer)}</td><td>${formatoSiigoNumero(item.vencido_1_30)}</td><td>${formatoSiigoNumero(item.vencido_31_60)}</td><td>${formatoSiigoNumero(item.vencido_61_90)}</td><td>${formatoSiigoNumero(item.vencido_91_mas)}</td><td>${formatoSiigoNumero(item.saldo)}</td></tr>`).join('')}</tbody></table>` : 'No se encontraron facturas para la fecha seleccionada.'}`;
+            const tablaPeriodos = rows.length ? `<div class="siigo-tabla-con-encabezado-fijo"><table class="data-table"><thead><tr><th>Periodo</th><th>Facturado</th><th>Recaudado</th><th>Por vencer</th><th>1 a 30</th><th>31 a 60</th><th>61 a 90</th><th>Mas de 90</th><th>Saldo</th></tr></thead><tbody>${rows.map(item => `<tr><td>${item.periodo}</td><td>${formatoSiigoNumero(item.facturado)}</td><td>${formatoSiigoNumero(item.recaudado)}</td><td>${formatoSiigoNumero(item.por_vencer)}</td><td>${formatoSiigoNumero(item.vencido_1_30)}</td><td>${formatoSiigoNumero(item.vencido_31_60)}</td><td>${formatoSiigoNumero(item.vencido_61_90)}</td><td>${formatoSiigoNumero(item.vencido_91_mas)}</td><td>${formatoSiigoNumero(item.saldo)}</td></tr>`).join('')}</tbody></table></div>` : 'No se encontraron facturas para la fecha seleccionada.';
+            result.innerHTML = `<p class="form-help">Fecha de corte: ${escapeSiigo(data.fecha_corte)}. Facturas analizadas: ${data.facturas}. Recibos sin factura cargada: ${data.pagos_sin_factura}. Notas credito sin asignar: ${formatoSiigoNumero(data.notas_credito_sin_asignar)}.</p>${tablaPeriodos}${tablaCarteraClientesSiigo(data.cartera_clientes || [])}`;
+            result.querySelectorAll('[data-siigo-detalle]').forEach(button => button.addEventListener('click', () => {
+                const detalle = document.getElementById(button.dataset.siigoDetalle);
+                if (!detalle) return;
+                const visible = !detalle.hidden;
+                detalle.hidden = visible;
+                button.textContent = visible ? 'Ver detalle' : 'Ocultar detalle';
+            }));
         }
     } catch (error) {
         result.textContent = error.message;
