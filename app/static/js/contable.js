@@ -189,9 +189,19 @@ function crearPanelCarteraDinamicaSiigo(tipo) {
         ? `<h3 style="margin-top:0;">Analisis de pago de clientes</h3><p class="form-help">Cruza cada recibo de caja RC con la factura FV indicada en la descripcion. El promedio considera facturas totalmente pagadas.</p><form data-siigo-cartera="pagos"><div class="form-row"><div class="form-group"><label>Fecha de corte</label><input type="date" required value="${new Date().toISOString().slice(0, 10)}"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar analisis</button></div></div></form><div class="table-container" style="margin-top:16px;"></div>`
         : `<h3 style="margin-top:0;">Cartera y recaudo por periodo</h3><p class="form-help">Calculado desde las facturas FV y sus recibos de caja RC. La fecha de vencimiento corresponde a la cuota indicada por SIIGO.</p><form data-siigo-cartera="recaudo"><div class="form-row"><div class="form-group"><label>Fecha de corte</label><input type="date" required value="${new Date().toISOString().slice(0, 10)}"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar cartera</button></div></div></form><div class="table-container" style="margin-top:16px;"></div>`;
     const form = panel.querySelector('form');
-    form.querySelector('.form-row > :last-child').insertAdjacentHTML('beforebegin', `<div class="form-group"><label>Facturado desde</label><input name="desde" type="date"></div><div class="form-group"><label>Facturado hasta</label><input name="hasta" type="date"></div><div class="form-group"><label>Cliente</label><input name="cliente" type="text" placeholder="Todos los clientes" autocomplete="off"></div>`);
+    form.querySelector('.form-row > :last-child').insertAdjacentHTML('beforebegin', `<div class="form-group"><label>Facturado desde</label><input name="desde" type="date"></div><div class="form-group"><label>Facturado hasta</label><input name="hasta" type="date"></div><div class="form-group" style="align-self:end;"><label>Analizar</label><div><label style="margin-right:12px;"><input name="modoCliente" type="radio" value="todos" checked> Todos los clientes</label><label><input name="modoCliente" type="radio" value="uno"> Un cliente</label></div></div><div class="form-group" data-siigo-cliente-grupo style="display:none;"><label>Cliente</label><input name="cliente" type="text" autocomplete="off"></div>`);
     anchor.insertAdjacentElement('afterend', panel);
     configurarAutocompletadoCarteraSiigo(form.querySelector('[name="cliente"]'));
+    form.querySelectorAll('[name="modoCliente"]').forEach(radio => radio.addEventListener('change', () => {
+        const grupoCliente = form.querySelector('[data-siigo-cliente-grupo]');
+        const inputCliente = form.querySelector('[name="cliente"]');
+        const esUno = radio.checked && radio.value === 'uno';
+        grupoCliente.style.display = esUno ? '' : 'none';
+        if (!esUno) {
+            inputCliente.value = '';
+            delete inputCliente.dataset.identificacion;
+        }
+    }));
     form.addEventListener('submit', event => consultarCarteraDinamicaSiigo(event, tipo));
     return panel;
 }
@@ -242,8 +252,13 @@ async function consultarCarteraDinamicaSiigo(event, tipo) {
         const value = event.currentTarget.querySelector(`[name="${name}"]`).value;
         if (value) params.set(name, value);
     });
+    const esUnCliente = event.currentTarget.querySelector('[name="modoCliente"]:checked').value === 'uno';
     const cliente = clienteInput.dataset.identificacion || clienteInput.value.trim();
-    if (cliente && !['todos', 'todos los clientes'].includes(cliente.toLowerCase())) params.set('cliente', cliente);
+    if (esUnCliente && !cliente) {
+        result.textContent = 'Seleccione un cliente o marque Todos los clientes.';
+        return;
+    }
+    if (esUnCliente && cliente) params.set('cliente', cliente);
     result.textContent = 'Calculando desde los comprobantes cargados...';
     try {
         const response = await fetch(`/api/contable/cartera-dinamica?${params.toString()}`, { credentials: 'include' });
