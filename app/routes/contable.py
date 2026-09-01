@@ -118,6 +118,85 @@ def _crear_carga(tipo_archivo, nombre_archivo, contenido):
     return carga
 
 
+def _extraer_comprobantes(filas, inicio):
+    """Agrupa las secuencias de SIIGO bajo su fila separadora de comprobante."""
+    actual = None
+    for fila in filas[inicio:]:
+        first = _texto(fila[0] if fila else None)
+        if first.startswith('Comprobante:'):
+            if actual and actual['lineas']:
+                yield actual
+            match = re.match(r'^Comprobante:\s*([^\-\s]+)-([^\-\s]+)-(.+?)\s*$', first)
+            if not match:
+                raise ValueError(f'Formato de comprobante no reconocido: {first}')
+            tipo, codigo, numero = (group.strip() for group in match.groups())
+            actual = {'tipo': tipo, 'codigo': codigo, 'numero': numero, 'lineas': []}
+        elif actual and isinstance(fila[0] if fila else None, (int, float)):
+            actual['lineas'].append(fila)
+    if actual and actual['lineas']:
+        yield actual
+
+
+def _guardar_comprobantes_en_lote(carga, filas, header_row, columns):
+    """Evita miles de consultas individuales que pueden agotar el tiempo web."""
+    documentos = list(_extraer_comprobantes(filas, header_row + 1))
+    permitidos = [documento for documento in documentos if documento['tipo'] in TIPOS_COMPROBANTE_PERMITIDOS]
+    existentes = {
+        (tipo, codigo, numero)
+        for tipo, codigo, numero in db.session.query(
+            SiigoComprobante.tipo_documento,
+            SiigoComprobante.codigo_comprobante,
+            SiigoComprobante.numero_comprobante,
+        ).filter(SiigoComprobante.tipo_documento.in_(TIPOS_COMPROBANTE_PERMITIDOS)).all()
+    }
+    imported = movements = 0
+    total_debito = total_credito = Decimal('0')
+
+    for documento in permitidos:
+        key = (documento['tipo'], documento['codigo'], documento['numero'])
+        if key in existentes:
+            continue
+        fecha = _fecha(_valor(documento['lineas'][0], columns, 'Fecha elaboraciÃ³n'))
+        document_debito = sum((_decimal(_valor(line, columns, 'DÃ©bito')) for line in documento['lineas']), Decimal('0'))
+        document_credito = sum((_decimal(_valor(line, columns, 'CrÃ©dito')) for line in documento['lineas']), Decimal('0'))
+        if document_debito.quantize(Decimal('0.01')) != document_credito.quantize(Decimal('0.01')):
+            reference = '-'.join(key)
+            raise ValueError(f'El comprobante {reference} no cuadra: dÃ©bito {document_debito} / crÃ©dito {document_credito}.')
+
+        comprobante = SiigoComprobante(
+            tipo_documento=documento['tipo'], codigo_comprobante=documento['codigo'], numero_comprobante=documento['numero'],
+            fecha_elaboracion=fecha, total_debito=document_debito, total_credito=document_credito, carga_id=carga.id,
+        )
+        for line in documento['lineas']:
+            comprobante.movimientos.append(SiigoMovimiento(
+                secuencia=int(_valor(line, columns, 'Secuencia')),
+                codigo_contable=_texto(_valor(line, columns, 'CÃ³digo contable')),
+                cuenta_contable=_texto(_valor(line, columns, 'Cuenta contable')),
+                identificacion=_texto(_valor(line, columns, 'IdentificaciÃ³n')) or None,
+                sucursal=_texto(_valor(line, columns, 'Sucursal')) or None,
+                nombre_tercero=_texto(_valor(line, columns, 'Nombre tercero')) or None,
+                descripcion=_texto(_valor(line, columns, 'DescripciÃ³n')) or None,
+                detalle=_texto(_valor(line, columns, 'Detalle')) or None,
+                centro_costo=_texto(_valor(line, columns, 'Centro de costo')) or None,
+                debito=_decimal(_valor(line, columns, 'DÃ©bito')),
+                credito=_decimal(_valor(line, columns, 'CrÃ©dito')),
+            ))
+            movements += 1
+        db.session.add(comprobante)
+        existentes.add(key)
+        imported += 1
+        total_debito += document_debito
+        total_credito += document_credito
+
+    carga.registros_leidos = len(documentos)
+    carga.registros_importados = imported
+    carga.registros_omitidos = len(documentos) - imported
+    carga.total_debito = total_debito
+    carga.total_credito = total_credito
+    db.session.commit()
+    return jsonify({'mensaje': 'Comprobantes cargados correctamente.', 'comprobantes': imported, 'movimientos': movements, 'omitidos': carga.registros_omitidos})
+
+
 @contable_bp.route('/resumen', methods=['GET'])
 @login_required
 def resumen():
@@ -244,6 +323,8 @@ def cargar_comprobantes():
         nombre_archivo, contenido, filas = _leer_excel()
         header_row, columns = _indice_encabezados(filas, ['Secuencia', 'Fecha elaboración', 'Código contable', 'Débito', 'Crédito'])
         carga = _crear_carga('COMPROBANTES', nombre_archivo, contenido)
+        return _guardar_comprobantes_en_lote(carga, filas, header_row, columns)
+
         current = None
         imported = omitted = movements = 0
         total_debito = total_credito = Decimal('0')

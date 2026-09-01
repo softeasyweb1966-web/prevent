@@ -8,9 +8,17 @@ function formatoSiigoNumero(value) {
     return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 2 }).format(value || 0);
 }
 
+async function leerRespuestaSiigo(response) {
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) return response.json();
+    const body = await response.text();
+    const detail = body.replace(/\s+/g, ' ').slice(0, 120);
+    throw new Error(`Railway devolvio una respuesta no valida (HTTP ${response.status}). ${detail}`);
+}
+
 async function cargarResumenSiigo() {
     const response = await fetch('/api/contable/resumen', { credentials: 'include' });
-    const data = await response.json();
+    const data = await leerRespuestaSiigo(response);
     if (!response.ok) throw new Error(data.error || 'No fue posible consultar la informacion SIIGO.');
     document.getElementById('siigoClientesCount').textContent = data.clientes || 0;
     document.getElementById('siigoCuentasCount').textContent = data.cuentas || 0;
@@ -35,7 +43,7 @@ async function importarArchivoSiigo(tipo, archivo) {
     formData.append('archivo', archivo);
     try {
         const response = await fetch(`/api/contable/cargar-${tipo}`, { method: 'POST', body: formData, credentials: 'include' });
-        const data = await response.json();
+        const data = await leerRespuestaSiigo(response);
         if (!response.ok) throw new Error(data.error || 'No fue posible procesar el archivo.');
         result.textContent = `${data.mensaje} ${data.creados != null ? `Creados: ${data.creados}. Actualizados: ${data.actualizados}.` : `Comprobantes: ${data.comprobantes}. Movimientos: ${data.movimientos}. Omitidos: ${data.omitidos}.`}`;
         await cargarResumenSiigo();
@@ -55,7 +63,7 @@ async function consultarComprobantesSiigo(event) {
     container.innerHTML = 'Consultando...';
     try {
         const response = await fetch(`/api/contable/comprobantes?${params.toString()}`, { credentials: 'include' });
-        const data = await response.json();
+        const data = await leerRespuestaSiigo(response);
         if (!response.ok) throw new Error(data.error || 'No fue posible consultar comprobantes.');
         const rows = data.comprobantes || [];
         container.innerHTML = rows.length ? `<table class="data-table"><thead><tr><th>Documento</th><th>Fecha</th><th>Movimientos</th><th>Debito</th><th>Credito</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeSiigo(`${row.tipo}-${row.codigo}-${row.numero}`)}</td><td>${escapeSiigo(row.fecha)}</td><td>${row.movimientos}</td><td>${formatoSiigoNumero(row.debito)}</td><td>${formatoSiigoNumero(row.credito)}</td></tr>`).join('')}</tbody></table>` : 'No se encontraron comprobantes con esos filtros.';
@@ -70,7 +78,7 @@ async function consultarClientesSiigo() {
     container.innerHTML = 'Consultando...';
     try {
         const response = await fetch(`/api/contable/clientes?q=${encodeURIComponent(query)}`, { credentials: 'include' });
-        const data = await response.json();
+        const data = await leerRespuestaSiigo(response);
         if (!response.ok) throw new Error(data.error || 'No fue posible consultar clientes.');
         const rows = data.clientes || [];
         container.innerHTML = rows.length ? `<table class="data-table"><thead><tr><th>Identificacion</th><th>Sucursal</th><th>Nombre</th><th>Ciudad</th><th>Estado</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeSiigo(row.identificacion)}</td><td>${escapeSiigo(row.sucursal)}</td><td>${escapeSiigo(row.nombre)}</td><td>${escapeSiigo(row.ciudad)}</td><td>${escapeSiigo(row.estado)}</td></tr>`).join('')}</tbody></table>` : 'No se encontraron clientes.';
