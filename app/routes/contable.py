@@ -156,9 +156,9 @@ def _guardar_comprobantes_en_lote(carga, filas, header_row, columns):
         key = (documento['tipo'], documento['codigo'], documento['numero'])
         if key in existentes:
             continue
-        fecha = _fecha(_valor(documento['lineas'][0], columns, 'Fecha elaboraciÃ³n'))
-        document_debito = sum((_decimal(_valor(line, columns, 'DÃ©bito')) for line in documento['lineas']), Decimal('0'))
-        document_credito = sum((_decimal(_valor(line, columns, 'CrÃ©dito')) for line in documento['lineas']), Decimal('0'))
+        fecha = _fecha(_valor(documento['lineas'][0], columns, 'Fecha elaboracion'))
+        document_debito = sum((_decimal(_valor(line, columns, 'Debito')) for line in documento['lineas']), Decimal('0'))
+        document_credito = sum((_decimal(_valor(line, columns, 'Credito')) for line in documento['lineas']), Decimal('0'))
         if document_debito.quantize(Decimal('0.01')) != document_credito.quantize(Decimal('0.01')):
             reference = '-'.join(key)
             raise ValueError(f'El comprobante {reference} no cuadra: dÃ©bito {document_debito} / crÃ©dito {document_credito}.')
@@ -170,16 +170,16 @@ def _guardar_comprobantes_en_lote(carga, filas, header_row, columns):
         for line in documento['lineas']:
             comprobante.movimientos.append(SiigoMovimiento(
                 secuencia=int(_valor(line, columns, 'Secuencia')),
-                codigo_contable=_texto(_valor(line, columns, 'CÃ³digo contable')),
+                codigo_contable=_texto(_valor(line, columns, 'Codigo contable')),
                 cuenta_contable=_texto(_valor(line, columns, 'Cuenta contable')),
-                identificacion=_texto(_valor(line, columns, 'IdentificaciÃ³n')) or None,
+                identificacion=_texto(_valor(line, columns, 'Identificacion')) or None,
                 sucursal=_texto(_valor(line, columns, 'Sucursal')) or None,
                 nombre_tercero=_texto(_valor(line, columns, 'Nombre tercero')) or None,
-                descripcion=_texto(_valor(line, columns, 'DescripciÃ³n')) or None,
+                descripcion=_texto(_valor(line, columns, 'Descripcion')) or None,
                 detalle=_texto(_valor(line, columns, 'Detalle')) or None,
                 centro_costo=_texto(_valor(line, columns, 'Centro de costo')) or None,
-                debito=_decimal(_valor(line, columns, 'DÃ©bito')),
-                credito=_decimal(_valor(line, columns, 'CrÃ©dito')),
+                debito=_decimal(_valor(line, columns, 'Debito')),
+                credito=_decimal(_valor(line, columns, 'Credito')),
             ))
             movements += 1
         db.session.add(comprobante)
