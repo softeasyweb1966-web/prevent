@@ -19,6 +19,8 @@ Ya en otros reportes a nivel administrativo, debemos poder tener información ge
 
 De este módulo sale la liquidación de comisiones
 
+Ahora tenemos que pasar a crear una opción llamada Vendedores, en esa opción debemos permitir crear vendedores, con sueldo básico, más porcentaje comisión, luego el vendedor debe tener un usuario cuando se loguea con ese usuario debe tener la opción de crear empresas y/o pacientes particulares, poder subir las constancias de pago de los clientes y/o pacientes, debe tener una opción de registrar novedades por cliente, solo ve sus clientes, al final del periodo , el sistema debe liquidar la comisión con base solo en los recibos de pago subidos al sistema por cliente. Necesito su opinion y aporte para hacer algo fácil dinámico, confiable y amigable, escucho ideas. Ojo importante saber que tenemos información del contable y del administrativo ya cargada y de pronto algo nos puede ayudar. Además es importante que garantice que el cliente fue creado en el administrativo y en el contable
+
   
 
 

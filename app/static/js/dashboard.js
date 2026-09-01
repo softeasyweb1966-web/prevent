@@ -11362,6 +11362,7 @@ async function mostrarAgregarClienteComercial() {
     document.getElementById('clienteComercialMedioAutorizacion').value = 'WHATSAPP';
     document.getElementById('clienteComercialRequiereFactura').checked = false;
     document.getElementById('clienteComercialDocumentosCompletos').checked = false;
+    document.getElementById('clienteComercialConfirmadoAdministrativo').checked = false;
     document.getElementById('clienteComercialPagareFirmado').checked = false;
     document.getElementById('clienteComercialExamenesSearch').value = '';
     document.getElementById('clienteComercialExamenesSearch').dataset.showAll = 'false';
@@ -11420,6 +11421,7 @@ async function editarClienteComercial(id) {
     document.getElementById('clienteComercialServicios').value = cliente.servicios_convenidos || '';
     document.getElementById('clienteComercialTarifas').value = cliente.tarifas_convenidas || '';
     document.getElementById('clienteComercialDocumentosCompletos').checked = cliente.documentos_legales_completos === true;
+    document.getElementById('clienteComercialConfirmadoAdministrativo').checked = cliente.confirmado_administrativo === true;
     document.getElementById('clienteComercialDocumentosDetalle').value = cliente.documentos_legales_detalle || '';
     document.getElementById('clienteComercialPagareFirmado').checked = cliente.pagare_firmado === true;
     document.getElementById('clienteComercialPagareDetalle').value = cliente.pagare_detalle || '';
@@ -11805,6 +11807,7 @@ async function guardarClienteComercialConfig(event) {
     formData.append('servicios_convenidos', document.getElementById('clienteComercialServicios').value.trim());
     formData.append('tarifas_convenidas', document.getElementById('clienteComercialTarifas').value.trim());
     formData.append('documentos_legales_completos', document.getElementById('clienteComercialDocumentosCompletos').checked ? 'true' : 'false');
+    formData.append('confirmado_administrativo', document.getElementById('clienteComercialConfirmadoAdministrativo').checked ? 'true' : 'false');
     formData.append('documentos_legales_detalle', document.getElementById('clienteComercialDocumentosDetalle').value.trim());
     formData.append('pagare_firmado', document.getElementById('clienteComercialPagareFirmado').checked ? 'true' : 'false');
     formData.append('pagare_detalle', document.getElementById('clienteComercialPagareDetalle').value.trim());

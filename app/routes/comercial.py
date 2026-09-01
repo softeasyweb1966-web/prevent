@@ -22,6 +22,7 @@ from app.models import (
     ClienteComercialTarifa,
     ComercialCatalogoItem,
     ComercialPaqueteDetalle,
+    SiigoCliente,
     Vendedor,
     db,
 )
@@ -460,6 +461,7 @@ def _build_cliente_payload(data):
         'tarifas_convenidas': _normalize_optional_text(data.get('tarifas_convenidas')),
         'documentos_legales_completos': _parse_bool(data.get('documentos_legales_completos'), False),
         'documentos_legales_detalle': _normalize_optional_text(data.get('documentos_legales_detalle')),
+        'confirmado_administrativo': _parse_bool(data.get('confirmado_administrativo'), False),
         'pagare_firmado': _parse_bool(data.get('pagare_firmado'), False),
         'pagare_detalle': _normalize_optional_text(data.get('pagare_detalle')),
         'observaciones': _normalize_optional_text(data.get('observaciones')),
@@ -1237,6 +1239,17 @@ def _serialize_cliente(cliente):
         for adjunto in adjuntos
         if adjunto.tipo_documento == 'PAGARE'
     ]
+    nit = (cliente.nit or '').strip()
+    nit_sin_digito = nit.split('-', 1)[0].strip()
+    confirmado_contable = bool(nit and SiigoCliente.query.filter(
+        SiigoCliente.identificacion.in_([nit, nit_sin_digito])
+    ).first())
+    estado_integracion = (
+        'LISTO' if cliente.confirmado_administrativo and confirmado_contable
+        else 'PENDIENTE_AMBOS' if not cliente.confirmado_administrativo and not confirmado_contable
+        else 'PENDIENTE_ADMINISTRATIVO' if not cliente.confirmado_administrativo
+        else 'PENDIENTE_CONTABLE'
+    )
 
     return {
         'id': cliente.id,
@@ -1270,6 +1283,10 @@ def _serialize_cliente(cliente):
         'tarifas_convenidas': cliente.tarifas_convenidas,
         'documentos_legales_completos': cliente.documentos_legales_completos,
         'documentos_legales_detalle': cliente.documentos_legales_detalle,
+        'confirmado_administrativo': cliente.confirmado_administrativo,
+        'confirmado_administrativo_at': cliente.confirmado_administrativo_at.strftime('%Y-%m-%d %H:%M:%S') if cliente.confirmado_administrativo_at else None,
+        'confirmado_contable': confirmado_contable,
+        'estado_integracion': estado_integracion,
         'pagare_firmado': cliente.pagare_firmado,
         'pagare_detalle': cliente.pagare_detalle,
         'observaciones': cliente.observaciones,
@@ -1836,6 +1853,9 @@ def crear_cliente():
         _validar_pagare_cliente(payload)
 
         cliente = ClienteComercial(**payload)
+        if cliente.confirmado_administrativo:
+            cliente.confirmado_administrativo_at = datetime.utcnow()
+            cliente.confirmado_administrativo_por_id = current_user.id
         db.session.add(cliente)
         db.session.flush()
 
@@ -1883,6 +1903,13 @@ def actualizar_cliente(cliente_id):
 
         for field, value in payload.items():
             setattr(cliente, field, value)
+        if cliente.confirmado_administrativo:
+            if cliente.confirmado_administrativo_at is None:
+                cliente.confirmado_administrativo_at = datetime.utcnow()
+                cliente.confirmado_administrativo_por_id = current_user.id
+        else:
+            cliente.confirmado_administrativo_at = None
+            cliente.confirmado_administrativo_por_id = None
 
         _guardar_adjuntos(cliente, request.files.getlist('documentos_legales_adjuntos'), 'DOCUMENTO_LEGAL')
         _guardar_adjuntos(cliente, request.files.getlist('pagare_adjuntos'), 'PAGARE')
