@@ -56,7 +56,8 @@ async function consultarComprobantesSiigo(event) {
     if (event) event.preventDefault();
     const params = new URLSearchParams();
     [['cliente', 'siigoClienteFiltro'], ['tipo', 'siigoTipoFiltro'], ['numero', 'siigoNumeroFiltro'], ['desde', 'siigoDesdeFiltro'], ['hasta', 'siigoHastaFiltro']].forEach(([key, id]) => {
-        const value = document.getElementById(id).value.trim();
+        const input = document.getElementById(id);
+        const value = key === 'cliente' && input.dataset.identificacion ? input.dataset.identificacion : input.value.trim();
         if (value) params.set(key, value);
     });
     const container = document.getElementById('siigoConsultaResultado');
@@ -69,6 +70,93 @@ async function consultarComprobantesSiigo(event) {
         container.innerHTML = rows.length ? `<table class="data-table"><thead><tr><th>Documento</th><th>Fecha</th><th>Movimientos</th><th>Debito</th><th>Credito</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeSiigo(`${row.tipo}-${row.codigo}-${row.numero}`)}</td><td>${escapeSiigo(row.fecha)}</td><td>${row.movimientos}</td><td>${formatoSiigoNumero(row.debito)}</td><td>${formatoSiigoNumero(row.credito)}</td></tr>`).join('')}</tbody></table>` : 'No se encontraron comprobantes con esos filtros.';
     } catch (error) {
         container.textContent = error.message;
+    }
+}
+
+function configurarAutocompletadoTercerosSiigo() {
+    const input = document.getElementById('siigoClienteFiltro');
+    if (!input || input.dataset.autocompleteBound) return;
+    const suggestions = document.createElement('div');
+    suggestions.id = 'siigoTerceroSugerencias';
+    suggestions.className = 'table-container';
+    suggestions.style.cssText = 'display:none; position:absolute; z-index:5; width:100%; max-height:220px; overflow:auto; background:#fff;';
+    input.parentElement.style.position = 'relative';
+    input.parentElement.appendChild(suggestions);
+    let timer;
+
+    input.addEventListener('input', () => {
+        delete input.dataset.identificacion;
+        clearTimeout(timer);
+        const search = input.value.trim();
+        if (search.length < 2) {
+            suggestions.style.display = 'none';
+            return;
+        }
+        timer = setTimeout(() => cargarSugerenciasTerceroSiigo(search, input, suggestions), 250);
+    });
+    input.addEventListener('blur', () => setTimeout(() => { suggestions.style.display = 'none'; }, 180));
+    input.dataset.autocompleteBound = 'true';
+}
+
+async function cargarSugerenciasTerceroSiigo(search, input, suggestions) {
+    try {
+        const response = await fetch(`/api/contable/clientes?q=${encodeURIComponent(search)}`, { credentials: 'include' });
+        const data = await leerRespuestaSiigo(response);
+        if (!response.ok) throw new Error(data.error || 'No fue posible buscar terceros.');
+        const clientes = data.clientes || [];
+        if (!clientes.length) {
+            suggestions.style.display = 'none';
+            return;
+        }
+        suggestions.innerHTML = clientes.slice(0, 12).map(cliente => `<button type="button" class="action-btn" style="display:block; width:100%; text-align:left; padding:8px; border:0; border-bottom:1px solid #eee;" data-id="${escapeSiigo(cliente.identificacion)}" data-name="${escapeSiigo(cliente.nombre)}">${escapeSiigo(cliente.nombre)} <span style="color:#666;">${escapeSiigo(cliente.identificacion)}</span></button>`).join('');
+        suggestions.querySelectorAll('button').forEach(button => button.addEventListener('mousedown', () => {
+            input.value = button.dataset.name;
+            input.dataset.identificacion = button.dataset.id;
+            suggestions.style.display = 'none';
+        }));
+        suggestions.style.display = 'block';
+    } catch (error) {
+        suggestions.style.display = 'none';
+    }
+}
+
+function crearPanelComparativoSiigo() {
+    let panel = document.getElementById('siigoComparativoPanel');
+    if (panel) return panel;
+    const consulta = document.getElementById('siigoConsultaResultado').closest('.recent-section');
+    panel = document.createElement('section');
+    panel.id = 'siigoComparativoPanel';
+    panel.className = 'recent-section';
+    panel.style.marginTop = '16px';
+    panel.innerHTML = `<h3 style="margin-top:0;">Clientes nuevos y clientes que no volvieron</h3><p class="form-help">Se comparan las facturas FV de dos periodos. Un cliente nuevo factura en el segundo periodo y no en el primero.</p><form id="siigoComparativoForm"><div class="form-row"><div class="form-group"><label>Periodo 1: desde</label><input id="siigoPeriodoADesde" type="date" required></div><div class="form-group"><label>Periodo 1: hasta</label><input id="siigoPeriodoAHasta" type="date" required></div><div class="form-group"><label>Periodo 2: desde</label><input id="siigoPeriodoBDesde" type="date" required></div><div class="form-group"><label>Periodo 2: hasta</label><input id="siigoPeriodoBHasta" type="date" required></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar comparativo</button></div></div></form><div id="siigoComparativoResultado" class="table-container" style="margin-top:16px;"></div>`;
+    consulta.insertAdjacentElement('afterend', panel);
+    panel.querySelector('form').addEventListener('submit', consultarComparativoClientesSiigo);
+    return panel;
+}
+
+function mostrarComparativoClientes() {
+    const panel = crearPanelComparativoSiigo();
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function consultarComparativoClientesSiigo(event) {
+    event.preventDefault();
+    const params = new URLSearchParams({
+        periodo_a_desde: document.getElementById('siigoPeriodoADesde').value,
+        periodo_a_hasta: document.getElementById('siigoPeriodoAHasta').value,
+        periodo_b_desde: document.getElementById('siigoPeriodoBDesde').value,
+        periodo_b_hasta: document.getElementById('siigoPeriodoBHasta').value,
+    });
+    const result = document.getElementById('siigoComparativoResultado');
+    result.textContent = 'Generando comparativo...';
+    try {
+        const response = await fetch(`/api/contable/comparativo-clientes?${params.toString()}`, { credentials: 'include' });
+        const data = await leerRespuestaSiigo(response);
+        if (!response.ok) throw new Error(data.error || 'No fue posible generar el comparativo.');
+        const table = (items, empty) => items.length ? `<table class="data-table"><thead><tr><th>Identificacion</th><th>Cliente</th><th>Facturas</th></tr></thead><tbody>${items.map(item => `<tr><td>${escapeSiigo(item.identificacion)}</td><td>${escapeSiigo(item.nombre)}</td><td>${item.facturas}</td></tr>`).join('')}</tbody></table>` : `<p class="form-help">${empty}</p>`;
+        result.innerHTML = `<div class="stats-grid"><div class="stat-card"><h3>Clientes periodo 1</h3><p class="stat-number">${data.clientes_periodo_a}</p></div><div class="stat-card"><h3>Clientes periodo 2</h3><p class="stat-number">${data.clientes_periodo_b}</p></div><div class="stat-card"><h3>Nuevos</h3><p class="stat-number">${data.nuevos.length}</p></div><div class="stat-card"><h3>No volvieron</h3><p class="stat-number">${data.no_volvieron.length}</p></div></div><div class="form-row" style="align-items:flex-start;"><div style="flex:1; min-width:280px;"><h4>Clientes nuevos</h4>${table(data.nuevos, 'No hubo clientes nuevos en el segundo periodo.')}</div><div style="flex:1; min-width:280px;"><h4>Clientes que no volvieron</h4>${table(data.no_volvieron, 'Todos los clientes del primer periodo volvieron a facturar.')}</div></div>`;
+    } catch (error) {
+        result.textContent = error.message;
     }
 }
 
@@ -93,6 +181,8 @@ function inicializarVentasSiigo() {
         form.addEventListener('submit', consultarComprobantesSiigo);
         form.dataset.bound = 'true';
     }
+    configurarAutocompletadoTercerosSiigo();
+    crearPanelComparativoSiigo();
     cargarResumenSiigo().catch(error => {
         const result = document.getElementById('siigoCargaResultado');
         if (result) result.textContent = error.message;

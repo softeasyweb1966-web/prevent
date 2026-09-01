@@ -9,7 +9,7 @@ import unicodedata
 
 from flask import jsonify, request
 from flask_login import current_user, login_required
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 
 from app.models import (
     SiigoCarga,
@@ -425,7 +425,22 @@ def consultar_clientes():
             like = f'%{search}%'
             query = query.filter(or_(SiigoCliente.identificacion.ilike(like), SiigoCliente.nombre.ilike(like)))
         items = query.order_by(SiigoCliente.nombre).limit(100).all()
-        return jsonify({'clientes': [{'identificacion': item.identificacion, 'sucursal': item.sucursal, 'nombre': item.nombre, 'ciudad': item.ciudad, 'estado': item.estado} for item in items]})
+        clientes = [{'identificacion': item.identificacion, 'sucursal': item.sucursal, 'nombre': item.nombre, 'ciudad': item.ciudad, 'estado': item.estado} for item in items]
+        if not clientes:
+            # Los comprobantes permiten buscar terceros incluso si el catálogo aún no se ha cargado.
+            terceros = db.session.query(
+                SiigoMovimiento.identificacion,
+                SiigoMovimiento.sucursal,
+                SiigoMovimiento.nombre_tercero,
+            ).filter(SiigoMovimiento.identificacion.isnot(None))
+            if search:
+                like = f'%{search}%'
+                terceros = terceros.filter(or_(SiigoMovimiento.identificacion.ilike(like), SiigoMovimiento.nombre_tercero.ilike(like)))
+            clientes = [
+                {'identificacion': identificacion, 'sucursal': sucursal or '0', 'nombre': nombre or '', 'ciudad': None, 'estado': None}
+                for identificacion, sucursal, nombre in terceros.distinct().order_by(SiigoMovimiento.nombre_tercero).limit(100).all()
+            ]
+        return jsonify({'clientes': clientes})
     except PermissionError as exc:
         return jsonify({'error': str(exc)}), 403
 
@@ -458,5 +473,46 @@ def consultar_comprobantes():
             'fecha': item.fecha_elaboracion.isoformat(), 'debito': float(item.total_debito), 'credito': float(item.total_credito),
             'movimientos': len(item.movimientos),
         } for item in items]})
+    except (ValueError, PermissionError) as exc:
+        return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
+
+
+@contable_bp.route('/comparativo-clientes', methods=['GET'])
+@login_required
+def comparativo_clientes():
+    try:
+        _requiere_ventas()
+        periodo_a_desde = _fecha(request.args.get('periodo_a_desde'))
+        periodo_a_hasta = _fecha(request.args.get('periodo_a_hasta'))
+        periodo_b_desde = _fecha(request.args.get('periodo_b_desde'))
+        periodo_b_hasta = _fecha(request.args.get('periodo_b_hasta'))
+        if periodo_a_desde > periodo_a_hasta or periodo_b_desde > periodo_b_hasta:
+            raise ValueError('La fecha inicial no puede ser posterior a la fecha final.')
+
+        def terceros_del_periodo(desde, hasta):
+            rows = db.session.query(
+                SiigoMovimiento.identificacion,
+                func.max(SiigoMovimiento.nombre_tercero),
+                func.count(func.distinct(SiigoComprobante.id)),
+            ).join(SiigoComprobante).filter(
+                SiigoComprobante.tipo_documento == 'FV',
+                SiigoComprobante.fecha_elaboracion.between(desde, hasta),
+                SiigoMovimiento.identificacion.isnot(None),
+            ).group_by(SiigoMovimiento.identificacion).all()
+            return {
+                identificacion: {'identificacion': identificacion, 'nombre': nombre or '', 'facturas': int(facturas)}
+                for identificacion, nombre, facturas in rows
+            }
+
+        periodo_a = terceros_del_periodo(periodo_a_desde, periodo_a_hasta)
+        periodo_b = terceros_del_periodo(periodo_b_desde, periodo_b_hasta)
+        nuevos = sorted((periodo_b[key] for key in periodo_b.keys() - periodo_a.keys()), key=lambda item: item['nombre'])
+        no_volvieron = sorted((periodo_a[key] for key in periodo_a.keys() - periodo_b.keys()), key=lambda item: item['nombre'])
+        return jsonify({
+            'clientes_periodo_a': len(periodo_a),
+            'clientes_periodo_b': len(periodo_b),
+            'nuevos': nuevos,
+            'no_volvieron': no_volvieron,
+        })
     except (ValueError, PermissionError) as exc:
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
