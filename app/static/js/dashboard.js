@@ -2321,6 +2321,8 @@ function setupMenuNavigation() {
                     window._saborArtesanalSeccionActual = '';
                     setSidebarGroupOpen('sabor_artesanal', true);
                 }
+            } else if (module === 'comercial' && section) {
+                window._comercialSeccionActual = section;
             }
             switchModule(module);
         });
@@ -3787,10 +3789,12 @@ function switchModule(moduleName) {
         if (userMenu) userMenu.style.display = '';
     }
     if (moduleName === 'comercial') {
-        displayName = 'Gestion Comercial';
+        displayName = window._comercialSeccionActual === 'vendedores'
+            ? 'Vendedores'
+            : 'Gestion Comercial';
     }
     if (moduleName === 'gestion_informacion') {
-        displayName = 'Gestión Información';
+        displayName = 'Atenciones';
     }
     if (moduleName === 'sabor_artesanal') {
         displayName = 'Sabor Artesanal';
