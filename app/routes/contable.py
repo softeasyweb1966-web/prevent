@@ -530,24 +530,54 @@ def comparativo_clientes():
         no_volvieron = sorted((periodo_a[key] for key in periodo_a.keys() - periodo_b.keys()), key=lambda item: item['nombre'])
 
         identificaciones = list((periodo_b.keys() - periodo_a.keys()) | (periodo_a.keys() - periodo_b.keys()))
-        saldos_cartera = {}
+        facturas_cartera = {}
+        pagos_sin_factura = {}
         if identificaciones:
-            filas_cartera = db.session.query(
-                SiigoMovimiento.identificacion,
-                func.coalesce(func.sum(SiigoMovimiento.debito - SiigoMovimiento.credito), 0),
-            ).join(SiigoComprobante).filter(
+            filas_factura = db.session.query(SiigoComprobante, SiigoMovimiento).join(SiigoMovimiento).filter(
+                SiigoComprobante.tipo_documento == 'FV',
                 SiigoMovimiento.codigo_contable == '13050501',
                 SiigoMovimiento.identificacion.in_(identificaciones),
                 SiigoComprobante.fecha_elaboracion <= date.today(),
-            ).group_by(SiigoMovimiento.identificacion).all()
-            saldos_cartera = {identificacion: saldo or Decimal('0') for identificacion, saldo in filas_cartera}
+                SiigoMovimiento.debito > 0,
+            ).all()
+            for comprobante, movimiento in filas_factura:
+                referencia = _referencia_factura(movimiento.detalle) or f'FV-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}'
+                factura = facturas_cartera.setdefault(referencia, {
+                    'identificacion': movimiento.identificacion,
+                    'valor': Decimal('0'),
+                    'pagado': Decimal('0'),
+                })
+                factura['valor'] += movimiento.debito - movimiento.credito
+
+            filas_pago = db.session.query(SiigoComprobante, SiigoMovimiento).join(SiigoMovimiento).filter(
+                SiigoComprobante.tipo_documento == 'RC',
+                SiigoMovimiento.codigo_contable == '13050501',
+                SiigoMovimiento.identificacion.in_(identificaciones),
+                SiigoComprobante.fecha_elaboracion <= date.today(),
+                SiigoMovimiento.credito > 0,
+            ).all()
+            for comprobante, movimiento in filas_pago:
+                referencia = _referencia_factura(movimiento.descripcion)
+                factura = facturas_cartera.get(referencia)
+                if factura is None:
+                    pagos_sin_factura[movimiento.identificacion] = pagos_sin_factura.get(movimiento.identificacion, Decimal('0')) + movimiento.credito
+                else:
+                    factura['pagado'] += movimiento.credito
 
         def totales(items):
-            saldos = [saldos_cartera.get(item['identificacion'], Decimal('0')) for item in items]
+            identificaciones_grupo = {item['identificacion'] for item in items}
+            cartera = Decimal('0')
+            pagos_pendientes = sum((pagos_sin_factura.get(identificacion, Decimal('0')) for identificacion in identificaciones_grupo), Decimal('0'))
+            for factura in facturas_cartera.values():
+                if factura['identificacion'] not in identificaciones_grupo:
+                    continue
+                saldo = factura['valor'] - factura['pagado']
+                cartera += max(saldo, Decimal('0'))
+                pagos_pendientes += max(-saldo, Decimal('0'))
             return {
                 'facturacion': float(sum((item['facturacion'] for item in items), Decimal('0'))),
-                'cartera': float(sum((max(saldo, Decimal('0')) for saldo in saldos), Decimal('0'))),
-                'saldo_favor': float(sum((-min(saldo, Decimal('0')) for saldo in saldos), Decimal('0'))),
+                'cartera': float(cartera),
+                'pagos_pendientes_conciliar': float(pagos_pendientes),
             }
 
         return jsonify({
