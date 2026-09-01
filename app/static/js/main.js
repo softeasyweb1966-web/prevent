@@ -1,5 +1,18 @@
 // Utilidades generales
 
+// Escapa caracteres HTML para insertar texto de forma segura en innerHTML.
+// Se define global (window) porque dashboard.js y otros modulos la usan.
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+window.escapeHtml = escapeHtml;
+
 function formatCurrency(value) {
     return new Intl.NumberFormat('es-CO', {
         style: 'currency',

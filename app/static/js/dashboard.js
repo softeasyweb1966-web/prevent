@@ -7764,18 +7764,6 @@ function renderConsultaComercialResults(sectionName, query = '') {
         return campos.some(value => String(value || '').toLowerCase().includes(normalizedQuery));
     });
 
-    // Si aun no hay datos cargados en memoria, los traemos y re-renderizamos.
-    if (items.length === 0 && typeof config.load === 'function') {
-        Promise.resolve(config.load())
-            .then(() => {
-                const nuevos = (typeof config.getItems === 'function') ? config.getItems() : [];
-                if (Array.isArray(nuevos) && nuevos.length > 0) {
-                    renderConsultaComercialResults(sectionName, query);
-                }
-            })
-            .catch(err => console.error('No se pudieron cargar los datos de la consulta:', err));
-    }
-
     if (filtered.length === 0) {
         summary.textContent = 'No encontramos resultados con esa búsqueda.';
         results.innerHTML = '<div class="comercial-search-empty">No hay coincidencias. Prueba con otro nombre, código, documento o contacto.</div>';
@@ -7791,7 +7779,13 @@ function renderConsultaComercialResults(sectionName, query = '') {
         ? `<div class="comercial-search-meta" style="margin-bottom:8px;">Mostrando ${visibleItems.length} de ${filtered.length} resultados. Usa "Ver todos" para abrir el listado completo.</div>`
         : '';
     results.innerHTML = truncatedNotice + visibleItems.map(item => {
-        const view = config.renderResult(item);
+        let view;
+        try {
+            view = config.renderResult(item) || {};
+        } catch (err) {
+            console.error('Error renderizando resultado comercial:', err, item);
+            view = { title: item && (item.nombre || item.razon_social) || 'Registro' };
+        }
         const parts = [
             `<strong>${escapeHtml(view.title || 'Registro')}</strong>`,
             view.subtitle ? `<div class="comercial-search-subtitle">${escapeHtml(view.subtitle)}</div>` : '',
