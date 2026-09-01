@@ -40,6 +40,25 @@ def _normalizar(value):
     return ''.join(char for char in text if unicodedata.category(char) != 'Mn')
 
 
+def _normalizar_encabezado(value):
+    """Acepta encabezados SIIGO incluso cuando Excel reemplaza una tilde por U+FFFD."""
+    encabezado = _normalizar(value).replace('\ufffd', '')
+    equivalencias = {
+        'fecha elaboracin': 'fecha elaboracion',
+        'cdigo': 'codigo',
+        'cdigo contable': 'codigo contable',
+        'dbito': 'debito',
+        'crdito': 'credito',
+        'identificacin': 'identificacion',
+        'descripcin': 'descripcion',
+        'direccin': 'direccion',
+        'categora': 'categoria',
+        'relacin con': 'relacion con',
+        'verificacin': 'verificacion',
+    }
+    return equivalencias.get(encabezado, encabezado)
+
+
 def _decimal(value):
     if value in (None, ''):
         return Decimal('0')
@@ -115,7 +134,10 @@ def _leer_excel():
     try:
         import openpyxl
         libro = openpyxl.load_workbook(BytesIO(contenido), read_only=True, data_only=True)
-        filas = list(libro.active.iter_rows(values_only=True))
+        hoja = libro.active
+        # Algunas exportaciones SIIGO declaran solo la columna A aunque tengan más datos.
+        hoja.reset_dimensions()
+        filas = list(hoja.iter_rows(values_only=True))
         libro.close()
     except Exception as exc:
         raise ValueError(f'No fue posible leer el archivo Excel: {exc}') from exc
@@ -123,16 +145,16 @@ def _leer_excel():
 
 
 def _indice_encabezados(filas, requeridos):
-    required = {_normalizar(value) for value in requeridos}
+    required = {_normalizar_encabezado(value) for value in requeridos}
     for index, fila in enumerate(filas):
-        headers = [_normalizar(value) for value in fila]
+        headers = [_normalizar_encabezado(value) for value in fila]
         if required.issubset(set(headers)):
             return index, {header: position for position, header in enumerate(headers) if header}
     raise ValueError(f'No se encontraron las columnas requeridas: {", ".join(requeridos)}.')
 
 
 def _valor(fila, columns, name):
-    index = columns.get(_normalizar(name))
+    index = columns.get(_normalizar_encabezado(name))
     return fila[index] if index is not None and index < len(fila) else None
 
 
