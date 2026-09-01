@@ -618,13 +618,29 @@ def cartera_dinamica():
     try:
         _requiere_ventas()
         fecha_corte = _fecha(request.args.get('fecha_corte') or date.today().isoformat())
+        desde = _fecha(request.args.get('desde')) if request.args.get('desde') else None
+        hasta = _fecha(request.args.get('hasta')) if request.args.get('hasta') else None
+        cliente = _texto(request.args.get('cliente'))
+        if desde and hasta and desde > hasta:
+            raise ValueError('La fecha inicial no puede ser posterior a la fecha final.')
         facturas = {}
-        lineas_factura = db.session.query(SiigoComprobante, SiigoMovimiento).join(SiigoMovimiento).filter(
+        consulta_facturas = db.session.query(SiigoComprobante, SiigoMovimiento).join(SiigoMovimiento).filter(
             SiigoComprobante.tipo_documento == 'FV',
             SiigoMovimiento.codigo_contable == '13050501',
             SiigoComprobante.fecha_elaboracion <= fecha_corte,
             SiigoMovimiento.debito > 0,
-        ).all()
+        )
+        if desde:
+            consulta_facturas = consulta_facturas.filter(SiigoComprobante.fecha_elaboracion >= desde)
+        if hasta:
+            consulta_facturas = consulta_facturas.filter(SiigoComprobante.fecha_elaboracion <= hasta)
+        if cliente:
+            like = f'%{cliente}%'
+            consulta_facturas = consulta_facturas.filter(or_(
+                SiigoMovimiento.identificacion.ilike(like),
+                SiigoMovimiento.nombre_tercero.ilike(like),
+            ))
+        lineas_factura = consulta_facturas.all()
         for comprobante, movimiento in lineas_factura:
             referencia = _referencia_factura(movimiento.detalle) or f'FV-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}'
             item = facturas.setdefault(referencia, {
@@ -725,6 +741,9 @@ def cartera_dinamica():
 
         return jsonify({
             'fecha_corte': fecha_corte.isoformat(),
+            'desde': desde.isoformat() if desde else None,
+            'hasta': hasta.isoformat() if hasta else None,
+            'cliente': cliente or None,
             'periodos': serializar(sorted(periodos.values(), key=lambda item: item['periodo'])),
             'pagos_clientes': analisis_pagos,
             'pagos_sin_factura': pagos_sin_factura,

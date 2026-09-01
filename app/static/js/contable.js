@@ -188,9 +188,47 @@ function crearPanelCarteraDinamicaSiigo(tipo) {
     panel.innerHTML = esPagos
         ? `<h3 style="margin-top:0;">Analisis de pago de clientes</h3><p class="form-help">Cruza cada recibo de caja RC con la factura FV indicada en la descripcion. El promedio considera facturas totalmente pagadas.</p><form data-siigo-cartera="pagos"><div class="form-row"><div class="form-group"><label>Fecha de corte</label><input type="date" required value="${new Date().toISOString().slice(0, 10)}"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar analisis</button></div></div></form><div class="table-container" style="margin-top:16px;"></div>`
         : `<h3 style="margin-top:0;">Cartera y recaudo por periodo</h3><p class="form-help">Calculado desde las facturas FV y sus recibos de caja RC. La fecha de vencimiento corresponde a la cuota indicada por SIIGO.</p><form data-siigo-cartera="recaudo"><div class="form-row"><div class="form-group"><label>Fecha de corte</label><input type="date" required value="${new Date().toISOString().slice(0, 10)}"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar cartera</button></div></div></form><div class="table-container" style="margin-top:16px;"></div>`;
+    const form = panel.querySelector('form');
+    form.querySelector('.form-row > :last-child').insertAdjacentHTML('beforebegin', `<div class="form-group"><label>Facturado desde</label><input name="desde" type="date"></div><div class="form-group"><label>Facturado hasta</label><input name="hasta" type="date"></div><div class="form-group"><label>Cliente</label><input name="cliente" type="text" placeholder="Todos los clientes" autocomplete="off"></div>`);
     anchor.insertAdjacentElement('afterend', panel);
-    panel.querySelector('form').addEventListener('submit', event => consultarCarteraDinamicaSiigo(event, tipo));
+    configurarAutocompletadoCarteraSiigo(form.querySelector('[name="cliente"]'));
+    form.addEventListener('submit', event => consultarCarteraDinamicaSiigo(event, tipo));
     return panel;
+}
+
+function configurarAutocompletadoCarteraSiigo(input) {
+    const suggestions = document.createElement('div');
+    suggestions.className = 'table-container';
+    suggestions.style.cssText = 'display:none; position:absolute; z-index:5; width:100%; max-height:220px; overflow:auto; background:#fff;';
+    input.parentElement.style.position = 'relative';
+    input.parentElement.appendChild(suggestions);
+    let timer;
+    input.addEventListener('input', () => {
+        delete input.dataset.identificacion;
+        clearTimeout(timer);
+        const search = input.value.trim();
+        if (search.length < 2) {
+            suggestions.style.display = 'none';
+            return;
+        }
+        timer = setTimeout(async () => {
+            try {
+                const response = await fetch(`/api/contable/clientes?q=${encodeURIComponent(search)}`, { credentials: 'include' });
+                const data = await leerRespuestaSiigo(response);
+                if (!response.ok || !(data.clientes || []).length) return;
+                suggestions.innerHTML = data.clientes.slice(0, 10).map(cliente => `<button type="button" class="action-btn" style="display:block; width:100%; text-align:left; padding:8px; border:0; border-bottom:1px solid #eee;" data-id="${escapeSiigo(cliente.identificacion)}" data-name="${escapeSiigo(cliente.nombre)}">${escapeSiigo(cliente.nombre)} <span style="color:#666;">${escapeSiigo(cliente.identificacion)}</span></button>`).join('');
+                suggestions.querySelectorAll('button').forEach(button => button.addEventListener('mousedown', () => {
+                    input.value = button.dataset.name;
+                    input.dataset.identificacion = button.dataset.id;
+                    suggestions.style.display = 'none';
+                }));
+                suggestions.style.display = 'block';
+            } catch (error) {
+                suggestions.style.display = 'none';
+            }
+        }, 250);
+    });
+    input.addEventListener('blur', () => setTimeout(() => { suggestions.style.display = 'none'; }, 180));
 }
 
 async function consultarCarteraDinamicaSiigo(event, tipo) {
@@ -198,9 +236,17 @@ async function consultarCarteraDinamicaSiigo(event, tipo) {
     const panel = event.currentTarget.closest('.recent-section');
     const result = panel.querySelector('.table-container');
     const fechaCorte = event.currentTarget.querySelector('input[type="date"]').value;
+    const clienteInput = event.currentTarget.querySelector('[name="cliente"]');
+    const params = new URLSearchParams({ fecha_corte: fechaCorte });
+    ['desde', 'hasta'].forEach(name => {
+        const value = event.currentTarget.querySelector(`[name="${name}"]`).value;
+        if (value) params.set(name, value);
+    });
+    const cliente = clienteInput.dataset.identificacion || clienteInput.value.trim();
+    if (cliente) params.set('cliente', cliente);
     result.textContent = 'Calculando desde los comprobantes cargados...';
     try {
-        const response = await fetch(`/api/contable/cartera-dinamica?fecha_corte=${encodeURIComponent(fechaCorte)}`, { credentials: 'include' });
+        const response = await fetch(`/api/contable/cartera-dinamica?${params.toString()}`, { credentials: 'include' });
         const data = await leerRespuestaSiigo(response);
         if (!response.ok) throw new Error(data.error || 'No fue posible calcular la cartera.');
         if (tipo === 'pagos') {
