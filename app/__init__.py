@@ -658,6 +658,7 @@ def create_app(config_name='development'):
 def register_blueprints(app):
     """Registrar todos los blueprints de la aplicacion."""
     from flask import render_template
+    from app.security import ROLE_PERMISSION_DEFINITIONS
 
     from app.routes import (
         auth_bp,
@@ -675,7 +676,12 @@ def register_blueprints(app):
 
     @app.route('/dashboard')
     def dashboard():
-        return render_template('dashboard.html')
+        # Los permisos se entregan con la pagina para que crear roles no dependa
+        # de una segunda consulta del navegador.
+        return render_template(
+            'dashboard.html',
+            role_permission_options=ROLE_PERMISSION_DEFINITIONS,
+        )
 
     @app.route('/api')
     def api_info():

@@ -88,6 +88,7 @@ def _serialize_role(role):
         'menu_modules': menu_modules,
         'menu_permission_ids': [permiso.id for permiso in permisos_ordenados],
         'permission_ids': [permiso.id for permiso in permisos_ordenados],
+        'permission_names': [permiso.nombre for permiso in permisos_ordenados],
         'menu_permissions': [
             _serialize_menu_option(definition, permiso)
             for permiso in permisos_ordenados
@@ -163,17 +164,25 @@ def _resolve_menu_permissions(permission_ids):
 
 def _resolve_role_permissions(permission_ids):
     valid_ids = []
+    valid_names = []
     for raw_id in permission_ids or []:
         try:
             valid_ids.append(int(raw_id))
         except (TypeError, ValueError):
-            continue
+            permission_name = str(raw_id or '').strip()
+            if permission_name:
+                valid_names.append(permission_name)
 
-    if not valid_ids:
+    if not valid_ids and not valid_names:
         raise ValueError('Debe seleccionar al menos un permiso para el rol')
 
-    permisos = Permiso.query.filter(Permiso.id.in_(valid_ids)).all()
-    if len(permisos) != len(set(valid_ids)):
+    permisos = []
+    if valid_ids:
+        permisos.extend(Permiso.query.filter(Permiso.id.in_(valid_ids)).all())
+    if valid_names:
+        permisos.extend(Permiso.query.filter(Permiso.nombre.in_(valid_names)).all())
+
+    if len({permiso.id for permiso in permisos}) != len(set(valid_ids)) + len(set(valid_names)):
         raise ValueError('Uno o mas permisos seleccionados no son validos')
 
     valid_permission_names = {definition['permiso'] for definition in ROLE_PERMISSION_DEFINITIONS}

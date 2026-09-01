@@ -5,6 +5,19 @@ let empleadosList = [];
 let tiposNovedadList = [];
 let rolesData = [];
 let menuOptionsData = [];
+
+function loadEmbeddedRoleMenuOptions() {
+    const source = document.getElementById('rolePermissionOptions');
+    if (!source) return [];
+
+    try {
+        const options = JSON.parse(source.textContent || '[]');
+        return Array.isArray(options) ? options : [];
+    } catch (error) {
+        console.error('Error leyendo permisos incorporados para roles:', error);
+        return [];
+    }
+}
 let chatState = {
     initialized: false,
     users: [],
@@ -1796,7 +1809,7 @@ function renderRoleMenuPermissions(selectedIds = []) {
     const selected = new Set((selectedIds || []).map(id => String(id)));
     const renderOption = option => `
         <label class="role-menu-option">
-            <input type="checkbox" value="${option.permiso_id}" data-permission-name="${escapeHtml(option.permiso_nombre || '')}" ${selected.has(String(option.permiso_id)) ? 'checked' : ''}>
+            <input type="checkbox" value="${escapeHtml(option.permiso_nombre || option.permiso || option.permiso_id || '')}" data-permission-name="${escapeHtml(option.permiso_nombre || option.permiso || '')}" ${selected.has(String(option.permiso_nombre || option.permiso || option.permiso_id)) ? 'checked' : ''}>
             <div>
                 <strong>${escapeHtml(option.nombre || option.group || 'Permiso')}</strong>
                 <span>${escapeHtml(option.descripcion || '')}</span>
@@ -1836,7 +1849,7 @@ function renderRoleMenuPermissions(selectedIds = []) {
 
     const comercialMenu = menuOptions.find(option => option.module === 'comercial');
     const commercialMenuCheckbox = comercialMenu
-        ? container.querySelector(`input[value="${comercialMenu.permiso_id}"]`)
+        ? container.querySelector(`input[value="${comercialMenu.permiso_nombre || comercialMenu.permiso || comercialMenu.permiso_id}"]`)
         : null;
     const commercialOptionCheckboxes = Array.from(
         container.querySelectorAll('input[data-permission-name^="comercial_"]')
@@ -8924,6 +8937,12 @@ async function loadRoles() {
 }
 
 async function loadMenuOptions() {
+    const embeddedOptions = loadEmbeddedRoleMenuOptions();
+    if (embeddedOptions.length) {
+        menuOptionsData = embeddedOptions;
+        return;
+    }
+
     try {
         const response = await fetchUsuariosEndpoint('/api/usuarios/menu-options');
         const data = await response.json();
@@ -8978,8 +8997,8 @@ function renderRoleMenuPermissionsLegacyDuplicadoDos(selectedIds = []) {
 
 function getSelectedRolePermissionIds() {
     return Array.from(document.querySelectorAll('#rolMenuPermissions input[type="checkbox"]:checked'))
-        .map(input => Number(input.value))
-        .filter(value => Number.isFinite(value));
+        .map(input => input.value)
+        .filter(Boolean);
 }
 
 async function showNewUserForm() {
@@ -9278,7 +9297,7 @@ async function editRole(id) {
     document.getElementById('rolModalTitle').textContent = 'Editar Rol';
     document.getElementById('rolNombre').value = role.nombre || '';
     document.getElementById('rolDescripcion').value = role.descripcion || '';
-    renderRoleMenuPermissions(role.menu_permission_ids || []);
+    renderRoleMenuPermissions(role.permission_names || role.menu_permission_ids || []);
     document.getElementById('rolModal').classList.add('active');
 }
 
