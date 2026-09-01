@@ -525,10 +525,6 @@ function toggleComercialMesPanel() {
     switchComercialSection('mes');
 }
 
-function toggleComisionesMesPanel() {
-    toggleComercialMesPanel();
-}
-
 function scrollToModuleSection(elementId) {
     const target = document.getElementById(elementId);
     if (!target) return;
@@ -947,18 +943,6 @@ function openComercialPeriodoSeleccion() {
 function closeComercialPeriodoSeleccion() {
     const modal = document.getElementById('comercialPeriodoSeleccionModal');
     if (modal) modal.classList.remove('active');
-}
-
-function actualizarEtiquetaComisionesPeriodo() {
-    actualizarEtiquetaComercialPeriodo();
-}
-
-function openComisionesPeriodoSeleccion() {
-    openComercialPeriodoSeleccion();
-}
-
-function closeComisionesPeriodoSeleccion() {
-    closeComercialPeriodoSeleccion();
 }
 
 function actualizarEtiquetaImpuestosPeriodo() {
@@ -1752,51 +1736,6 @@ if (_originalEditarSeguimientoPago) {
     };
 }
 
-async function loadRoles() {
-    const tableBody = document.getElementById('rolesTable');
-    if (!tableBody) return;
-
-    try {
-        const response = await fetchUsuariosEndpoint('/api/usuarios/roles');
-        const roles = await response.json();
-        if (!response.ok) {
-            throw new Error(roles.error || 'No se pudo cargar la lista de roles');
-        }
-
-        rolesData = Array.isArray(roles) ? roles : [];
-        if (rolesData.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="5" class="loading">No hay roles configurados</td></tr>';
-            fillRoleSelect();
-            return;
-        }
-
-        tableBody.innerHTML = rolesData.map(role => {
-            const commercialCount = (role.permissions || []).filter(item => item.category === 'comercial').length;
-            const resumenAcceso = [
-                (role.menu_permissions || []).map(item => item.nombre).join(', ') || 'Sin menu',
-                commercialCount ? `${commercialCount} permisos comerciales` : 'Sin permisos comerciales'
-            ].join(' | ');
-            return `
-                <tr>
-                    <td>${escapeHtml(role.nombre || 'N/A')}</td>
-                    <td>${escapeHtml(role.descripcion || 'Sin descripcion')}</td>
-                    <td>${escapeHtml(resumenAcceso)}</td>
-                    <td>${Number(role.cantidad_usuarios || 0)}</td>
-                    <td>
-                        <button class="action-btn action-btn-edit" onclick="editRole(${role.id})">Editar</button>
-                        ${role.nombre !== 'Administrador' ? `<button class="action-btn action-btn-delete" onclick='deleteRole(${role.id}, ${JSON.stringify(role.nombre || '')})'>Eliminar</button>` : ''}
-                    </td>
-                </tr>
-            `;
-        }).join('');
-
-        fillRoleSelect();
-    } catch (error) {
-        console.error('Error cargando roles:', error);
-        tableBody.innerHTML = `<tr><td colspan="5" class="loading">${escapeHtml(error.message || 'Error al cargar roles')}</td></tr>`;
-    }
-}
-
 function renderRoleMenuPermissions(selectedIds = []) {
     const container = document.getElementById('rolMenuPermissions');
     if (!container) return;
@@ -1872,223 +1811,6 @@ function renderRoleMenuPermissions(selectedIds = []) {
             }
         });
     }
-}
-
-async function cargarVendedoresConfig() {
-    const tbody = document.getElementById('comercialVendedoresTable');
-    if (!tbody) return;
-
-    try {
-        const response = await fetch('/api/comercial/vendedores', { credentials: 'include' });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'No se pudo cargar la lista de vendedores');
-        }
-        const vendedores = await response.json();
-        vendedoresConfigData = Array.isArray(vendedores) ? vendedores : [];
-
-        if (vendedoresConfigData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay vendedores configurados</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = vendedoresConfigData.map(vendedor => `
-            <tr>
-                <td>${escapeHtml(vendedor.nombre || 'N/A')}</td>
-                <td>${escapeHtml(vendedor.documento || 'N/A')}</td>
-                <td>${Number(vendedor.porcentaje_comision_venta || 0).toFixed(2)}%</td>
-                <td>${Number(vendedor.porcentaje_comision_recaudo || 0).toFixed(2)}%</td>
-                <td>${formatCurrency(vendedor.monto_base_comision || 0)}</td>
-                <td>${vendedor.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
-                <td>
-                    ${canManageComercial('vendedores', 'update') ? `<button class="action-btn action-btn-edit" onclick="editarVendedorConfig(${vendedor.id})">Editar</button>` : ''}
-                    ${canManageComercial('vendedores', 'delete') ? `<button class="action-btn action-btn-delete" onclick="eliminarVendedorConfig(${vendedor.id})">Eliminar</button>` : ''}
-                </td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error cargando vendedores:', error);
-        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar vendedores</td></tr>';
-    }
-}
-
-async function cargarTarifasComercialesConfig() {
-    const tbody = document.getElementById('comercialTarifasTable');
-    if (!tbody) return;
-
-    try {
-        const response = await fetch('/api/comercial/tarifas', { credentials: 'include' });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'No se pudo cargar la lista de tarifas comerciales');
-        }
-        const tarifas = await response.json();
-        tarifasComercialesData = Array.isArray(tarifas) ? tarifas : [];
-
-        if (tarifasComercialesData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay tarifas diferenciales configuradas</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = tarifasComercialesData.map(tarifa => `
-            <tr>
-                <td>${escapeHtml(tarifa.cliente_nombre || 'N/A')}</td>
-                <td>
-                    <strong>${escapeHtml(tarifa.item_nombre || 'N/A')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(tarifa.tipo_item === 'EXAMEN' ? obtenerResumenClasificacionCatalogo(tarifa) : (tarifa.tipo_item || ''))}</div>
-                </td>
-                <td>${formatCurrency(tarifa.tarifa_base || 0)}</td>
-                <td>${formatCurrency(tarifa.tarifa_negociada || 0)}</td>
-                <td>${escapeHtml([tarifa.vigencia_desde || '', tarifa.vigencia_hasta || ''].filter(Boolean).join(' a ') || 'Abierta')}</td>
-                <td>${tarifa.activo ? '<span class="badge badge-success">Activa</span>' : '<span class="badge badge-danger">Inactiva</span>'}</td>
-                <td>
-                    ${canManageComercial('tarifas', 'update') ? `<button class="action-btn action-btn-edit" onclick="editarTarifaCliente(${tarifa.id})">Editar</button>` : ''}
-                    ${canManageComercial('tarifas', 'delete') ? `<button class="action-btn action-btn-delete" onclick="eliminarTarifaComercialConfig(${tarifa.id})">Eliminar</button>` : ''}
-                </td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error cargando tarifas comerciales:', error);
-        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar tarifas comerciales</td></tr>';
-    }
-}
-
-async function cargarCatalogoComercialConfig() {
-    const tbody = document.getElementById('comercialCatalogoTable');
-    if (!tbody) return;
-
-    try {
-        const response = await fetch('/api/comercial/catalogo', { credentials: 'include' });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'No se pudo cargar el catalogo comercial');
-        }
-        const items = await response.json();
-        catalogoComercialData = Array.isArray(items) ? items : [];
-
-        if (catalogoComercialData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay examenes o paquetes configurados</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = catalogoComercialData.map(item => {
-            const entity = getCatalogEntityFromTipoItem(item.tipo_item);
-            return `
-                <tr>
-                    <td>
-                        <strong>${escapeHtml(item.tipo_item || 'N/A')}</strong>
-                        ${item.tipo_item === 'EXAMEN' ? `<div style="color:#666; font-size:0.82rem;">${item.clasificacion_completa ? 'Listo para usar' : 'Pendiente de clasificar'}</div>` : ''}
-                    </td>
-                    <td>
-                        ${item.tipo_item === 'EXAMEN'
-                            ? `<span class="badge ${item.clasificacion_completa ? 'badge-info' : 'badge-warning-soft'}">${escapeHtml(obtenerResumenClasificacionCatalogo(item))}</span>`
-                            : '<span class="badge badge-secondary">No aplica</span>'}
-                    </td>
-                    <td>${escapeHtml(item.codigo || 'N/A')}</td>
-                    <td>
-                        <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
-                        <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.descripcion || '')}</div>
-                        ${item.tipo_item === 'PAQUETE' ? `<div style="color:#0b5ed7; font-size:0.82rem; margin-top:4px;">Incluye ${item.cantidad_componentes || 0} examen(es): ${escapeHtml(item.resumen_componentes || 'Sin examenes definidos')}</div>` : ''}
-                    </td>
-                    <td>${formatCurrency(item.tarifa_base || 0)}</td>
-                    <td>${item.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
-                    <td>
-                        ${canManageComercial(entity, 'update') ? `<button class="action-btn action-btn-edit" onclick="editarItemCatalogoComercial(${item.id})">Editar</button>` : ''}
-                        ${canManageComercial(entity, 'delete') ? `<button class="action-btn action-btn-delete" onclick="eliminarItemCatalogoComercial(${item.id})">Eliminar</button>` : ''}
-                    </td>
-                </tr>
-            `;
-        }).join('');
-    } catch (error) {
-        console.error('Error cargando catalogo comercial:', error);
-        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar catalogo comercial</td></tr>';
-    }
-}
-
-async function cargarClientesComercialesConfig() {
-    const tbody = document.getElementById('comercialClientesTable');
-    if (!tbody) return;
-
-    try {
-        const response = await fetch('/api/comercial/clientes', { credentials: 'include' });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'No se pudo cargar la lista de clientes comerciales');
-        }
-        const clientes = await response.json();
-        clientesComercialesData = Array.isArray(clientes) ? clientes : [];
-
-        if (clientesComercialesData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="loading">No hay clientes comerciales configurados</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = clientesComercialesData.map(cliente => `
-            <tr>
-                <td>
-                    <strong>${escapeHtml(cliente.razon_social || 'N/A')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.nit || cliente.nombre_comercial || 'Sin NIT')}</div>
-                </td>
-                <td>${escapeHtml(cliente.vendedor_nombre || 'N/A')}</td>
-                <td>${escapeHtml(cliente.condicion_comercial || 'N/A')}</td>
-                <td style="max-width:240px;">${escapeHtml(cliente.resumen_facturacion || 'N/A')}</td>
-                <td>
-                    ${escapeHtml(obtenerContactoPreferidoCliente(cliente) || 'N/A')}
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.email_facturacion || cliente.email_contacto_principal || cliente.email_empresa || 'Sin email')}</div>
-                </td>
-                <td>
-                    <div>Legales: ${cliente.documentos_legales_adjuntos?.length || 0}</div>
-                    <div>Pagare: ${cliente.pagare_adjuntos?.length || 0}</div>
-                </td>
-                <td>${escapeHtml(formatearEstadoCliente(obtenerEstadoCliente(cliente)))}</td>
-                <td>
-                    ${canManageComercial('clientes', 'update') ? `<button class="action-btn action-btn-edit" onclick="editarClienteComercial(${cliente.id})">Editar</button>` : ''}
-                    ${canManageComercial('clientes', 'delete') ? `<button class="action-btn action-btn-delete" onclick="eliminarClienteComercialConfig(${cliente.id})">Eliminar</button>` : ''}
-                </td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error cargando clientes comerciales:', error);
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Error al cargar clientes comerciales</td></tr>';
-    }
-}
-
-function renderSeguimientoAtencionesTable() {
-    const tbody = document.getElementById('clienteSeguimientoAtencionesTable');
-    if (!tbody) return;
-
-    const atenciones = clienteSeguimientoContext.atenciones || [];
-    if (!atenciones.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Este cliente aun no tiene atenciones registradas.</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = atenciones.map(atencion => {
-        const detalle = atencion.detalle_resumen || atencion.detalle_items_resumen || 'Sin detalle';
-        const acciones = [];
-        if (atencion.documento_id && canManageComercial('pagos', 'create')) {
-            acciones.push(`<button type="button" class="action-btn action-btn-edit" onclick="mostrarAgregarSeguimientoPago(${Number(atencion.documento_id)})">Registrar pago</button>`);
-        }
-        if (canManageComercial('atenciones', 'update')) {
-            acciones.push(`<button type="button" class="action-btn action-btn-edit" onclick="editarSeguimientoAtencion(${Number(atencion.id)})">Editar</button>`);
-        }
-        if (canManageComercial('atenciones', 'delete')) {
-            acciones.push(`<button type="button" class="action-btn action-btn-delete" onclick="eliminarSeguimientoAtencion(${Number(atencion.id)})">Eliminar</button>`);
-        }
-
-        return `
-            <tr>
-                <td>${escapeHtml(atencion.nro_atencion || 'N/A')}</td>
-                <td>${escapeHtml(atencion.fecha_atencion || 'N/A')}</td>
-                <td>${escapeHtml(atencion.pacientes_resumen || atencion.paciente_nombre || 'N/A')}</td>
-                <td style="max-width:320px;">${escapeHtml(detalle)}</td>
-                <td>${formatCurrency(atencion.valor_total || 0)}</td>
-                <td>${formatCurrency(atencion.saldo_pendiente || 0)}</td>
-                <td>${renderSeguimientoEstadoBadge(atencion.estado_cobro)}</td>
-                <td style="display:flex; gap:6px; flex-wrap:wrap;">${acciones.join('') || '<span style="color:#64748b;">Sin acciones</span>'}</td>
-            </tr>
-        `;
-    }).join('');
 }
 
 window.setTimeout(syncComercialPermissionUI, 0);
@@ -4863,6 +4585,7 @@ let areasConfigData = [];
 let cargosConfigData = [];
 let asignacionesLaboralesData = [];
 let vendedoresConfigData = [];
+let vendedorUsuariosAsignablesData = [];
 let clientesComercialesData = [];
 let catalogoComercialData = [];
 let tarifasComercialesData = [];
@@ -5573,117 +5296,6 @@ async function cargarHistorialCarguesAtenciones() {
     } catch (error) {
         console.error('Error cargando historial de atenciones del día:', error);
         tbody.innerHTML = `<tr><td colspan="6" class="loading">${escapeHtml(error.message || 'Error al cargar historial')}</td></tr>`;
-    }
-}
-
-async function consultarAtencionesDiaCargadas(page = 1) {
-    const results = document.getElementById('cargueAtencionesDiaResults');
-    const resumen = document.getElementById('cargueAtencionesDiaResumen');
-    const pageInfo = document.getElementById('cargueAtencionesDiaPageInfo');
-    const prevBtn = document.getElementById('cargueAtencionesDiaPrevBtn');
-    const nextBtn = document.getElementById('cargueAtencionesDiaNextBtn');
-    if (!results || !resumen || !pageInfo || !prevBtn || !nextBtn) return;
-
-    const nextPage = Math.max(1, Number(page || 1));
-    const acuerdoInput = document.getElementById('cargueAtencionesDiaFiltroAcuerdo');
-    const clienteIdInput = document.getElementById('cargueAtencionesDiaFiltroClienteId');
-    const vendedorWrap = document.getElementById('cargueAtencionesDiaFiltroVendedorWrap');
-    if (!hasActiveFiltersCargueAtencionesDia()) {
-        hideCargueAtencionesClienteSuggestions();
-        resetConsultaAtencionesDia('Ingresa uno o varios criterios para consultar atenciones cargadas.');
-        return;
-    }
-
-    results.innerHTML = '<div class="loading">Consultando registros...</div>';
-
-    const params = new URLSearchParams({
-        page: String(nextPage),
-        per_page: String(window.cargueAtencionesDiaState.perPage || 50)
-    });
-
-    const acuerdo = acuerdoInput?.value?.trim();
-    const clienteId = clienteIdInput?.value?.trim();
-    const vendedor = vendedorWrap?.style.display === 'none'
-        ? ''
-        : (document.getElementById('cargueAtencionesDiaFiltroVendedor')?.value?.trim() || '');
-    const condicionComercial = document.getElementById('cargueAtencionesDiaFiltroCondicionComercial')?.value?.trim();
-    const estado = document.getElementById('cargueAtencionesDiaFiltroEstado')?.value?.trim();
-    const fechaDesde = document.getElementById('cargueAtencionesDiaFechaDesde')?.value?.trim();
-    const fechaHasta = document.getElementById('cargueAtencionesDiaFechaHasta')?.value?.trim();
-
-    if (clienteId) params.set('cliente_id', clienteId);
-    if (acuerdo && !clienteId) params.set('acuerdo', acuerdo);
-    if (vendedor) params.set('vendedor', vendedor);
-    if (condicionComercial) params.set('condicion_comercial', condicionComercial);
-    if (estado) params.set('estado', estado);
-    if (fechaDesde) params.set('fecha_desde', fechaDesde);
-    if (fechaHasta) params.set('fecha_hasta', fechaHasta);
-
-    try {
-        const response = await fetch(`/api/comercial/cargue-atenciones/consulta?${params.toString()}`, { credentials: 'include' });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-            throw new Error(data.error || 'No se pudo consultar la información cargada');
-        }
-
-        const registros = Array.isArray(data.registros) ? data.registros : [];
-        window.cargueAtencionesDiaState.records = registros;
-        window.cargueAtencionesDiaState.page = Number(data.page || 1);
-        window.cargueAtencionesDiaState.pages = Number(data.pages || 0);
-        window.cargueAtencionesDiaState.total = Number(data.total || 0);
-
-        applyCargueAtencionesDiaScopeUI(data.scope);
-        updateCargueAtencionesDiaScope(data.scope);
-        if (data.search_required) {
-            resetConsultaAtencionesDia('Ingresa uno o varios criterios para consultar atenciones cargadas.');
-            return;
-        }
-        resumen.textContent = data.total
-            ? `${Number(data.total)} registro(s) encontrados.`
-            : 'No se encontraron registros con los filtros actuales.';
-        pageInfo.textContent = `Página ${Number(data.page || 0)} de ${Number(data.pages || 0)}`;
-        pageInfo.textContent = `Pagina ${Number(data.page || 0)} de ${Number(data.pages || 0)}`;
-        prevBtn.disabled = Number(data.page || 1) <= 1;
-        nextBtn.disabled = Number(data.page || 1) >= Number(data.pages || 0) || Number(data.pages || 0) === 0;
-
-        if (!registros.length) {
-            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay registros para mostrar.</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = registros.map(item => `
-            <tr>
-                <td>${escapeHtml(item.fecha_creacion_orden || item.fecha_factura || 'N/A')}</td>
-                <td>
-                    <strong>${escapeHtml(item.cliente_nombre || item.acuerdo_comercial || 'Sin cliente relacionado')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.empresa_mision || 'Sin empresa en misión')}</div>
-                </td>
-                <td>
-                    <strong>${escapeHtml(item.nombre_paciente || 'N/A')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.nro_identificacion || 'Sin identificación')}</div>
-                </td>
-                <td>
-                    <strong>${escapeHtml(item.servicio || 'N/A')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">Orden ${escapeHtml(item.nro_orden || 'N/A')}</div>
-                </td>
-                <td>${formatCurrency(Number(item.precio || 0))}</td>
-                <td>
-                    <strong>${escapeHtml(item.vendedor_responsable || item.nombre_vendedor || 'N/A')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.usuario_creacion || 'Sin usuario origen')}</div>
-                </td>
-                <td>
-                    <strong>${escapeHtml(item.estado_gestion || 'N/A')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(`Archivo: ${item.estado_orden || 'N/A'}`)}</div>
-                </td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error consultando atenciones cargadas:', error);
-        resumen.textContent = 'No se pudo consultar la información cargada.';
-        pageInfo.textContent = 'Página 0 de 0';
-        prevBtn.disabled = true;
-        nextBtn.disabled = true;
-        tbody.innerHTML = `<tr><td colspan="7" class="loading">${escapeHtml(error.message || 'Error al consultar registros')}</td></tr>`;
     }
 }
 
@@ -7367,37 +6979,6 @@ function renderClienteSeguimientoResumen() {
     }
 }
 
-function renderSeguimientoAtencionesTable() {
-    const tbody = document.getElementById('clienteSeguimientoAtencionesTable');
-    if (!tbody) return;
-
-    const atenciones = clienteSeguimientoContext.atenciones || [];
-    if (!atenciones.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Este cliente aún no tiene atenciones registradas.</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = atenciones.map(atencion => {
-        const detalle = atencion.detalle_resumen || atencion.detalle_items_resumen || 'Sin detalle';
-        const accion = atencion.documento_id
-            ? `<button type="button" class="action-btn action-btn-edit" onclick="mostrarAgregarSeguimientoPago(${Number(atencion.documento_id)})">Registrar pago</button>`
-            : '<span style="color:#64748b;">Sin acción</span>';
-
-        return `
-            <tr>
-                <td>${escapeHtml(atencion.nro_atencion || 'N/A')}</td>
-                <td>${escapeHtml(atencion.fecha_atencion || 'N/A')}</td>
-                <td>${escapeHtml(atencion.pacientes_resumen || atencion.paciente_nombre || 'N/A')}</td>
-                <td style="max-width:320px;">${escapeHtml(detalle)}</td>
-                <td>${formatCurrency(atencion.valor_total || 0)}</td>
-                <td>${formatCurrency(atencion.saldo_pendiente || 0)}</td>
-                <td>${renderSeguimientoEstadoBadge(atencion.estado_cobro)}</td>
-                <td>${accion}</td>
-            </tr>
-        `;
-    }).join('');
-}
-
 function renderSeguimientoDocumentosTable() {
     const tbody = document.getElementById('clienteSeguimientoDocumentosTable');
     if (!tbody) return;
@@ -7694,26 +7275,6 @@ function abrirAccionClienteSeguimiento(tipo) {
     }
 }
 
-async function mostrarAgregarAtencionCliente() {
-    if (!clienteSeguimientoContext.clienteId) {
-        showError('Selecciona primero un cliente comercial.');
-        return;
-    }
-
-    document.getElementById('seguimientoAtencionModalTitle').textContent = 'Nueva Atención';
-    document.getElementById('seguimientoAtencionForm')?.reset();
-    document.getElementById('seguimientoAtencionFecha').value = getTodayIsoDate();
-    clienteSeguimientoContext.draftDetalles = [];
-    renderSeguimientoDraftDetalles();
-    try {
-        await loadSeguimientoConvenioItems(document.getElementById('seguimientoAtencionFecha').value);
-    } catch (error) {
-        console.error('Error cargando convenio para atención:', error);
-        showError(error.message || 'No se pudieron cargar los items convenidos.');
-    }
-    document.getElementById('seguimientoAtencionModal')?.classList.add('active');
-}
-
 function closeSeguimientoAtencionModal() {
     document.getElementById('seguimientoAtencionModal')?.classList.remove('active');
     clienteSeguimientoContext.draftDetalles = [];
@@ -7755,51 +7316,6 @@ function agregarDetalleAtencionSeleccionado() {
 function eliminarDetalleAtencionSeguimiento(index) {
     clienteSeguimientoContext.draftDetalles.splice(index, 1);
     renderSeguimientoDraftDetalles();
-}
-
-async function guardarSeguimientoAtencion(event) {
-    event.preventDefault();
-
-    const clienteId = clienteSeguimientoContext.clienteId;
-    if (!clienteId) {
-        showError('No hay cliente activo para registrar la atención.');
-        return;
-    }
-
-    if (!(clienteSeguimientoContext.draftDetalles || []).length) {
-        showError('Agrega al menos un examen o paquete antes de guardar la atención.');
-        return;
-    }
-
-    try {
-        const response = await fetch(`/api/comercial/clientes/${clienteId}/atenciones`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-                fecha_atencion: document.getElementById('seguimientoAtencionFecha').value,
-                observaciones: document.getElementById('seguimientoAtencionObservaciones').value.trim(),
-                detalles: clienteSeguimientoContext.draftDetalles.map(detalle => ({
-                    catalogo_item_id: detalle.catalogo_item_id,
-                    paciente_documento: detalle.paciente_documento,
-                    paciente_nombre: detalle.paciente_nombre
-                }))
-            })
-        });
-        const data = await response.json();
-        if (!response.ok) {
-            showError(data.error || 'No fue posible registrar la atención.');
-            return;
-        }
-
-        showSuccess('Atención registrada.');
-        closeSeguimientoAtencionModal();
-        await cargarSeguimientoCliente(clienteId);
-        setSeguimientoPanelVisible('atenciones');
-    } catch (error) {
-        console.error('Error guardando atención de seguimiento:', error);
-        showError('Error de conexión al guardar la atención.');
-    }
 }
 
 function mostrarAgregarSeguimientoDocumento() {
@@ -8085,14 +7601,22 @@ const COMERCIAL_SECTION_CONFIG = {
         summaryId: 'comercialVendedoresResumen',
         prompt: 'Escribe para buscar un vendedor.',
         getItems: () => vendedoresConfigData,
-        matchFields: item => [item.nombre, item.documento, item.email, item.telefono],
+        matchFields: item => [item.nombre, item.documento, item.email, item.telefono, item.usuario_login, item.usuario_nombre],
         renderResult: item => ({
             title: item.nombre || 'Vendedor sin nombre',
             subtitle: [item.documento || 'Sin documento', item.email || '', item.telefono || ''].filter(Boolean).join(' · '),
             meta: `Comisión venta ${Number(item.porcentaje_comision_venta || 0).toFixed(2)}% · Comisión recaudo ${Number(item.porcentaje_comision_recaudo || 0).toFixed(2)}%`,
-            estado: item.activo ? 'Activo' : 'Inactivo'
+            estado: item.activo ? 'Activo' : 'Inactivo',
+            detail: item.usuario_login
+                ? `Ingresa al sistema con el usuario: ${item.usuario_login}`
+                : 'Sin usuario de acceso asignado'
         }),
         edit: id => editarVendedorConfig(id)
+    },
+    comisiones: {
+        panels: ['comercialComisionesSection'],
+        focusId: 'comercialComisionesSection',
+        load: () => inicializarPanelComisiones()
     },
     examenes: {
         panels: ['comercialCatalogoSection'],
@@ -8900,46 +8424,6 @@ async function loadUsuarios() {
     }
 }
 
-async function loadRoles() {
-    const tableBody = document.getElementById('rolesTable');
-    if (!tableBody) return;
-
-    try {
-        const response = await fetchUsuariosEndpoint('/api/usuarios/roles');
-        const roles = await response.json();
-
-        if (!response.ok) {
-            throw new Error(roles.error || 'No se pudo cargar la lista de roles');
-        }
-
-        rolesData = Array.isArray(roles) ? roles : [];
-
-        if (rolesData.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="5" class="loading">No hay roles configurados</td></tr>';
-            fillRoleSelect();
-            return;
-        }
-
-        tableBody.innerHTML = rolesData.map(role => `
-            <tr>
-                <td>${escapeHtml(role.nombre || 'N/A')}</td>
-                <td>${escapeHtml(role.descripcion || 'Sin descripción')}</td>
-                <td>${escapeHtml((role.menu_permissions || []).map(item => item.nombre).join(', ') || 'Sin accesos')}</td>
-                <td>${Number(role.cantidad_usuarios || 0)}</td>
-                <td>
-                    <button class="action-btn action-btn-edit" onclick="editRole(${role.id})">Editar</button>
-                    ${role.nombre !== 'Administrador' ? `<button class="action-btn action-btn-delete" onclick='deleteRole(${role.id}, ${JSON.stringify(role.nombre || '')})'>Eliminar</button>` : ''}
-                </td>
-            </tr>
-        `).join('');
-
-        fillRoleSelect();
-    } catch (error) {
-        console.error('Error cargando roles:', error);
-        tableBody.innerHTML = `<tr><td colspan="5" class="loading">${escapeHtml(error.message || 'Error al cargar roles')}</td></tr>`;
-    }
-}
-
 async function loadMenuOptions() {
     const embeddedOptions = loadEmbeddedRoleMenuOptions();
     if (embeddedOptions.length) {
@@ -8976,27 +8460,6 @@ function fillRoleSelect(selectedId = '') {
     if (selectedId) {
         select.value = String(selectedId);
     }
-}
-
-function renderRoleMenuPermissionsLegacyDuplicadoDos(selectedIds = []) {
-    const container = document.getElementById('rolMenuPermissions');
-    if (!container) return;
-
-    if (!Array.isArray(menuOptionsData) || menuOptionsData.length === 0) {
-        container.innerHTML = '<div class="loading">No fue posible cargar las opciones del menú.</div>';
-        return;
-    }
-
-    const selected = new Set((selectedIds || []).map(id => String(id)));
-    container.innerHTML = menuOptionsData.map(option => `
-        <label class="role-menu-option">
-            <input type="checkbox" value="${option.permiso_id}" ${selected.has(String(option.permiso_id)) ? 'checked' : ''}>
-            <div>
-                <strong>${escapeHtml(option.nombre || option.module || 'Módulo')}</strong>
-                <span>${escapeHtml(option.descripcion || '')}</span>
-            </div>
-        </label>
-    `).join('');
 }
 
 function getSelectedRolePermissionIds() {
@@ -10564,123 +10027,6 @@ async function cargarAsignacionesLaboralesConfig() {
     }
 }
 
-async function cargarVendedoresConfig() {
-    const tbody = document.getElementById('comercialVendedoresTable');
-    if (!tbody) return;
-
-    try {
-        const response = await fetch('/api/comercial/vendedores', { credentials: 'include' });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'No se pudo cargar la lista de vendedores');
-        }
-
-        const vendedores = await response.json();
-        vendedoresConfigData = Array.isArray(vendedores) ? vendedores : [];
-
-        if (vendedoresConfigData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay vendedores configurados</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = vendedoresConfigData.map(vendedor => `
-            <tr>
-                <td>${escapeHtml(vendedor.nombre || 'N/A')}</td>
-                <td>${escapeHtml(vendedor.documento || 'N/A')}</td>
-                <td>${Number(vendedor.porcentaje_comision_venta || 0).toFixed(2)}%</td>
-                <td>${Number(vendedor.porcentaje_comision_recaudo || 0).toFixed(2)}%</td>
-                <td>${formatCurrency(vendedor.monto_base_comision || 0)}</td>
-                <td>${vendedor.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
-                <td><button class="action-btn action-btn-edit" onclick="editarVendedorConfig(${vendedor.id})">Editar</button></td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error cargando vendedores:', error);
-        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar vendedores</td></tr>';
-    }
-}
-
-async function cargarCatalogoComercialConfigLegacy() {
-    const tbody = document.getElementById('comercialCatalogoTable');
-    if (!tbody) return;
-
-    try {
-        const response = await fetch('/api/comercial/catalogo', { credentials: 'include' });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'No se pudo cargar el catálogo comercial');
-        }
-
-        const items = await response.json();
-        catalogoComercialData = Array.isArray(items) ? items : [];
-
-        if (catalogoComercialData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="loading">No hay exámenes o paquetes configurados</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = catalogoComercialData.map(item => `
-            <tr>
-                <td>
-                    <strong>${escapeHtml(item.tipo_item || 'N/A')}</strong>
-                    ${item.tipo_item === 'EXAMEN' ? `<div style="color:#666; font-size:0.82rem;">${escapeHtml(item.tipo_examen || 'Sin clasificar')}</div>` : ''}
-                </td>
-                <td>${escapeHtml(item.codigo || 'N/A')}</td>
-                <td>
-                    <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.descripcion || '')}</div>
-                    ${item.tipo_item === 'PAQUETE' ? `<div style="color:#0b5ed7; font-size:0.82rem; margin-top:4px;">Incluye ${item.cantidad_componentes || 0} examen(es): ${escapeHtml(item.resumen_componentes || 'Sin examenes definidos')}</div>` : ''}
-                </td>
-                <td>${formatCurrency(item.tarifa_base || 0)}</td>
-                <td>${item.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
-                <td><button class="action-btn action-btn-edit" onclick="editarItemCatalogoComercial(${item.id})">Editar</button></td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error cargando catálogo comercial:', error);
-        tbody.innerHTML = '<tr><td colspan="6" class="loading">Error al cargar catálogo comercial</td></tr>';
-    }
-}
-
-async function cargarTarifasComercialesConfig() {
-    const tbody = document.getElementById('comercialTarifasTable');
-    if (!tbody) return;
-
-    try {
-        const response = await fetch('/api/comercial/tarifas', { credentials: 'include' });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'No se pudo cargar la lista de tarifas comerciales');
-        }
-
-        const tarifas = await response.json();
-        tarifasComercialesData = Array.isArray(tarifas) ? tarifas : [];
-
-        if (tarifasComercialesData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay tarifas diferenciales configuradas</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = tarifasComercialesData.map(tarifa => `
-            <tr>
-                <td>${escapeHtml(tarifa.cliente_nombre || 'N/A')}</td>
-                <td>
-                    <strong>${escapeHtml(tarifa.item_nombre || 'N/A')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(tarifa.tipo_item === 'EXAMEN' ? obtenerResumenClasificacionCatalogo(tarifa) : (tarifa.tipo_item || ''))}</div>
-                </td>
-                <td>${formatCurrency(tarifa.tarifa_base || 0)}</td>
-                <td>${formatCurrency(tarifa.tarifa_negociada || 0)}</td>
-                <td>${escapeHtml([tarifa.vigencia_desde || '', tarifa.vigencia_hasta || ''].filter(Boolean).join(' a ') || 'Abierta')}</td>
-                <td>${tarifa.activo ? '<span class="badge badge-success">Activa</span>' : '<span class="badge badge-danger">Inactiva</span>'}</td>
-                <td><button class="action-btn action-btn-edit" onclick="editarTarifaCliente(${tarifa.id})">Editar</button></td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error cargando tarifas comerciales:', error);
-        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar tarifas comerciales</td></tr>';
-    }
-}
-
 async function asegurarVendedoresComerciales() {
     if (Array.isArray(vendedoresConfigData) && vendedoresConfigData.length > 0) {
         return vendedoresConfigData;
@@ -11109,6 +10455,17 @@ async function llenarSelectVendedorComercial(selectedId = '') {
     const select = document.getElementById('clienteComercialVendedorId');
     if (!select) return;
 
+    // Cuando el usuario logueado es un vendedor, sus clientes se asignan
+    // automaticamente a el: ocultamos el selector y fijamos su vendedor.
+    const contenedor = select.closest('.form-group');
+    if (currentUser?.es_vendedor && currentUser?.vendedor_id) {
+        select.innerHTML = `<option value="${currentUser.vendedor_id}">${escapeHtml(currentUser.vendedor_nombre || 'Mis clientes')}</option>`;
+        select.value = String(currentUser.vendedor_id);
+        if (contenedor) contenedor.style.display = 'none';
+        return;
+    }
+    if (contenedor) contenedor.style.display = '';
+
     try {
         const vendedores = await asegurarVendedoresComerciales();
         select.innerHTML = '<option value="">Seleccione un vendedor...</option>';
@@ -11320,118 +10677,8 @@ function obtenerGruposCatalogoParaPaquete(items) {
     return grupos.filter(grupo => grupo.items.length > 0);
 }
 
-async function renderCatalogoComercialComponentesLegacy(selectedIds = []) {
-    const container = document.getElementById('catalogoComercialComponentesList');
-    if (!container) return;
-
-    try {
-        const items = await asegurarCatalogoComercial();
-        const examenes = items
-            .filter(item => item.tipo_item === 'EXAMEN')
-            .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
-        const examenesDisponibles = examenes.filter(
-            item => item.activo !== false && item.clasificacion_completa === true
-        );
-        const selectedSet = new Set((selectedIds || []).map(id => String(id)));
-        const pendientes = items.filter(item => item.tipo_item === 'EXAMEN' && item.clasificacion_completa !== true);
-
-        if (examenesDisponibles.length === 0) {
-            container.innerHTML = '<div class="catalogo-componentes-empty">Todavia no hay examenes completamente clasificados para armar paquetes.</div>';
-            return;
-        }
-
-        container.innerHTML = examenes.map(item => `
-            <label class="catalogo-componentes-item">
-                <input
-                    type="checkbox"
-                    class="catalogo-componente-checkbox"
-                    value="${item.id}"
-                    ${selectedSet.has(String(item.id)) ? 'checked' : ''}
-                >
-                <span>
-                    <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
-                    <small>${escapeHtml(item.tipo_examen || 'Sin clasificar')} · ${escapeHtml(item.codigo || 'Sin codigo')}</small>
-                </span>
-            </label>
-        `).join('');
-    } catch (error) {
-        console.error('Error cargando componentes del paquete:', error);
-        container.innerHTML = '<div class="catalogo-componentes-empty">No fue posible cargar los examenes del catalogo.</div>';
-    }
-}
-
-function actualizarVisibilidadComponentesCatalogoLegacy() {
-    const tipoSelect = document.getElementById('catalogoComercialTipo');
-    const tipoExamenRow = document.getElementById('catalogoComercialTipoExamenRow');
-    const row = document.getElementById('catalogoComercialComponentesRow');
-    const tipoExamenSelect = document.getElementById('catalogoComercialTipoExamen');
-    if (!tipoSelect || !row || !tipoExamenRow || !tipoExamenSelect) return;
-
-        const esExamen = tipoSelect.value === 'EXAMEN';
-        const esPaquete = tipoSelect.value === 'PAQUETE';
-        tipoExamenSelect.required = esExamen;
-        tipoExamenRow.style.display = esExamen ? 'grid' : 'none';
-        row.style.display = esPaquete ? 'block' : 'none';
-
-    if (!esExamen) {
-        tipoExamenSelect.value = '';
-    }
-
-    if (!esPaquete) {
-        document.querySelectorAll('#catalogoComercialComponentesList .catalogo-componente-checkbox').forEach(input => {
-            input.checked = false;
-        });
-    }
-}
-
 function obtenerComponentesSeleccionadosCatalogo() {
     return [...catalogoComercialComponentesSeleccionados];
-}
-
-async function cargarClientesComercialesConfig() {
-    const tbody = document.getElementById('comercialClientesTable');
-    if (!tbody) return;
-
-    try {
-        const response = await fetch('/api/comercial/clientes', { credentials: 'include' });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'No se pudo cargar la lista de clientes comerciales');
-        }
-
-        const clientes = await response.json();
-        clientesComercialesData = Array.isArray(clientes) ? clientes : [];
-
-        if (clientesComercialesData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="loading">No hay clientes comerciales configurados</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = clientesComercialesData.map(cliente => `
-            <tr>
-                <td>
-                    <strong>${escapeHtml(cliente.razon_social || 'N/A')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.nit || cliente.nombre_comercial || 'Sin NIT')}</div>
-                </td>
-                <td>${escapeHtml(cliente.vendedor_nombre || 'N/A')}</td>
-                <td>${escapeHtml(cliente.condicion_comercial || 'N/A')}</td>
-                <td style="max-width:240px;">${escapeHtml(cliente.resumen_facturacion || 'N/A')}</td>
-                <td>
-                    ${escapeHtml(obtenerContactoPreferidoCliente(cliente) || 'N/A')}
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.email_facturacion || cliente.email_contacto_principal || cliente.email_empresa || 'Sin email')}</div>
-                </td>
-                <td>
-                    <div>Legales: ${cliente.documentos_legales_adjuntos?.length || 0}</div>
-                    <div>Pagaré: ${cliente.pagare_adjuntos?.length || 0}</div>
-                </td>
-                <td>${escapeHtml(formatearEstadoCliente(obtenerEstadoCliente(cliente)))}</td>
-                <td><button class="action-btn action-btn-edit" onclick="editarClienteComercial(${cliente.id})">Editar</button></td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error cargando clientes comerciales:', error);
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Error al cargar clientes comerciales</td></tr>';
-    }
 }
 
 async function mostrarAgregarClienteComercial() {
@@ -11525,45 +10772,8 @@ async function editarClienteComercial(id) {
     document.getElementById('clienteComercialModal').classList.add('active');
 }
 
-function mostrarAgregarItemCatalogoComercialLegacy() {
-    const form = document.getElementById('catalogoComercialForm');
-    if (!form) return;
-
-    form.reset();
-    renderCatalogoComercialComponentes();
-    document.getElementById('catalogoComercialId').value = '';
-    document.getElementById('catalogoComercialModalTitle').textContent = 'Nuevo Examen o Paquete';
-    document.getElementById('catalogoComercialTipo').value = 'EXAMEN';
-    document.getElementById('catalogoComercialTipoExamen').value = '';
-    document.getElementById('catalogoComercialTarifaBase').value = '0';
-    document.getElementById('catalogoComercialActivo').checked = true;
-    actualizarVisibilidadComponentesCatalogo();
-    document.getElementById('catalogoComercialModal').classList.add('active');
-}
-
 function closeCatalogoComercialModal() {
     document.getElementById('catalogoComercialModal').classList.remove('active');
-}
-
-async function editarItemCatalogoComercialLegacy(id) {
-    const item = catalogoComercialData.find(entry => entry.id === id);
-    if (!item) return;
-
-    await renderCatalogoComercialComponentes(item.componentes_ids || []);
-    document.getElementById('catalogoComercialId').value = item.id;
-    document.getElementById('catalogoComercialModalTitle').textContent = item.tipo_item === 'PAQUETE'
-        ? 'Editar Paquete'
-        : (item.tipo_item === 'SERVICIO' ? 'Editar Registro Legado' : 'Editar Examen');
-    document.getElementById('catalogoComercialTipo').value = item.tipo_item || 'EXAMEN';
-    document.getElementById('catalogoComercialTipoExamen').value = item.tipo_examen || '';
-    document.getElementById('catalogoComercialCodigo').value = item.codigo || '';
-    document.getElementById('catalogoComercialNombre').value = item.nombre || '';
-    document.getElementById('catalogoComercialNombreCorto').value = item.nombre_corto || '';
-    document.getElementById('catalogoComercialTarifaBase').value = item.tarifa_base || 0;
-    document.getElementById('catalogoComercialDescripcion').value = item.descripcion || '';
-    document.getElementById('catalogoComercialActivo').checked = item.activo !== false;
-    actualizarVisibilidadComponentesCatalogo();
-    document.getElementById('catalogoComercialModal').classList.add('active');
 }
 
 async function mostrarAgregarTarifaCliente(preselectedClienteId = '', preselectedItemId = '') {
@@ -11679,7 +10889,36 @@ function closeAsignacionLaboralModal() {
     document.getElementById('asignacionLaboralModal').classList.remove('active');
 }
 
-function mostrarAgregarVendedor() {
+async function cargarUsuariosAsignablesVendedor(vendedorId = null, usuarioSeleccionado = null) {
+    const select = document.getElementById('vendedorUsuarioId');
+    if (!select) return;
+
+    try {
+        const url = vendedorId
+            ? `/api/comercial/vendedores/usuarios-asignables?vendedor_id=${vendedorId}`
+            : '/api/comercial/vendedores/usuarios-asignables';
+        const response = await fetch(url, { credentials: 'include' });
+        if (!response.ok) throw new Error('No se pudieron cargar los usuarios');
+        vendedorUsuariosAsignablesData = await response.json();
+    } catch (error) {
+        console.error('Error cargando usuarios asignables:', error);
+        vendedorUsuariosAsignablesData = [];
+    }
+
+    const opciones = ['<option value="">Sin usuario asignado</option>'];
+    (vendedorUsuariosAsignablesData || []).forEach(usuario => {
+        const etiqueta = `${usuario.nombre_completo} (${usuario.usuario})`;
+        if (usuario.disponible) {
+            opciones.push(`<option value="${usuario.id}">${escapeHtml(etiqueta)}</option>`);
+        } else {
+            opciones.push(`<option value="${usuario.id}" disabled>${escapeHtml(etiqueta)} - ya asignado a ${escapeHtml(usuario.vendedor_asignado || 'otro vendedor')}</option>`);
+        }
+    });
+    select.innerHTML = opciones.join('');
+    select.value = usuarioSeleccionado != null ? String(usuarioSeleccionado) : '';
+}
+
+async function mostrarAgregarVendedor() {
     document.getElementById('vendedorForm').reset();
     document.getElementById('vendedorId').value = '';
     document.getElementById('vendedorModalTitle').textContent = 'Nuevo Vendedor';
@@ -11687,6 +10926,7 @@ function mostrarAgregarVendedor() {
     document.getElementById('vendedorComisionRecaudo').value = '0';
     document.getElementById('vendedorMontoBaseComision').value = '0';
     document.getElementById('vendedorActivo').checked = true;
+    await cargarUsuariosAsignablesVendedor();
     document.getElementById('vendedorModal').classList.add('active');
 }
 
@@ -11694,14 +10934,12 @@ function closeVendedorModal() {
     document.getElementById('vendedorModal').classList.remove('active');
 }
 
-function editarVendedorConfig(id) {
+async function editarVendedorConfig(id) {
     const vendedor = vendedoresConfigData.find(item => item.id === id);
     if (!vendedor) return;
 
     document.getElementById('vendedorId').value = vendedor.id;
     document.getElementById('vendedorNombre').value = vendedor.nombre || '';
-    document.getElementById('vendedorCargo').value = vendedor.cargo || '';
-    document.getElementById('vendedorCargo').value = vendedor.cargo || '';
     document.getElementById('vendedorCargo').value = vendedor.cargo || '';
     document.getElementById('vendedorDocumento').value = vendedor.documento || '';
     document.getElementById('vendedorTelefono').value = vendedor.telefono || '';
@@ -11712,6 +10950,7 @@ function editarVendedorConfig(id) {
     document.getElementById('vendedorDescripcion').value = vendedor.descripcion || '';
     document.getElementById('vendedorActivo').checked = vendedor.activo !== false;
     document.getElementById('vendedorModalTitle').textContent = 'Editar Vendedor';
+    await cargarUsuariosAsignablesVendedor(vendedor.id, vendedor.usuario_id);
     document.getElementById('vendedorModal').classList.add('active');
 }
 
@@ -11829,11 +11068,10 @@ async function guardarVendedorConfig(event) {
             body: JSON.stringify({
                 nombre: document.getElementById('vendedorNombre').value.trim(),
                 cargo: document.getElementById('vendedorCargo').value.trim() || null,
-                cargo: document.getElementById('vendedorCargo').value.trim() || null,
-                cargo: document.getElementById('vendedorCargo').value.trim() || null,
                 documento: document.getElementById('vendedorDocumento').value.trim() || null,
                 telefono: document.getElementById('vendedorTelefono').value.trim() || null,
                 email: document.getElementById('vendedorEmail').value.trim() || null,
+                usuario_id: document.getElementById('vendedorUsuarioId').value || null,
                 porcentaje_comision_venta: porcentajeVenta,
                 porcentaje_comision_recaudo: porcentajeRecaudo,
                 monto_base_comision: montoBase,
@@ -11934,104 +11172,6 @@ async function guardarClienteComercialConfig(event) {
     } catch (error) {
         console.error('Error guardando cliente comercial:', error);
         showError('Error de conexión al guardar cliente comercial');
-    }
-}
-
-async function guardarCatalogoComercialConfigLegacy(event) {
-    event.preventDefault();
-    const id = document.getElementById('catalogoComercialId').value;
-    const tipoItem = document.getElementById('catalogoComercialTipo').value;
-    const tipoExamen = document.getElementById('catalogoComercialTipoExamen').value;
-    const tarifaBase = parseFloat(document.getElementById('catalogoComercialTarifaBase').value || '0');
-    const componentesIds = obtenerComponentesSeleccionadosCatalogo();
-
-    if (Number.isNaN(tarifaBase) || tarifaBase < 0) {
-        return showError('La tarifa base no puede ser negativa.');
-    }
-
-    if (tipoItem === 'PAQUETE' && componentesIds.length === 0) {
-        return showError('Selecciona al menos un examen para armar el paquete.');
-    }
-
-    if (tipoItem === 'EXAMEN' && !tipoExamen) {
-        return showError('Selecciona el tipo de examen: CONSULTA, LABORATORIO, PARACLINICO, ECOBABY o CURSOS.');
-    }
-
-    try {
-        const response = await fetch(id ? `/api/comercial/catalogo/${id}` : '/api/comercial/catalogo', {
-            method: id ? 'PUT' : 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-                tipo_item: tipoItem,
-                tipo_examen: tipoItem === 'EXAMEN' ? tipoExamen : null,
-                codigo: document.getElementById('catalogoComercialCodigo').value.trim() || null,
-                nombre: document.getElementById('catalogoComercialNombre').value.trim(),
-                nombre_corto: document.getElementById('catalogoComercialNombreCorto').value.trim() || null,
-                tarifa_base: tarifaBase,
-                descripcion: document.getElementById('catalogoComercialDescripcion').value.trim() || null,
-                activo: document.getElementById('catalogoComercialActivo').checked,
-                componentes_ids: tipoItem === 'PAQUETE' ? componentesIds : []
-            })
-        });
-        const data = await response.json();
-        if (!response.ok) return showError(data.error || 'Error al guardar item comercial');
-        showSuccess(id ? 'Item comercial actualizado' : 'Item comercial creado');
-        closeCatalogoComercialModal();
-        await Promise.all([
-            cargarCatalogoComercialConfig(),
-            cargarTarifasComercialesConfig()
-        ]);
-    } catch (error) {
-        console.error('Error guardando item comercial:', error);
-        showError('Error de conexión al guardar item comercial');
-    }
-}
-
-async function cargarCatalogoComercialConfig() {
-    const tbody = document.getElementById('comercialCatalogoTable');
-    if (!tbody) return;
-
-    try {
-        const response = await fetch('/api/comercial/catalogo', { credentials: 'include' });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'No se pudo cargar el catalogo comercial');
-        }
-
-        const items = await response.json();
-        catalogoComercialData = Array.isArray(items) ? items : [];
-
-        if (catalogoComercialData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay examenes o paquetes configurados</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = catalogoComercialData.map(item => `
-            <tr>
-                <td>
-                    <strong>${escapeHtml(item.tipo_item || 'N/A')}</strong>
-                    ${item.tipo_item === 'EXAMEN' ? `<div style="color:#666; font-size:0.82rem;">${item.clasificacion_completa ? 'Listo para usar' : 'Pendiente de clasificar'}</div>` : ''}
-                </td>
-                <td>
-                    ${item.tipo_item === 'EXAMEN'
-                        ? `<span class="badge ${item.clasificacion_completa ? 'badge-info' : 'badge-warning-soft'}">${escapeHtml(obtenerResumenClasificacionCatalogo(item))}</span>`
-                        : '<span class="badge badge-secondary">No aplica</span>'}
-                </td>
-                <td>${escapeHtml(item.codigo || 'N/A')}</td>
-                <td>
-                    <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.descripcion || '')}</div>
-                    ${item.tipo_item === 'PAQUETE' ? `<div style="color:#0b5ed7; font-size:0.82rem; margin-top:4px;">Incluye ${item.cantidad_componentes || 0} examen(es): ${escapeHtml(item.resumen_componentes || 'Sin examenes definidos')}</div>` : ''}
-                </td>
-                <td>${formatCurrency(item.tarifa_base || 0)}</td>
-                <td>${item.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
-                <td><button class="action-btn action-btn-edit" onclick="editarItemCatalogoComercial(${item.id})">Editar</button></td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error cargando catalogo comercial:', error);
-        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar catalogo comercial</td></tr>';
     }
 }
 
@@ -12515,40 +11655,6 @@ async function guardarTarifaClienteConfig(event) {
     }
 }
 
-function renderSeguimientoAtencionesTable() {
-    const tbody = document.getElementById('clienteSeguimientoAtencionesTable');
-    if (!tbody) return;
-
-    const atenciones = clienteSeguimientoContext.atenciones || [];
-    if (!atenciones.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Este cliente aÃºn no tiene atenciones registradas.</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = atenciones.map(atencion => {
-        const detalle = atencion.detalle_resumen || atencion.detalle_items_resumen || 'Sin detalle';
-        const acciones = [];
-        if (atencion.documento_id) {
-            acciones.push(`<button type="button" class="action-btn action-btn-edit" onclick="mostrarAgregarSeguimientoPago(${Number(atencion.documento_id)})">Registrar pago</button>`);
-        }
-        acciones.push(`<button type="button" class="action-btn action-btn-edit" onclick="editarSeguimientoAtencion(${Number(atencion.id)})">Editar</button>`);
-        acciones.push(`<button type="button" class="action-btn action-btn-delete" onclick="eliminarSeguimientoAtencion(${Number(atencion.id)})">Eliminar</button>`);
-
-        return `
-            <tr>
-                <td>${escapeHtml(atencion.nro_atencion || 'N/A')}</td>
-                <td>${escapeHtml(atencion.fecha_atencion || 'N/A')}</td>
-                <td>${escapeHtml(atencion.pacientes_resumen || atencion.paciente_nombre || 'N/A')}</td>
-                <td style="max-width:320px;">${escapeHtml(detalle)}</td>
-                <td>${formatCurrency(atencion.valor_total || 0)}</td>
-                <td>${formatCurrency(atencion.saldo_pendiente || 0)}</td>
-                <td>${renderSeguimientoEstadoBadge(atencion.estado_cobro)}</td>
-                <td style="display:flex; gap:6px; flex-wrap:wrap;">${acciones.join('')}</td>
-            </tr>
-        `;
-    }).join('');
-}
-
 async function mostrarAgregarAtencionCliente() {
     if (!clienteSeguimientoContext.clienteId) {
         showError('Selecciona primero un cliente comercial.');
@@ -12793,186 +11899,6 @@ async function eliminarClienteComercialConfig(clienteId) {
     } catch (error) {
         console.error('Error eliminando cliente comercial:', error);
         showError('Error de conexiÃ³n al eliminar el cliente comercial.');
-    }
-}
-
-async function cargarVendedoresConfig() {
-    const tbody = document.getElementById('comercialVendedoresTable');
-    if (!tbody) return;
-
-    try {
-        const response = await fetch('/api/comercial/vendedores', { credentials: 'include' });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'No se pudo cargar la lista de vendedores');
-        }
-
-        const vendedores = await response.json();
-        vendedoresConfigData = Array.isArray(vendedores) ? vendedores : [];
-
-        if (vendedoresConfigData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay vendedores configurados</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = vendedoresConfigData.map(vendedor => `
-            <tr>
-                <td>${escapeHtml(vendedor.nombre || 'N/A')}</td>
-                <td>${escapeHtml(vendedor.documento || 'N/A')}</td>
-                <td>${Number(vendedor.porcentaje_comision_venta || 0).toFixed(2)}%</td>
-                <td>${Number(vendedor.porcentaje_comision_recaudo || 0).toFixed(2)}%</td>
-                <td>${formatCurrency(vendedor.monto_base_comision || 0)}</td>
-                <td>${vendedor.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
-                <td style="display:flex; gap:6px; flex-wrap:wrap;">
-                    <button class="action-btn action-btn-edit" onclick="editarVendedorConfig(${vendedor.id})">Editar</button>
-                    <button class="action-btn action-btn-delete" onclick="eliminarVendedorConfig(${vendedor.id})">Eliminar</button>
-                </td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error cargando vendedores:', error);
-        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar vendedores</td></tr>';
-    }
-}
-
-async function cargarTarifasComercialesConfig() {
-    const tbody = document.getElementById('comercialTarifasTable');
-    if (!tbody) return;
-
-    try {
-        const response = await fetch('/api/comercial/tarifas', { credentials: 'include' });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'No se pudo cargar la lista de tarifas comerciales');
-        }
-
-        const tarifas = await response.json();
-        tarifasComercialesData = Array.isArray(tarifas) ? tarifas : [];
-
-        if (tarifasComercialesData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay tarifas diferenciales configuradas</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = tarifasComercialesData.map(tarifa => `
-            <tr>
-                <td>${escapeHtml(tarifa.cliente_nombre || 'N/A')}</td>
-                <td>
-                    <strong>${escapeHtml(tarifa.item_nombre || 'N/A')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(tarifa.tipo_item === 'EXAMEN' ? obtenerResumenClasificacionCatalogo(tarifa) : (tarifa.tipo_item || ''))}</div>
-                </td>
-                <td>${formatCurrency(tarifa.tarifa_base || 0)}</td>
-                <td>${formatCurrency(tarifa.tarifa_negociada || 0)}</td>
-                <td>${escapeHtml([tarifa.vigencia_desde || '', tarifa.vigencia_hasta || ''].filter(Boolean).join(' a ') || 'Abierta')}</td>
-                <td>${tarifa.activo ? '<span class="badge badge-success">Activa</span>' : '<span class="badge badge-danger">Inactiva</span>'}</td>
-                <td style="display:flex; gap:6px; flex-wrap:wrap;">
-                    <button class="action-btn action-btn-edit" onclick="editarTarifaCliente(${tarifa.id})">Editar</button>
-                    <button class="action-btn action-btn-delete" onclick="eliminarTarifaComercialConfig(${tarifa.id})">Eliminar</button>
-                </td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error cargando tarifas comerciales:', error);
-        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar tarifas comerciales</td></tr>';
-    }
-}
-
-async function cargarCatalogoComercialConfig() {
-    const tbody = document.getElementById('comercialCatalogoTable');
-    if (!tbody) return;
-
-    try {
-        const response = await fetch('/api/comercial/catalogo', { credentials: 'include' });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'No se pudo cargar el catalogo comercial');
-        }
-
-        const items = await response.json();
-        catalogoComercialData = Array.isArray(items) ? items : [];
-
-        if (catalogoComercialData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="loading">No hay examenes o paquetes configurados</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = catalogoComercialData.map(item => `
-            <tr>
-                <td>
-                    <strong>${escapeHtml(item.tipo_item || 'N/A')}</strong>
-                    ${item.tipo_item === 'EXAMEN' ? `<div style="color:#666; font-size:0.82rem;">${item.clasificacion_completa ? 'Listo para usar' : 'Pendiente de clasificar'}</div>` : ''}
-                </td>
-                <td>
-                    ${item.tipo_item === 'EXAMEN'
-                        ? `<span class="badge ${item.clasificacion_completa ? 'badge-info' : 'badge-warning-soft'}">${escapeHtml(obtenerResumenClasificacionCatalogo(item))}</span>`
-                        : '<span class="badge badge-secondary">No aplica</span>'}
-                </td>
-                <td>${escapeHtml(item.codigo || 'N/A')}</td>
-                <td>
-                    <strong>${escapeHtml(item.nombre || 'N/A')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(item.descripcion || '')}</div>
-                    ${item.tipo_item === 'PAQUETE' ? `<div style="color:#0b5ed7; font-size:0.82rem; margin-top:4px;">Incluye ${item.cantidad_componentes || 0} examen(es): ${escapeHtml(item.resumen_componentes || 'Sin examenes definidos')}</div>` : ''}
-                </td>
-                <td>${formatCurrency(item.tarifa_base || 0)}</td>
-                <td>${item.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
-                <td style="display:flex; gap:6px; flex-wrap:wrap;">
-                    <button class="action-btn action-btn-edit" onclick="editarItemCatalogoComercial(${item.id})">Editar</button>
-                    <button class="action-btn action-btn-delete" onclick="eliminarItemCatalogoComercial(${item.id})">Eliminar</button>
-                </td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error cargando catalogo comercial:', error);
-        tbody.innerHTML = '<tr><td colspan="7" class="loading">Error al cargar catalogo comercial</td></tr>';
-    }
-}
-
-async function cargarClientesComercialesConfig() {
-    const tbody = document.getElementById('comercialClientesTable');
-    if (!tbody) return;
-
-    try {
-        const response = await fetch('/api/comercial/clientes', { credentials: 'include' });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'No se pudo cargar la lista de clientes comerciales');
-        }
-
-        const clientes = await response.json();
-        clientesComercialesData = Array.isArray(clientes) ? clientes : [];
-
-        if (clientesComercialesData.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="loading">No hay clientes comerciales configurados</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = clientesComercialesData.map(cliente => `
-            <tr>
-                <td>
-                    <strong>${escapeHtml(cliente.razon_social || 'N/A')}</strong>
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.nit || cliente.nombre_comercial || 'Sin NIT')}</div>
-                </td>
-                <td>${escapeHtml(cliente.vendedor_nombre || 'N/A')}</td>
-                <td>${escapeHtml(cliente.condicion_comercial || 'N/A')}</td>
-                <td style="max-width:240px;">${escapeHtml(cliente.resumen_facturacion || 'N/A')}</td>
-                <td>
-                    ${escapeHtml(obtenerContactoPreferidoCliente(cliente) || 'N/A')}
-                    <div style="color:#666; font-size:0.85rem;">${escapeHtml(cliente.email_facturacion || cliente.email_contacto_principal || cliente.email_empresa || 'Sin email')}</div>
-                </td>
-                <td>
-                    <div>Legales: ${cliente.documentos_legales_adjuntos?.length || 0}</div>
-                    <div>PagarÃ©: ${cliente.pagare_adjuntos?.length || 0}</div>
-                </td>
-                <td>${escapeHtml(formatearEstadoCliente(obtenerEstadoCliente(cliente)))}</td>
-                <td style="display:flex; gap:6px; flex-wrap:wrap;">
-                    <button class="action-btn action-btn-edit" onclick="editarClienteComercial(${cliente.id})">Editar</button>
-                    <button class="action-btn action-btn-delete" onclick="eliminarClienteComercialConfig(${cliente.id})">Eliminar</button>
-                </td>
-            </tr>
-        `).join('');
-    } catch (error) {
-        console.error('Error cargando clientes comerciales:', error);
-        tbody.innerHTML = '<tr><td colspan="8" class="loading">Error al cargar clientes comerciales</td></tr>';
     }
 }
 
@@ -15384,55 +14310,6 @@ async function loadRoles() {
     }
 }
 
-function renderRoleMenuPermissionsLegacyDuplicadoTres(selectedIds = []) {
-    const container = document.getElementById('rolMenuPermissions');
-    if (!container) return;
-
-    if (!Array.isArray(menuOptionsData) || menuOptionsData.length === 0) {
-        container.innerHTML = '<div class="loading">No fue posible cargar los permisos.</div>';
-        return;
-    }
-
-    const selected = new Set((selectedIds || []).map(id => String(id)));
-    const renderOption = option => `
-        <label class="role-menu-option">
-            <input type="checkbox" value="${option.permiso_id}" ${selected.has(String(option.permiso_id)) ? 'checked' : ''}>
-            <div>
-                <strong>${escapeHtml(option.nombre || option.group || 'Permiso')}</strong>
-                <span>${escapeHtml(option.descripcion || '')}</span>
-            </div>
-        </label>
-    `;
-
-    const menuOptions = menuOptionsData.filter(option => option.category !== 'comercial');
-    const commercialGroups = {};
-    menuOptionsData.filter(option => option.category === 'comercial').forEach(option => {
-        const key = option.group || 'Comercial';
-        commercialGroups[key] = commercialGroups[key] || [];
-        commercialGroups[key].push(option);
-    });
-
-    container.innerHTML = `
-        <div style="grid-column:1 / -1;">
-            <h4 style="margin:0 0 10px 0;">Menu lateral</h4>
-            <div class="role-menu-grid">
-                ${menuOptions.map(renderOption).join('')}
-            </div>
-        </div>
-        <div style="grid-column:1 / -1; margin-top:12px;">
-            <h4 style="margin:0 0 10px 0;">Permisos comerciales</h4>
-            ${Object.entries(commercialGroups).map(([groupName, options]) => `
-                <div style="margin-bottom:14px;">
-                    <div style="font-weight:700; margin-bottom:8px;">${escapeHtml(groupName)}</div>
-                    <div class="role-menu-grid">
-                        ${options.map(renderOption).join('')}
-                    </div>
-                </div>
-            `).join('')}
-        </div>
-    `;
-}
-
 async function cargarVendedoresConfig() {
     const tbody = document.getElementById('comercialVendedoresTable');
     if (!tbody) return;
@@ -17050,82 +15927,6 @@ function filtrarTablaCatalogo() {
     _renderTablaCatalogo(filtrados);
 }
 
-function _renderTablaCatalogo_legacy(items) {
-    const contenedor = document.getElementById('catalogoTablaContenedor');
-    if (!contenedor) return;
-
-    if (!items || items.length === 0) {
-        contenedor.innerHTML = '<p style="color:#888; text-align:center; padding:20px;">No se encontraron ítems con los filtros aplicados.</p>';
-        return;
-    }
-
-    const badge = (txt, color) =>
-        `<span style="background:${color};color:#fff;padding:2px 7px;border-radius:10px;font-size:0.78em;white-space:nowrap;">${txt}</span>`;
-
-    const tipoBadge = tipo => {
-        const map = { EXAMEN: '#2980b9', PAQUETE: '#8e44ad', SERVICIO: '#27ae60' };
-        return badge(tipo, map[tipo] || '#7f8c8d');
-    };
-
-    const rows = items.map(it => {
-        const subTipo = it.clasificacion_resumen || '—';
-        const activoBadge = it.activo ? badge('Activo', '#27ae60') : badge('Inactivo', '#95a5a6');
-        const tarifa = it.tarifa_base != null
-            ? `$ ${Number(it.tarifa_base).toLocaleString('es-CO')}`
-            : '—';
-        const componentes = it.resumen_componentes
-            ? `<span style="font-size:0.82em; color:#555;" title="${it.resumen_componentes}">${it.cantidad_componentes} examen(s)</span>`
-            : '';
-        const acciones = [];
-        if (puedeGestionarItemCatalogo(it, 'update')) {
-            acciones.push(
-                `<button class="btn btn-secondary" style="padding:3px 10px; font-size:0.82em;" onclick="abrirModalCatalogo(${it.id})">âœ Editar</button>`
-            );
-        }
-        if (puedeGestionarItemCatalogo(it, 'delete')) {
-            acciones.push(
-                `<button class="btn btn-danger" style="padding:3px 10px; font-size:0.82em; margin-left:4px;" onclick="abrirModalEliminarCatalogo(${it.id}, '${(it.nombre || '').replace(/'/g, "\\'")}')">ðŸ—‘</button>`
-            );
-        }
-        const accionesHtml = acciones.length
-            ? acciones.join('')
-            : '<span style="color:#888; font-size:0.82em;">Solo lectura</span>';
-        return `<tr>
-            <td style="white-space:nowrap; font-size:0.88em;">${it.codigo || '—'}</td>
-            <td style="font-size:0.9em;">${it.nombre}${componentes ? '<br>' + componentes : ''}</td>
-            <td style="text-align:center;">${tipoBadge(it.tipo_item)}</td>
-            <td style="white-space:nowrap; font-size:0.88em;">${subTipo}</td>
-            <td style="text-align:right; white-space:nowrap; font-size:0.9em;">${tarifa}</td>
-            <td style="text-align:center;">${activoBadge}</td>
-            <td style="text-align:center; white-space:nowrap;">
-                <button class="btn btn-secondary" style="padding:3px 10px; font-size:0.82em;"
-                        onclick="abrirModalCatalogo(${it.id})">✏ Editar</button>
-                <button class="btn btn-danger" style="padding:3px 10px; font-size:0.82em; margin-left:4px;"
-                        onclick="abrirModalEliminarCatalogo(${it.id}, '${(it.nombre || '').replace(/'/g, "\\'")}')">🗑</button>
-            </td>
-        </tr>`;
-    }).join('');
-
-    contenedor.innerHTML = `
-        <p style="color:#666; font-size:0.88em; margin-bottom:6px;">${items.length} ítem(s)</p>
-        <table style="width:100%; border-collapse:collapse; font-size:0.91em;">
-            <thead>
-                <tr style="background:#2c3e50; color:#fff;">
-                    <th style="padding:7px 8px; text-align:left;">Código</th>
-                    <th style="padding:7px 8px; text-align:left;">Nombre</th>
-                    <th style="padding:7px 8px; text-align:center;">Tipo</th>
-                    <th style="padding:7px 8px; text-align:left;">Clasificación</th>
-                    <th style="padding:7px 8px; text-align:right;">Tarifa base</th>
-                    <th style="padding:7px 8px; text-align:center;">Estado</th>
-                    <th style="padding:7px 8px; text-align:center;">Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${rows}
-            </tbody>
-        </table>`;
-}
-
 function _renderTablaCatalogo(items) {
     const contenedor = document.getElementById('catalogoTablaContenedor');
     if (!contenedor) return;
@@ -17567,5 +16368,210 @@ async function cargarCatalogoDesdeExcel() {
         if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">⚠ Error de conexión al subir el archivo.</span>';
     } finally {
         if (btn) btn.disabled = false;
+    }
+}
+
+
+// ===========================================================================
+// COMISIONES — LIQUIDACION POR VENDEDOR Y PERIODO
+// ===========================================================================
+
+let comisionLiquidacionActual = null;
+
+async function inicializarPanelComisiones() {
+    const anioInput = document.getElementById('comisionAnio');
+    const mesSelect = document.getElementById('comisionMes');
+    const now = new Date();
+    if (anioInput && !anioInput.value) anioInput.value = now.getFullYear();
+    if (mesSelect && !mesSelect.value) mesSelect.value = String(now.getMonth() + 1);
+
+    const vendedorGroup = document.getElementById('comisionVendedorGroup');
+    const vendedorSelect = document.getElementById('comisionVendedorId');
+
+    // Un usuario-vendedor solo ve sus comisiones: ocultamos el selector.
+    if (currentUser?.es_vendedor && currentUser?.vendedor_id) {
+        if (vendedorSelect) {
+            vendedorSelect.innerHTML = `<option value="${currentUser.vendedor_id}">${escapeHtml(currentUser.vendedor_nombre || 'Mis comisiones')}</option>`;
+            vendedorSelect.value = String(currentUser.vendedor_id);
+        }
+        if (vendedorGroup) vendedorGroup.style.display = 'none';
+        return;
+    }
+
+    if (vendedorGroup) vendedorGroup.style.display = '';
+    if (!vendedorSelect) return;
+    try {
+        const vendedores = await asegurarVendedoresComerciales();
+        vendedorSelect.innerHTML = '<option value="">Seleccione un vendedor...</option>' +
+            vendedores.map(v => `<option value="${v.id}">${escapeHtml(v.nombre)}</option>`).join('');
+    } catch (error) {
+        console.error('Error cargando vendedores para comisiones:', error);
+        vendedorSelect.innerHTML = '<option value="">No disponible</option>';
+    }
+}
+
+function _resolverVendedorComisionSeleccionado() {
+    if (currentUser?.es_vendedor && currentUser?.vendedor_id) {
+        return String(currentUser.vendedor_id);
+    }
+    return document.getElementById('comisionVendedorId')?.value || '';
+}
+
+async function generarLiquidacionComision() {
+    const vendedorId = _resolverVendedorComisionSeleccionado();
+    const anio = document.getElementById('comisionAnio')?.value || '';
+    const mes = document.getElementById('comisionMes')?.value || '';
+
+    if (!vendedorId) {
+        showError('Selecciona un vendedor.');
+        return;
+    }
+    if (!anio || !mes) {
+        showError('Selecciona el periodo (mes y año).');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/comercial/comisiones/liquidaciones', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ vendedor_id: Number(vendedorId), mes: Number(mes), anio: Number(anio) })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            showError(data.error || 'No fue posible generar la liquidacion.');
+            return;
+        }
+        comisionLiquidacionActual = data.liquidacion;
+        renderLiquidacionComision(comisionLiquidacionActual);
+        showSuccess('Liquidacion generada.');
+    } catch (error) {
+        console.error('Error generando liquidacion:', error);
+        showError('Error de conexion al generar la liquidacion.');
+    }
+}
+
+function renderLiquidacionComision(liquidacion) {
+    const resumen = document.getElementById('comisionResumenPanel');
+    const detallePanel = document.getElementById('comisionDetallePanel');
+    if (!liquidacion) {
+        if (resumen) resumen.style.display = 'none';
+        if (detallePanel) detallePanel.style.display = 'none';
+        return;
+    }
+
+    if (resumen) resumen.style.display = '';
+    if (detallePanel) detallePanel.style.display = '';
+
+    const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+    setText('comisionTotalConSoporte', formatCurrency(liquidacion.total_recaudo_con_soporte || 0));
+    setText('comisionTotalSinSoporte', formatCurrency(liquidacion.total_recaudo_sin_soporte || 0));
+    setText('comisionTotalAprobada', formatCurrency(liquidacion.total_comision_aprobada || 0));
+    setText('comisionTotalPendiente', formatCurrency(liquidacion.total_comision_pendiente || 0));
+    setText('comisionTotalPagable', formatCurrency(liquidacion.total_comision_pagable || 0));
+
+    const badge = document.getElementById('comisionEstadoBadge');
+    if (badge) {
+        badge.textContent = liquidacion.estado || 'BORRADOR';
+        badge.className = 'badge ' + (liquidacion.estado === 'CERRADA' ? 'badge-success' : 'badge-secondary');
+    }
+
+    const cerrarBtn = document.getElementById('comisionCerrarBtn');
+    if (cerrarBtn) {
+        const puedeCerrar = liquidacion.estado !== 'CERRADA' && canManageComercial('comisiones', 'update');
+        cerrarBtn.style.display = puedeCerrar ? '' : 'none';
+    }
+
+    const tbody = document.getElementById('comisionDetalleTable');
+    if (!tbody) return;
+    const detalles = liquidacion.detalles || [];
+    if (!detalles.length) {
+        tbody.innerHTML = '<tr><td colspan="10" class="loading">No hay recibos de pago en este periodo.</td></tr>';
+        return;
+    }
+
+    const puedeValidar = canManageComercial('comisiones', 'validate') && liquidacion.estado !== 'CERRADA';
+    tbody.innerHTML = detalles.map(det => {
+        const soporte = det.tiene_soporte
+            ? (det.comprobante_url ? `<a href="${det.comprobante_url}" target="_blank">Ver</a>` : '<span class="badge badge-success">Con soporte</span>')
+            : '<span class="badge badge-warning-soft">Sin soporte</span>';
+        const estado = renderEstadoValidacionComision(det.estado_validacion);
+        let acciones = '<span style="color:#64748b;">—</span>';
+        if (!det.tiene_soporte && puedeValidar) {
+            acciones = `
+                <button class="action-btn action-btn-edit" onclick="validarComision(${det.id}, 'APROBAR')">Aprobar</button>
+                <button class="action-btn action-btn-delete" onclick="validarComision(${det.id}, 'RECHAZAR')">Rechazar</button>
+            `;
+        }
+        return `
+            <tr>
+                <td>${escapeHtml(det.fecha_pago || 'N/A')}</td>
+                <td>${escapeHtml(det.cliente_nombre || 'N/A')}</td>
+                <td>${escapeHtml(det.forma_pago || 'N/A')}</td>
+                <td style="max-width:220px;">${escapeHtml(det.descripcion || '')}</td>
+                <td>${formatCurrency(det.valor_recaudo || 0)}</td>
+                <td>${Number(det.porcentaje_aplicado || 0).toFixed(2)}%</td>
+                <td>${formatCurrency(det.comision || 0)}</td>
+                <td>${soporte}</td>
+                <td>${estado}</td>
+                <td style="display:flex; gap:6px; flex-wrap:wrap;">${acciones}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderEstadoValidacionComision(estado) {
+    if (estado === 'APROBADA') return '<span class="badge badge-success">Aprobada</span>';
+    if (estado === 'RECHAZADA') return '<span class="badge badge-danger">Rechazada</span>';
+    return '<span class="badge badge-warning-soft">Pendiente</span>';
+}
+
+async function validarComision(detalleId, decision) {
+    let observacion = '';
+    if (decision === 'RECHAZAR') {
+        observacion = prompt('Motivo del rechazo (opcional):') || '';
+    }
+    try {
+        const response = await fetch(`/api/comercial/comisiones/detalle/${detalleId}/validar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ decision, observacion })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            showError(data.error || 'No fue posible validar la comision.');
+            return;
+        }
+        comisionLiquidacionActual = data.liquidacion;
+        renderLiquidacionComision(comisionLiquidacionActual);
+        showSuccess(decision === 'APROBAR' ? 'Comision aprobada.' : 'Comision rechazada.');
+    } catch (error) {
+        console.error('Error validando comision:', error);
+        showError('Error de conexion al validar la comision.');
+    }
+}
+
+async function cerrarLiquidacionComision() {
+    if (!comisionLiquidacionActual?.id) return;
+    if (!confirm('¿Cerrar la liquidacion? No podras recalcularla despues.')) return;
+
+    try {
+        const response = await fetch(`/api/comercial/comisiones/liquidaciones/${comisionLiquidacionActual.id}/cerrar`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            showError(data.error || 'No fue posible cerrar la liquidacion.');
+            return;
+        }
+        comisionLiquidacionActual = data.liquidacion;
+        renderLiquidacionComision(comisionLiquidacionActual);
+        showSuccess('Liquidacion cerrada.');
+    } catch (error) {
+        console.error('Error cerrando liquidacion:', error);
+        showError('Error de conexion al cerrar la liquidacion.');
     }
 }

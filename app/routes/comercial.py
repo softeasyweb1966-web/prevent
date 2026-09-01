@@ -23,7 +23,10 @@ from app.models import (
     ClienteComercialTarifa,
     ComercialCatalogoItem,
     ComercialPaqueteDetalle,
+    ComisionLiquidacion,
+    ComisionLiquidacionDetalle,
     SiigoCliente,
+    Usuario,
     Vendedor,
     db,
 )
@@ -92,6 +95,13 @@ COMMERCIAL_PERMISSIONS = {
         'create': 'comercial_pagos_create',
         'update': 'comercial_pagos_update',
         'delete': 'comercial_pagos_delete',
+    },
+    'comisiones': {
+        'read': 'comercial_comisiones_read',
+        'create': 'comercial_comisiones_create',
+        'update': 'comercial_comisiones_update',
+        'delete': 'comercial_comisiones_delete',
+        'validate': 'comercial_comisiones_validate',
     },
 }
 
@@ -246,6 +256,15 @@ def _resolver_vendedor_usuario_actual():
     if _is_admin_user():
         return None
 
+    # 1) Vinculo directo por usuario_id (login real del vendedor).
+    usuario_id = getattr(current_user, 'id', None)
+    if usuario_id is not None:
+        vendedor_directo = Vendedor.query.filter_by(usuario_id=usuario_id).first()
+        if vendedor_directo is not None:
+            return vendedor_directo
+
+    # 2) Respaldo por coincidencia de texto (compatibilidad con datos previos
+    #    a la vinculacion directa usuario<->vendedor).
     normalized_candidates = [
         _normalize_text_for_matching(getattr(current_user, 'email', None)),
         _normalize_text_for_matching(getattr(current_user, 'usuario', None)),
@@ -352,11 +371,15 @@ def _build_vendedor_payload(data):
     if not nombre:
         raise ValueError('El nombre del vendedor es obligatorio')
 
+    usuario_id = _parse_int_field(data, 'usuario_id')
+    if usuario_id is not None and Usuario.query.get(usuario_id) is None:
+        raise ValueError('El usuario seleccionado no existe')
+
     return {
         'nombre': nombre,
         'cargo': _normalize_optional_text(data.get('cargo')),
-        'cargo': _normalize_optional_text(data.get('cargo')),
         'documento': _normalize_optional_text(data.get('documento')),
+        'usuario_id': usuario_id,
         'telefono': _normalize_optional_text(data.get('telefono')),
         'email': _normalize_optional_text(data.get('email')),
         'porcentaje_comision_venta': _parse_decimal_field(
@@ -382,10 +405,17 @@ def _build_vendedor_payload(data):
 
 
 def _build_cliente_payload(data):
-    vendedor_id = _parse_int_field(data, 'vendedor_id', required=True)
-    vendedor = Vendedor.query.get(vendedor_id)
-    if not vendedor:
-        raise ValueError('Debe seleccionar un vendedor válido')
+    # Si el usuario logueado es un vendedor, sus clientes se asignan
+    # automaticamente a el y no debe enviar (ni escoger) vendedor_id.
+    vendedor_actual = _resolver_vendedor_usuario_actual()
+    if vendedor_actual is not None:
+        vendedor = vendedor_actual
+        vendedor_id = vendedor_actual.id
+    else:
+        vendedor_id = _parse_int_field(data, 'vendedor_id', required=True)
+        vendedor = Vendedor.query.get(vendedor_id)
+        if not vendedor:
+            raise ValueError('Debe seleccionar un vendedor válido')
 
     razon_social = (data.get('razon_social') or '').strip()
     if not razon_social:
@@ -1047,6 +1077,9 @@ def _serialize_vendedor(vendedor):
         'documento': vendedor.documento,
         'telefono': vendedor.telefono,
         'email': vendedor.email,
+        'usuario_id': vendedor.usuario_id,
+        'usuario_nombre': vendedor.usuario.nombre_completo if vendedor.usuario else None,
+        'usuario_login': vendedor.usuario.usuario if vendedor.usuario else None,
         'porcentaje_comision_venta': float(vendedor.porcentaje_comision_venta or 0),
         'porcentaje_comision_recaudo': float(vendedor.porcentaje_comision_recaudo or 0),
         'monto_base_comision': float(vendedor.monto_base_comision or 0),
@@ -1484,6 +1517,51 @@ def get_vendedores():
         return jsonify({'error': 'Error al obtener vendedores'}), 500
 
 
+@comercial_bp.route('/vendedores/usuarios-asignables', methods=['GET'])
+@login_required
+def get_usuarios_asignables_vendedor():
+    """Usuarios del sistema que el admin puede vincular como login de un vendedor.
+
+    Devuelve los usuarios activos e indica cuáles ya están ocupados por otro
+    vendedor (para poder mostrarlos deshabilitados en el selector)."""
+    try:
+        _require_commercial_permission('vendedores', 'read')
+
+        vendedor_id = request.args.get('vendedor_id', type=int)
+        ocupados = {
+            v.usuario_id: v.nombre
+            for v in Vendedor.query.filter(Vendedor.usuario_id.isnot(None)).all()
+            if v.usuario_id is not None
+        }
+
+        usuarios = Usuario.query.filter_by(activo=True).order_by(Usuario.nombre_completo.asc()).all()
+        resultado = []
+        for usuario in usuarios:
+            asignado_a = ocupados.get(usuario.id)
+            disponible = asignado_a is None or (
+                vendedor_id is not None and usuario.id == _usuario_id_del_vendedor(vendedor_id)
+            )
+            resultado.append({
+                'id': usuario.id,
+                'nombre_completo': usuario.nombre_completo,
+                'usuario': usuario.usuario,
+                'email': usuario.email,
+                'disponible': disponible,
+                'vendedor_asignado': asignado_a if not disponible else None,
+            })
+        return jsonify(resultado), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except Exception as exc:
+        logger.error("Error obteniendo usuarios asignables a vendedor: %s", exc)
+        return jsonify({'error': 'Error al obtener usuarios asignables'}), 500
+
+
+def _usuario_id_del_vendedor(vendedor_id):
+    vendedor = Vendedor.query.get(vendedor_id)
+    return vendedor.usuario_id if vendedor else None
+
+
 @comercial_bp.route('/vendedores', methods=['POST'])
 @login_required
 def crear_vendedor():
@@ -1496,6 +1574,10 @@ def crear_vendedor():
 
         if documento and Vendedor.query.filter_by(documento=documento).first():
             return jsonify({'error': 'Ya existe un vendedor con ese documento'}), 409
+
+        usuario_id = payload.get('usuario_id')
+        if usuario_id and Vendedor.query.filter_by(usuario_id=usuario_id).first():
+            return jsonify({'error': 'Ese usuario ya está vinculado a otro vendedor'}), 409
 
         vendedor = Vendedor(**payload)
         db.session.add(vendedor)
@@ -1530,10 +1612,21 @@ def actualizar_vendedor(vendedor_id):
             if existente:
                 return jsonify({'error': 'Ya existe un vendedor con ese documento'}), 409
 
+        usuario_id = payload.get('usuario_id')
+        if usuario_id:
+            usuario_ocupado = Vendedor.query.filter(
+                Vendedor.usuario_id == usuario_id,
+                Vendedor.id != vendedor_id
+            ).first()
+            if usuario_ocupado:
+                return jsonify({'error': 'Ese usuario ya está vinculado a otro vendedor'}), 409
+
         vendedor.nombre = payload['nombre']
+        vendedor.cargo = payload['cargo']
         vendedor.documento = payload['documento']
         vendedor.telefono = payload['telefono']
         vendedor.email = payload['email']
+        vendedor.usuario_id = payload['usuario_id']
         vendedor.porcentaje_comision_venta = payload['porcentaje_comision_venta']
         vendedor.porcentaje_comision_recaudo = payload['porcentaje_comision_recaudo']
         vendedor.monto_base_comision = payload['monto_base_comision']
@@ -2747,3 +2840,390 @@ def cargar_catalogo_excel():
         'errores': errores,
         'total_errores': len(errores),
     }), 200
+
+
+# ==================== LIQUIDACION DE COMISIONES ====================
+
+ESTADOS_LIQUIDACION_COMISION = {'BORRADOR', 'CERRADA'}
+ESTADOS_VALIDACION_COMISION = {'APROBADA', 'PENDIENTE_VALIDACION', 'RECHAZADA'}
+
+
+def _pago_tiene_soporte(pago):
+    """Un pago tiene soporte cuando trae comprobante adjunto."""
+    return bool(getattr(pago, 'ruta_comprobante', None))
+
+
+def _rango_periodo(mes, anio):
+    inicio = datetime(anio, mes, 1)
+    if mes == 12:
+        fin = datetime(anio + 1, 1, 1)
+    else:
+        fin = datetime(anio, mes + 1, 1)
+    return inicio, fin
+
+
+def _quantize_money(value):
+    return Decimal(str(value or 0)).quantize(Decimal('0.01'))
+
+
+def _recalcular_totales_liquidacion(liquidacion):
+    total_con_soporte = Decimal('0')
+    total_sin_soporte = Decimal('0')
+    comision_aprobada = Decimal('0')
+    comision_pendiente = Decimal('0')
+    comision_rechazada = Decimal('0')
+
+    for detalle in liquidacion.detalles:
+        recaudo = Decimal(str(detalle.valor_recaudo or 0))
+        comision = Decimal(str(detalle.comision or 0))
+        if detalle.tiene_soporte:
+            total_con_soporte += recaudo
+        else:
+            total_sin_soporte += recaudo
+
+        if detalle.estado_validacion == 'APROBADA':
+            comision_aprobada += comision
+        elif detalle.estado_validacion == 'RECHAZADA':
+            comision_rechazada += comision
+        else:
+            comision_pendiente += comision
+
+    liquidacion.total_recaudo_con_soporte = _quantize_money(total_con_soporte)
+    liquidacion.total_recaudo_sin_soporte = _quantize_money(total_sin_soporte)
+    liquidacion.total_comision_aprobada = _quantize_money(comision_aprobada)
+    liquidacion.total_comision_pendiente = _quantize_money(comision_pendiente)
+    liquidacion.total_comision_rechazada = _quantize_money(comision_rechazada)
+
+
+def _serialize_comision_detalle(detalle):
+    pago = detalle.pago
+    return {
+        'id': detalle.id,
+        'pago_id': detalle.pago_id,
+        'cliente_id': detalle.cliente_id,
+        'cliente_nombre': detalle.cliente.razon_social if detalle.cliente else None,
+        'fecha_pago': pago.fecha_pago.strftime('%Y-%m-%d') if pago and pago.fecha_pago else None,
+        'medio_pago': pago.medio_pago if pago else None,
+        'forma_pago': pago.medio_pago if pago else None,
+        'descripcion': pago.observaciones if pago else None,
+        'valor_recaudo': float(detalle.valor_recaudo or 0),
+        'porcentaje_aplicado': float(detalle.porcentaje_aplicado or 0),
+        'comision': float(detalle.comision or 0),
+        'tiene_soporte': detalle.tiene_soporte,
+        'comprobante_url': f'/api/comercial/seguimiento-pagos/{detalle.pago_id}/comprobante' if (pago and pago.ruta_comprobante) else None,
+        'estado_validacion': detalle.estado_validacion,
+        'validado_por_id': detalle.validado_por_id,
+        'validado_at': detalle.validado_at.strftime('%Y-%m-%d %H:%M:%S') if detalle.validado_at else None,
+        'observacion': detalle.observacion,
+    }
+
+
+def _serialize_comision_liquidacion(liquidacion, incluir_detalle=False):
+    pagable = Decimal(str(liquidacion.total_comision_aprobada or 0))
+    data = {
+        'id': liquidacion.id,
+        'vendedor_id': liquidacion.vendedor_id,
+        'vendedor_nombre': liquidacion.vendedor.nombre if liquidacion.vendedor else None,
+        'mes': liquidacion.mes,
+        'anio': liquidacion.anio,
+        'estado': liquidacion.estado,
+        'porcentaje_recaudo': float(liquidacion.porcentaje_recaudo or 0),
+        'total_recaudo_con_soporte': float(liquidacion.total_recaudo_con_soporte or 0),
+        'total_recaudo_sin_soporte': float(liquidacion.total_recaudo_sin_soporte or 0),
+        'total_comision_aprobada': float(liquidacion.total_comision_aprobada or 0),
+        'total_comision_pendiente': float(liquidacion.total_comision_pendiente or 0),
+        'total_comision_rechazada': float(liquidacion.total_comision_rechazada or 0),
+        'total_comision_pagable': float(_quantize_money(pagable)),
+        'usuario_genera_id': liquidacion.usuario_genera_id,
+        'usuario_cierra_id': liquidacion.usuario_cierra_id,
+        'fecha_cierre': liquidacion.fecha_cierre.strftime('%Y-%m-%d %H:%M:%S') if liquidacion.fecha_cierre else None,
+        'observaciones': liquidacion.observaciones,
+        'created_at': liquidacion.created_at.strftime('%Y-%m-%d %H:%M:%S') if liquidacion.created_at else None,
+        'updated_at': liquidacion.updated_at.strftime('%Y-%m-%d %H:%M:%S') if liquidacion.updated_at else None,
+    }
+    if incluir_detalle:
+        detalles = sorted(
+            liquidacion.detalles,
+            key=lambda d: (0 if not d.tiene_soporte else 1, d.id),
+        )
+        data['detalles'] = [_serialize_comision_detalle(detalle) for detalle in detalles]
+    return data
+
+
+def _validar_periodo_comision(data):
+    mes = _parse_int_field(data, 'mes', required=True)
+    anio = _parse_int_field(data, 'anio', required=True)
+    if mes < 1 or mes > 12:
+        raise ValueError('El mes debe estar entre 1 y 12')
+    if anio < 2000 or anio > 2100:
+        raise ValueError('El anio no es valido')
+    return mes, anio
+
+
+def _generar_o_recalcular_liquidacion(vendedor, mes, anio):
+    """Crea o regenera la liquidacion de un vendedor para un periodo.
+
+    Toma todos los recibos de pago (recaudo) del periodo y calcula la comision
+    con el porcentaje de recaudo del vendedor. Conserva las decisiones de
+    validacion (aprobada/rechazada) previas de cada pago sin soporte."""
+    liquidacion = ComisionLiquidacion.query.filter_by(
+        vendedor_id=vendedor.id, mes=mes, anio=anio
+    ).first()
+
+    if liquidacion and liquidacion.estado == 'CERRADA':
+        raise ValueError('La liquidacion de este periodo ya esta cerrada y no se puede recalcular')
+
+    inicio, fin = _rango_periodo(mes, anio)
+    porcentaje = Decimal(str(vendedor.porcentaje_comision_recaudo or 0))
+
+    pagos = ClienteSeguimientoPago.query.filter(
+        ClienteSeguimientoPago.vendedor_id == vendedor.id,
+        ClienteSeguimientoPago.fecha_pago >= inicio,
+        ClienteSeguimientoPago.fecha_pago < fin,
+    ).all()
+
+    if liquidacion is None:
+        liquidacion = ComisionLiquidacion(
+            vendedor_id=vendedor.id,
+            mes=mes,
+            anio=anio,
+            estado='BORRADOR',
+        )
+        db.session.add(liquidacion)
+        db.session.flush()
+
+    liquidacion.porcentaje_recaudo = porcentaje
+
+    # Preservar decisiones previas por pago (aprobar/rechazar sin soporte).
+    decisiones_previas = {
+        detalle.pago_id: detalle
+        for detalle in liquidacion.detalles
+    }
+
+    pagos_por_id = {}
+    for pago in pagos:
+        comision = _quantize_money(Decimal(str(pago.valor_pago or 0)) * porcentaje / Decimal('100'))
+        tiene_soporte = _pago_tiene_soporte(pago)
+        pagos_por_id[pago.id] = pago
+
+        detalle = decisiones_previas.get(pago.id)
+        if detalle is None:
+            detalle = ComisionLiquidacionDetalle(
+                liquidacion_id=liquidacion.id,
+                pago_id=pago.id,
+            )
+            db.session.add(detalle)
+
+        detalle.cliente_id = pago.cliente_id
+        detalle.valor_recaudo = _quantize_money(pago.valor_pago)
+        detalle.porcentaje_aplicado = porcentaje
+        detalle.comision = comision
+        detalle.tiene_soporte = tiene_soporte
+
+        if tiene_soporte:
+            # Con soporte: se aprueba automaticamente.
+            detalle.estado_validacion = 'APROBADA'
+        elif detalle.estado_validacion not in {'APROBADA', 'RECHAZADA'}:
+            # Sin soporte y sin decision previa: queda pendiente de validacion.
+            detalle.estado_validacion = 'PENDIENTE_VALIDACION'
+
+    # Eliminar detalles cuyos pagos ya no existen en el periodo.
+    for pago_id, detalle in decisiones_previas.items():
+        if pago_id not in pagos_por_id:
+            db.session.delete(detalle)
+
+    db.session.flush()
+    db.session.refresh(liquidacion)
+    _recalcular_totales_liquidacion(liquidacion)
+    return liquidacion
+
+
+@comercial_bp.route('/comisiones/liquidaciones', methods=['GET'])
+@login_required
+def get_liquidaciones_comision():
+    try:
+        _require_commercial_permission('comisiones', 'read')
+
+        query = ComisionLiquidacion.query
+        vendedor_scope = _resolver_vendedor_usuario_actual()
+        if vendedor_scope is not None:
+            query = query.filter_by(vendedor_id=vendedor_scope.id)
+        else:
+            vendedor_id = request.args.get('vendedor_id', type=int)
+            if vendedor_id:
+                query = query.filter_by(vendedor_id=vendedor_id)
+
+        mes = request.args.get('mes', type=int)
+        anio = request.args.get('anio', type=int)
+        if mes:
+            query = query.filter_by(mes=mes)
+        if anio:
+            query = query.filter_by(anio=anio)
+
+        liquidaciones = query.order_by(
+            ComisionLiquidacion.anio.desc(),
+            ComisionLiquidacion.mes.desc(),
+            ComisionLiquidacion.vendedor_id.asc(),
+        ).all()
+        return jsonify([_serialize_comision_liquidacion(l) for l in liquidaciones]), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except Exception as exc:
+        logger.error("Error obteniendo liquidaciones de comision: %s", exc)
+        return jsonify({'error': 'Error al obtener liquidaciones de comision'}), 500
+
+
+@comercial_bp.route('/comisiones/liquidaciones/<int:liquidacion_id>', methods=['GET'])
+@login_required
+def get_liquidacion_comision(liquidacion_id):
+    try:
+        _require_commercial_permission('comisiones', 'read')
+        liquidacion = ComisionLiquidacion.query.get_or_404(liquidacion_id)
+
+        vendedor_scope = _resolver_vendedor_usuario_actual()
+        if vendedor_scope is not None and liquidacion.vendedor_id != vendedor_scope.id:
+            raise PermissionError('No tienes acceso a esta liquidacion')
+
+        return jsonify(_serialize_comision_liquidacion(liquidacion, incluir_detalle=True)), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error obteniendo liquidacion de comision %s: %s", liquidacion_id, exc)
+        return jsonify({'error': 'Error al obtener la liquidacion'}), 500
+
+
+@comercial_bp.route('/comisiones/liquidaciones', methods=['POST'])
+@login_required
+def generar_liquidacion_comision():
+    data = _get_payload()
+    try:
+        _require_commercial_permission('comisiones', 'create')
+        mes, anio = _validar_periodo_comision(data)
+
+        vendedor_id = _parse_int_field(data, 'vendedor_id', required=True)
+        vendedor = Vendedor.query.get(vendedor_id)
+        if not vendedor:
+            raise ValueError('Debe seleccionar un vendedor valido')
+
+        liquidacion = _generar_o_recalcular_liquidacion(vendedor, mes, anio)
+        if liquidacion.usuario_genera_id is None:
+            liquidacion.usuario_genera_id = current_user.id
+
+        db.session.commit()
+        return jsonify({
+            'mensaje': 'Liquidacion generada',
+            'id': liquidacion.id,
+            'liquidacion': _serialize_comision_liquidacion(liquidacion, incluir_detalle=True),
+        }), 200
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 403
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error generando liquidacion de comision: %s", exc)
+        return jsonify({'error': 'Error al generar la liquidacion de comision'}), 500
+
+
+@comercial_bp.route('/comisiones/detalle/<int:detalle_id>/validar', methods=['POST'])
+@login_required
+def validar_comision_detalle(detalle_id):
+    """Aprueba o rechaza una comision de un pago SIN soporte."""
+    data = _get_payload()
+    try:
+        _require_commercial_permission('comisiones', 'validate')
+        detalle = ComisionLiquidacionDetalle.query.get_or_404(detalle_id)
+
+        if detalle.liquidacion and detalle.liquidacion.estado == 'CERRADA':
+            return jsonify({'error': 'La liquidacion ya esta cerrada'}), 409
+        if detalle.tiene_soporte:
+            return jsonify({'error': 'Este pago tiene soporte; no requiere validacion manual'}), 409
+
+        decision = str(data.get('decision') or '').strip().upper()
+        if decision not in {'APROBAR', 'RECHAZAR'}:
+            raise ValueError('La decision debe ser APROBAR o RECHAZAR')
+
+        detalle.estado_validacion = 'APROBADA' if decision == 'APROBAR' else 'RECHAZADA'
+        detalle.validado_por_id = current_user.id
+        detalle.validado_at = datetime.utcnow()
+        detalle.observacion = _normalize_optional_text(data.get('observacion'))
+
+        _recalcular_totales_liquidacion(detalle.liquidacion)
+        db.session.commit()
+        return jsonify({
+            'mensaje': 'Comision validada',
+            'liquidacion': _serialize_comision_liquidacion(detalle.liquidacion, incluir_detalle=True),
+        }), 200
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error validando comision %s: %s", detalle_id, exc)
+        return jsonify({'error': 'Error al validar la comision'}), 500
+
+
+@comercial_bp.route('/comisiones/liquidaciones/<int:liquidacion_id>/cerrar', methods=['POST'])
+@login_required
+def cerrar_liquidacion_comision(liquidacion_id):
+    try:
+        _require_commercial_permission('comisiones', 'update')
+        liquidacion = ComisionLiquidacion.query.get_or_404(liquidacion_id)
+
+        if liquidacion.estado == 'CERRADA':
+            return jsonify({'error': 'La liquidacion ya esta cerrada'}), 409
+
+        pendientes = [d for d in liquidacion.detalles if d.estado_validacion == 'PENDIENTE_VALIDACION']
+        if pendientes:
+            return jsonify({
+                'error': f'No puedes cerrar la liquidacion: hay {len(pendientes)} comision(es) sin soporte pendientes de validar',
+            }), 409
+
+        _recalcular_totales_liquidacion(liquidacion)
+        liquidacion.estado = 'CERRADA'
+        liquidacion.usuario_cierra_id = current_user.id
+        liquidacion.fecha_cierre = datetime.utcnow()
+        db.session.commit()
+        return jsonify({
+            'mensaje': 'Liquidacion cerrada',
+            'liquidacion': _serialize_comision_liquidacion(liquidacion, incluir_detalle=True),
+        }), 200
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error cerrando liquidacion de comision %s: %s", liquidacion_id, exc)
+        return jsonify({'error': 'Error al cerrar la liquidacion'}), 500
+
+
+@comercial_bp.route('/comisiones/liquidaciones/<int:liquidacion_id>', methods=['DELETE'])
+@login_required
+def eliminar_liquidacion_comision(liquidacion_id):
+    try:
+        _require_commercial_permission('comisiones', 'delete')
+        liquidacion = ComisionLiquidacion.query.get_or_404(liquidacion_id)
+        if liquidacion.estado == 'CERRADA':
+            return jsonify({'error': 'No se puede eliminar una liquidacion cerrada'}), 409
+        db.session.delete(liquidacion)
+        db.session.commit()
+        return jsonify({'mensaje': 'Liquidacion eliminada'}), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error eliminando liquidacion de comision %s: %s", liquidacion_id, exc)
+        return jsonify({'error': 'Error al eliminar la liquidacion'}), 500

@@ -136,6 +136,20 @@ COMMERCIAL_PERMISSION_DEFINITIONS = (
     + _build_commercial_crud_definitions('atenciones', 'Atenciones Comerciales', 1500)
     + _build_commercial_crud_definitions('documentos', 'Documentos de Seguimiento', 1600)
     + _build_commercial_crud_definitions('pagos', 'Pagos de Seguimiento', 1700)
+    + _build_commercial_crud_definitions('comisiones', 'Comisiones', 1800)
+    + [
+        {
+            'category': 'comercial',
+            'module': 'comercial',
+            'group': 'Comisiones',
+            'entity': 'comisiones',
+            'action': 'validate',
+            'permiso': 'comercial_comisiones_validate',
+            'nombre': 'Comisiones: Validar sin soporte',
+            'descripcion': 'Puede aprobar o rechazar comisiones de pagos que no tienen soporte adjunto',
+            'orden': 1805,
+        },
+    ]
 )
 
 

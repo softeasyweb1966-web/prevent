@@ -29,6 +29,11 @@ def _build_user_session_payload(usuario):
     else:
         menu_modules = get_allowed_menu_modules_for_role(usuario.role)
 
+    # Vendedor vinculado (login propio del vendedor). Permite al frontend
+    # resolver automaticamente su alcance y ocultar el selector de vendedor.
+    vendedor = getattr(usuario, 'vendedor', None)
+    es_administrador = (usuario.role.nombre == 'Administrador') if usuario.role else False
+
     return {
         'usuario_id': usuario.id,
         'usuario': usuario.usuario,
@@ -40,6 +45,9 @@ def _build_user_session_payload(usuario):
         'menu_modules': menu_modules,
         'permission_names': sorted(permission_names - {'*'}) if '*' in permission_names else sorted(permission_names),
         'is_superuser': is_easy or '*' in permission_names,
+        'es_vendedor': vendedor is not None and not es_administrador,
+        'vendedor_id': vendedor.id if vendedor is not None else None,
+        'vendedor_nombre': vendedor.nombre if vendedor is not None else None,
     }
 
 

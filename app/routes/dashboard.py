@@ -11,6 +11,9 @@ from app.models import (
     ServicioPago,
     ServicioPeriodo,
     ClienteComercial,
+    ClienteSeguimientoDocumento,
+    ClienteSeguimientoPago,
+    ComisionLiquidacion,
     Vendedor,
     Novedad,
     NovedadAplicada,
@@ -1204,30 +1207,57 @@ def dashboard_comercial():
         vendedores_activos = Vendedor.query.filter_by(activo=True).count()
         clientes_activos = ClienteComercial.query.filter_by(activo=True).count()
 
+        # Cartera pendiente: saldo vivo de documentos que generan cartera y
+        # no estan anulados ni pagados por completo.
+        cartera_pendiente = db.session.query(
+            func.coalesce(func.sum(ClienteSeguimientoDocumento.saldo_actual), 0)
+        ).filter(
+            ClienteSeguimientoDocumento.genera_cartera.is_(True),
+            ClienteSeguimientoDocumento.estado_documento != 'ANULADO',
+            ClienteSeguimientoDocumento.saldo_actual > 0,
+        ).scalar() or 0
+
+        # Recaudo del mes (pagos con fecha dentro del periodo).
+        inicio_mes = datetime(referencia_anio, referencia_mes, 1)
+        if referencia_mes == 12:
+            fin_mes = datetime(referencia_anio + 1, 1, 1)
+        else:
+            fin_mes = datetime(referencia_anio, referencia_mes + 1, 1)
+
+        recaudo_mes = db.session.query(
+            func.coalesce(func.sum(ClienteSeguimientoPago.valor_pago), 0)
+        ).filter(
+            ClienteSeguimientoPago.fecha_pago >= inicio_mes,
+            ClienteSeguimientoPago.fecha_pago < fin_mes,
+        ).scalar() or 0
+
+        # Comisiones del mes (comision aprobada segun liquidaciones del periodo).
+        comisiones_mes = db.session.query(
+            func.coalesce(func.sum(ComisionLiquidacion.total_comision_aprobada), 0)
+        ).filter(
+            ComisionLiquidacion.mes == referencia_mes,
+            ComisionLiquidacion.anio == referencia_anio,
+        ).scalar() or 0
+
         return jsonify({
             'nombre': 'Comercial',
             'periodicidad': 'Mensual',
             'total_vendedores': int(total_vendedores),
             'vendedores_activos': int(vendedores_activos),
             'clientes_activos': int(clientes_activos),
-            'cartera_pendiente': 0.0,
-            'comisiones_mes': 0.0,
+            'cartera_pendiente': float(cartera_pendiente),
+            'recaudo_mes': float(recaudo_mes),
+            'comisiones_mes': float(comisiones_mes),
             'rentabilidad_mes': 0.0,
             'periodo_actual': {
                 'mes': referencia_mes,
                 'anio': referencia_anio,
             },
-            'mensaje': 'Modulo comercial base listo para crecer con clientes, cartera, alertas y comisiones',
+            'mensaje': 'Dashboard comercial con cartera y comisiones del periodo',
         }), 200
     except Exception as e:
         logger.error(f"Error dashboard comercial: {str(e)}")
         return jsonify({'error': 'Error al cargar dashboard comercial'}), 500
-
-
-@dashboard_bp.route('/comisiones', methods=['GET'])
-@login_required
-def dashboard_comisiones():
-    return dashboard_comercial()
 
 
 @dashboard_bp.route('/impuestos', methods=['GET'])

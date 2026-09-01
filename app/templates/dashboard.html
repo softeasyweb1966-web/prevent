@@ -1900,8 +1900,8 @@
                         <button id="comercialNavMes" type="button" class="btn btn-secondary" data-comercial-section="mes" onclick="switchComercialSection('mes')">
                             <span class="btn-label">Mes</span>
                         </button>
-                        <button id="comercialNavHistorial" type="button" class="btn btn-secondary" onclick="notImplemented('Comercial: Historial')">
-                            <span class="btn-label">Ver Historial</span>
+                        <button id="comercialNavComisiones" type="button" class="btn btn-secondary" data-comercial-section="comisiones" onclick="switchComercialSection('comisiones')">
+                            <span class="btn-label">Comisiones</span>
                         </button>
                         <button id="comercialNavInicio" type="button" class="btn btn-secondary active" data-comercial-section="inicio" onclick="switchComercialSection('inicio')">
                             <span class="btn-label">Inicio</span>
@@ -1964,8 +1964,7 @@
                                 <button type="button" class="btn btn-step" data-module="comercial" data-step="pagos" onclick="setGenericWorkflowStep('comercial', 'pagos')">3. Comisiones</button>
                             </div>
                             <div class="period-workflow-actions">
-                                <button id="btnComercialFinalizarNovedadesPanel" type="button" class="btn btn-outline btn-step" style="display:none;" onclick="notImplemented('Comercial: FINALIZAR CARTERA mes')">Finalizar Cartera</button>
-                                <button id="btnComercialFinalizarPagoPanel" type="button" class="btn btn-step btn-danger" style="display:none;" onclick="notImplemented('Comercial: FINALIZAR COMISIONES mes')">Finalizar Mes</button>
+                                <button type="button" class="btn btn-step btn-primary" onclick="switchComercialSection('comisiones')">Ir a Comisiones</button>
                             </div>
                         </div>
                     </div>
@@ -2425,6 +2424,77 @@
                     <div id="comercialTarifasPanel" style="display:none;">
                         <table class="data-table" style="display:none;">
                             <tbody id="comercialTarifasTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="comercialComisionesSection" class="comercial-section-panels">
+                    <div class="recent-section comercial-section-entry" style="margin-bottom: 16px;">
+                        <h3 style="margin-top:0;">Liquidación de comisiones</h3>
+                        <p style="margin-top:0; color:#555;">La comisión se calcula sobre los recibos de pago (recaudo) del periodo. Los pagos con soporte se aprueban automáticamente; los pagos sin soporte quedan pendientes de validación.</p>
+                        <div class="consulta-toolbar-grid" style="grid-template-columns: repeat(4, minmax(140px,1fr)); align-items:end;">
+                            <div class="form-group" id="comisionVendedorGroup">
+                                <label for="comisionVendedorId">Vendedor</label>
+                                <select id="comisionVendedorId"></select>
+                            </div>
+                            <div class="form-group">
+                                <label for="comisionAnio">Año</label>
+                                <input type="number" id="comisionAnio" min="2000" max="2100">
+                            </div>
+                            <div class="form-group">
+                                <label for="comisionMes">Mes</label>
+                                <select id="comisionMes">
+                                    <option value="1">Enero</option>
+                                    <option value="2">Febrero</option>
+                                    <option value="3">Marzo</option>
+                                    <option value="4">Abril</option>
+                                    <option value="5">Mayo</option>
+                                    <option value="6">Junio</option>
+                                    <option value="7">Julio</option>
+                                    <option value="8">Agosto</option>
+                                    <option value="9">Septiembre</option>
+                                    <option value="10">Octubre</option>
+                                    <option value="11">Noviembre</option>
+                                    <option value="12">Diciembre</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <button type="button" class="btn btn-primary" onclick="generarLiquidacionComision()">Generar / Recalcular</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="comisionResumenPanel" class="recent-section" style="display:none; margin-bottom:16px;">
+                        <div class="stats-grid" style="grid-template-columns: repeat(4, minmax(150px,1fr));">
+                            <div class="stat-card"><h3>Recaudo con soporte</h3><p class="stat-number" id="comisionTotalConSoporte">$0</p></div>
+                            <div class="stat-card"><h3>Recaudo sin soporte</h3><p class="stat-number" id="comisionTotalSinSoporte">$0</p></div>
+                            <div class="stat-card"><h3>Comisión aprobada</h3><p class="stat-number" id="comisionTotalAprobada">$0</p></div>
+                            <div class="stat-card"><h3>Comisión pendiente</h3><p class="stat-number" id="comisionTotalPendiente">$0</p></div>
+                        </div>
+                        <div style="margin-top:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                            <span id="comisionEstadoBadge" class="badge badge-secondary">BORRADOR</span>
+                            <span style="color:#555;">Comisión a pagar: <strong id="comisionTotalPagable">$0</strong></span>
+                            <button type="button" class="btn btn-danger" id="comisionCerrarBtn" style="display:none;" onclick="cerrarLiquidacionComision()">Cerrar liquidación</button>
+                        </div>
+                    </div>
+
+                    <div id="comisionDetallePanel" class="table-container" style="display:none;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Fecha pago</th>
+                                    <th>Cliente</th>
+                                    <th>Forma de pago</th>
+                                    <th>Descripción</th>
+                                    <th>Recaudo</th>
+                                    <th>%</th>
+                                    <th>Comisión</th>
+                                    <th>Soporte</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="comisionDetalleTable"></tbody>
                         </table>
                     </div>
                 </div>
@@ -3887,10 +3957,14 @@
                     <input type="number" id="vendedorComisionRecaudo" min="0" max="100" step="0.01">
                 </div>
             </div>
-            <div class="form-group">
-                <label for="vendedorMontoBaseComision">Monto Base Comisión</label>
-                <input type="number" id="vendedorMontoBaseComision" min="0" step="0.01">
+            <div class="form-group" id="vendedorUsuarioGroup">
+                <label for="vendedorUsuarioId">Usuario para ingresar al sistema</label>
+                <select id="vendedorUsuarioId">
+                    <option value="">Sin usuario asignado</option>
+                </select>
+                <small style="color:#666;">El vendedor entra con este usuario y solo vera sus propios clientes.</small>
             </div>
+            <input type="hidden" id="vendedorMontoBaseComision" value="0">
             <div class="form-group">
                 <label for="vendedorDescripcion">Descripción</label>
                 <textarea id="vendedorDescripcion" rows="2"></textarea>

@@ -299,6 +299,10 @@ class Vendedor(db.Model):
     documento = db.Column(db.String(30), unique=True, index=True)
     telefono = db.Column(db.String(50))
     email = db.Column(db.String(120))
+    # Usuario del sistema con el que se loguea el vendedor. Cuando ese usuario
+    # entra a la aplicacion, el modulo comercial resuelve automaticamente su
+    # vendedor y solo le muestra sus propios clientes.
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), unique=True, index=True)
     porcentaje_comision_venta = db.Column(Numeric(5, 2), default=0)
     porcentaje_comision_recaudo = db.Column(Numeric(5, 2), default=0)
     monto_base_comision = db.Column(Numeric(15, 2), default=0)
@@ -310,6 +314,11 @@ class Vendedor(db.Model):
         'ClienteComercial',
         backref='vendedor',
         lazy='dynamic'
+    )
+    usuario = db.relationship(
+        'Usuario',
+        backref=db.backref('vendedor', uselist=False),
+        foreign_keys=[usuario_id],
     )
 
     def __repr__(self):
@@ -451,6 +460,85 @@ class ClienteSeguimientoPago(db.Model):
 
     def __repr__(self):
         return f'<ClienteSeguimientoPago {self.documento_id} {self.valor_pago}>'
+
+
+class ComisionLiquidacion(db.Model):
+    """Liquidacion de comisiones de un vendedor para un periodo (mes/anio).
+
+    La comision se calcula unicamente sobre los recibos de pago (recaudo) del
+    periodo. Los pagos con soporte se aprueban automaticamente; los pagos sin
+    soporte quedan pendientes de validacion por un usuario autorizado."""
+    __tablename__ = 'comisiones_liquidaciones'
+
+    id = db.Column(db.Integer, primary_key=True)
+    vendedor_id = db.Column(db.Integer, db.ForeignKey('vendedores.id'), nullable=False, index=True)
+    mes = db.Column(db.Integer, nullable=False, index=True)
+    anio = db.Column(db.Integer, nullable=False, index=True)
+    estado = db.Column(db.String(20), nullable=False, default='BORRADOR', index=True)
+    porcentaje_recaudo = db.Column(Numeric(5, 2), default=0, nullable=False)
+
+    # Totales calculados al generar/recalcular la liquidacion.
+    total_recaudo_con_soporte = db.Column(Numeric(15, 2), default=0, nullable=False)
+    total_recaudo_sin_soporte = db.Column(Numeric(15, 2), default=0, nullable=False)
+    total_comision_aprobada = db.Column(Numeric(15, 2), default=0, nullable=False)
+    total_comision_pendiente = db.Column(Numeric(15, 2), default=0, nullable=False)
+    total_comision_rechazada = db.Column(Numeric(15, 2), default=0, nullable=False)
+
+    usuario_genera_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    usuario_cierra_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    fecha_cierre = db.Column(db.DateTime)
+    observaciones = db.Column(db.Text)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    vendedor = db.relationship('Vendedor', backref=db.backref('comisiones_liquidaciones', lazy='dynamic'))
+    detalles = db.relationship(
+        'ComisionLiquidacionDetalle',
+        backref='liquidacion',
+        lazy='select',
+        cascade='all, delete-orphan'
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint('vendedor_id', 'mes', 'anio', name='uq_comision_vendedor_periodo'),
+    )
+
+    def __repr__(self):
+        return f'<ComisionLiquidacion vendedor={self.vendedor_id} {self.mes}/{self.anio}>'
+
+
+class ComisionLiquidacionDetalle(db.Model):
+    """Detalle de la liquidacion: una linea por recibo de pago (recaudo)."""
+    __tablename__ = 'comisiones_liquidaciones_detalle'
+
+    id = db.Column(db.Integer, primary_key=True)
+    liquidacion_id = db.Column(db.Integer, db.ForeignKey('comisiones_liquidaciones.id'), nullable=False, index=True)
+    pago_id = db.Column(db.Integer, db.ForeignKey('clientes_seguimiento_pagos.id'), nullable=False, index=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes_comerciales.id'), index=True)
+
+    valor_recaudo = db.Column(Numeric(15, 2), default=0, nullable=False)
+    porcentaje_aplicado = db.Column(Numeric(5, 2), default=0, nullable=False)
+    comision = db.Column(Numeric(15, 2), default=0, nullable=False)
+    tiene_soporte = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    estado_validacion = db.Column(db.String(25), nullable=False, default='APROBADA', index=True)
+
+    validado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    validado_at = db.Column(db.DateTime)
+    observacion = db.Column(db.Text)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    pago = db.relationship('ClienteSeguimientoPago', backref=db.backref('comision_detalles', lazy='dynamic'))
+    cliente = db.relationship('ClienteComercial')
+
+    __table_args__ = (
+        db.UniqueConstraint('liquidacion_id', 'pago_id', name='uq_comision_detalle_pago'),
+    )
+
+    def __repr__(self):
+        return f'<ComisionLiquidacionDetalle liq={self.liquidacion_id} pago={self.pago_id}>'
 
 
 class ClienteComercialAdjunto(db.Model):
