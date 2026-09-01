@@ -10925,7 +10925,7 @@ async function cargarUsuariosAsignablesVendedor(vendedorId = null, usuarioSelecc
     select.value = usuarioSeleccionado != null ? String(usuarioSeleccionado) : '';
 }
 
-async function mostrarAgregarVendedor() {
+function mostrarAgregarVendedor() {
     document.getElementById('vendedorForm').reset();
     document.getElementById('vendedorId').value = '';
     document.getElementById('vendedorModalTitle').textContent = 'Nuevo Vendedor';
@@ -10933,8 +10933,10 @@ async function mostrarAgregarVendedor() {
     document.getElementById('vendedorComisionRecaudo').value = '0';
     document.getElementById('vendedorMontoBaseComision').value = '0';
     document.getElementById('vendedorActivo').checked = true;
-    await cargarUsuariosAsignablesVendedor();
+    // Abrimos el modal de inmediato; la lista de usuarios asignables se carga
+    // en segundo plano para no bloquear la apertura si el endpoint falla.
     document.getElementById('vendedorModal').classList.add('active');
+    cargarUsuariosAsignablesVendedor().catch(err => console.error('Usuarios asignables:', err));
 }
 
 function closeVendedorModal() {
@@ -10957,8 +10959,9 @@ async function editarVendedorConfig(id) {
     document.getElementById('vendedorDescripcion').value = vendedor.descripcion || '';
     document.getElementById('vendedorActivo').checked = vendedor.activo !== false;
     document.getElementById('vendedorModalTitle').textContent = 'Editar Vendedor';
-    await cargarUsuariosAsignablesVendedor(vendedor.id, vendedor.usuario_id);
     document.getElementById('vendedorModal').classList.add('active');
+    cargarUsuariosAsignablesVendedor(vendedor.id, vendedor.usuario_id)
+        .catch(err => console.error('Usuarios asignables:', err));
 }
 
 function editarAsignacionLaboral(id) {
