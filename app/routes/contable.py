@@ -16,6 +16,7 @@ from app.models import (
     SiigoCliente,
     SiigoComprobante,
     SiigoCuentaContable,
+    SiigoCuentaReporte,
     SiigoMovimiento,
     db,
 )
@@ -24,6 +25,7 @@ from app.security import get_permission_names_for_user
 
 
 TIPOS_COMPROBANTE_PERMITIDOS = {'FV', 'RC', 'NC', 'ND'}
+CLASIFICACIONES_REPORTE_VENTAS = {'INGRESO', 'NOTA_CREDITO', 'IVA_GENERADO'}
 
 
 def _texto(value):
@@ -513,6 +515,87 @@ def comparativo_clientes():
             'clientes_periodo_b': len(periodo_b),
             'nuevos': nuevos,
             'no_volvieron': no_volvieron,
+        })
+    except (ValueError, PermissionError) as exc:
+        return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
+
+
+@contable_bp.route('/configuracion-ventas', methods=['GET', 'POST'])
+@login_required
+def configuracion_ventas():
+    try:
+        _requiere_ventas()
+        if request.method == 'POST':
+            data = request.get_json() or {}
+            codigo = _texto(data.get('codigo_contable'))
+            clasificacion = _texto(data.get('clasificacion')).upper()
+            if not codigo or clasificacion not in CLASIFICACIONES_REPORTE_VENTAS:
+                raise ValueError('Debe indicar una cuenta y una clasificación válida.')
+            item = SiigoCuentaReporte.query.filter_by(codigo_contable=codigo).first()
+            if item is None:
+                item = SiigoCuentaReporte(codigo_contable=codigo, clasificacion=clasificacion)
+                db.session.add(item)
+            item.clasificacion = clasificacion
+            item.activo = bool(data.get('activo', True))
+            db.session.commit()
+
+        configuradas = SiigoCuentaReporte.query.order_by(SiigoCuentaReporte.clasificacion, SiigoCuentaReporte.codigo_contable).all()
+        nombres = {
+            cuenta.codigo: cuenta.nombre
+            for cuenta in SiigoCuentaContable.query.filter(
+                SiigoCuentaContable.codigo.in_([item.codigo_contable for item in configuradas])
+            ).all()
+        } if configuradas else {}
+        return jsonify({'cuentas': [{
+            'codigo': item.codigo_contable,
+            'nombre': nombres.get(item.codigo_contable, ''),
+            'clasificacion': item.clasificacion,
+            'activo': item.activo,
+        } for item in configuradas]})
+    except (ValueError, PermissionError) as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
+
+
+@contable_bp.route('/ventas-mensuales', methods=['GET'])
+@login_required
+def ventas_mensuales():
+    try:
+        _requiere_ventas()
+        anio = int(request.args.get('anio', datetime.now().year))
+        if anio < 2000 or anio > 2100:
+            raise ValueError('El año debe estar entre 2000 y 2100.')
+        incluir_nc = _texto(request.args.get('incluir_nc')).lower() in {'1', 'true', 'si', 'yes', 'on'}
+        incluir_iva = _texto(request.args.get('incluir_iva')).lower() in {'1', 'true', 'si', 'yes', 'on'}
+        configuracion = SiigoCuentaReporte.query.filter_by(activo=True).all()
+        ingresos = {item.codigo_contable for item in configuracion if item.clasificacion == 'INGRESO'}
+        notas_credito = {item.codigo_contable for item in configuracion if item.clasificacion == 'NOTA_CREDITO'}
+        iva = {item.codigo_contable for item in configuracion if item.clasificacion == 'IVA_GENERADO'}
+        if not ingresos:
+            raise ValueError('No hay cuentas de ingreso configuradas para el informe.')
+        cuentas = set(ingresos)
+        tipos = {'FV'}
+        if incluir_nc:
+            cuentas.update(notas_credito)
+            tipos.add('NC')
+        if incluir_iva:
+            cuentas.update(iva)
+
+        valor = func.coalesce(SiigoMovimiento.credito, 0) - func.coalesce(SiigoMovimiento.debito, 0)
+        mes = func.extract('month', SiigoComprobante.fecha_elaboracion)
+        rows = db.session.query(mes, func.sum(valor)).join(SiigoComprobante).filter(
+            SiigoComprobante.tipo_documento.in_(tipos),
+            func.extract('year', SiigoComprobante.fecha_elaboracion) == anio,
+            SiigoMovimiento.codigo_contable.in_(cuentas),
+        ).group_by(mes).order_by(mes).all()
+        totales = {int(numero_mes): float(total or 0) for numero_mes, total in rows}
+        return jsonify({
+            'anio': anio,
+            'incluir_nc': incluir_nc,
+            'incluir_iva': incluir_iva,
+            'cuentas': sorted(cuentas),
+            'meses': [{'mes': mes_numero, 'valor': totales.get(mes_numero, 0)} for mes_numero in range(1, 13)],
+            'total': sum(totales.values()),
         })
     except (ValueError, PermissionError) as exc:
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403

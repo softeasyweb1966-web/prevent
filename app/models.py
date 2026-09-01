@@ -672,6 +672,18 @@ class SiigoCuentaContable(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class SiigoCuentaReporte(db.Model):
+    """Clasifica cuentas para que los informes no dependan de reglas fijas en código."""
+    __tablename__ = 'siigo_cuentas_reporte'
+
+    id = db.Column(db.Integer, primary_key=True)
+    codigo_contable = db.Column(db.String(30), nullable=False, unique=True, index=True)
+    clasificacion = db.Column(db.String(30), nullable=False, index=True)
+    activo = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class SiigoComprobante(db.Model):
     """Encabezado de los comprobantes relevantes para ventas y cartera."""
     __tablename__ = 'siigo_comprobantes'

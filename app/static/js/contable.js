@@ -160,6 +160,75 @@ async function consultarComparativoClientesSiigo(event) {
     }
 }
 
+function crearPanelVentasMensualesSiigo() {
+    let panel = document.getElementById('siigoVentasMensualesPanel');
+    if (panel) return panel;
+    const anchor = crearPanelComparativoSiigo();
+    panel = document.createElement('section');
+    panel.id = 'siigoVentasMensualesPanel';
+    panel.className = 'recent-section';
+    panel.style.marginTop = '16px';
+    panel.innerHTML = `<h3 style="margin-top:0;">Control mensual de ventas</h3><p class="form-help">Calculado desde PREVENT con las mismas reglas de FV, NC e IVA que se compararan contra SIIGO.</p><form id="siigoVentasMensualesForm"><div class="form-row"><div class="form-group"><label for="siigoVentasAnio">Ano</label><input id="siigoVentasAnio" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" required></div><div class="form-group" style="align-self:end;"><label><input id="siigoVentasIncluirNC" type="checkbox" checked> Incluir notas credito</label></div><div class="form-group" style="align-self:end;"><label><input id="siigoVentasIncluirIVA" type="checkbox"> Incluir impuesto</label></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Calcular ventas</button></div></div></form><div id="siigoVentasMensualesResultado" class="table-container" style="margin-top:16px;"></div><h4 style="margin:20px 0 8px;">Cuentas incluidas en el calculo</h4><div id="siigoConfiguracionVentas" class="table-container"></div>`;
+    anchor.insertAdjacentElement('afterend', panel);
+    panel.querySelector('form').addEventListener('submit', consultarVentasMensualesSiigo);
+    return panel;
+}
+
+async function cargarConfiguracionVentasSiigo() {
+    const container = document.getElementById('siigoConfiguracionVentas');
+    if (!container) return;
+    try {
+        const response = await fetch('/api/contable/configuracion-ventas', { credentials: 'include' });
+        const data = await leerRespuestaSiigo(response);
+        if (!response.ok) throw new Error(data.error || 'No fue posible cargar la configuracion.');
+        const rows = data.cuentas || [];
+        const options = ['INGRESO', 'NOTA_CREDITO', 'IVA_GENERADO'];
+        container.innerHTML = rows.length ? `<table class="data-table"><thead><tr><th>Codigo</th><th>Cuenta</th><th>Clasificacion</th><th>Activa</th><th></th></tr></thead><tbody>${rows.map(item => `<tr data-codigo="${escapeSiigo(item.codigo)}"><td>${escapeSiigo(item.codigo)}</td><td>${escapeSiigo(item.nombre)}</td><td><select>${options.map(option => `<option value="${option}" ${item.clasificacion === option ? 'selected' : ''}>${option}</option>`).join('')}</select></td><td><input type="checkbox" ${item.activo ? 'checked' : ''}></td><td><button type="button" class="action-btn">Guardar</button></td></tr>`).join('')}</tbody></table>` : 'No hay cuentas configuradas.';
+        container.querySelectorAll('tr[data-codigo]').forEach(row => row.querySelector('button').addEventListener('click', () => guardarConfiguracionVentasSiigo(row)));
+    } catch (error) {
+        container.textContent = error.message;
+    }
+}
+
+async function guardarConfiguracionVentasSiigo(row) {
+    const codigo = row.dataset.codigo;
+    const clasificacion = row.querySelector('select').value;
+    const activo = row.querySelector('input[type="checkbox"]').checked;
+    try {
+        const response = await fetch('/api/contable/configuracion-ventas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ codigo_contable: codigo, clasificacion, activo }),
+        });
+        const data = await leerRespuestaSiigo(response);
+        if (!response.ok) throw new Error(data.error || 'No fue posible guardar la cuenta.');
+        await cargarConfiguracionVentasSiigo();
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+async function consultarVentasMensualesSiigo(event) {
+    event.preventDefault();
+    const params = new URLSearchParams({
+        anio: document.getElementById('siigoVentasAnio').value,
+        incluir_nc: document.getElementById('siigoVentasIncluirNC').checked,
+        incluir_iva: document.getElementById('siigoVentasIncluirIVA').checked,
+    });
+    const result = document.getElementById('siigoVentasMensualesResultado');
+    result.textContent = 'Calculando ventas...';
+    try {
+        const response = await fetch(`/api/contable/ventas-mensuales?${params.toString()}`, { credentials: 'include' });
+        const data = await leerRespuestaSiigo(response);
+        if (!response.ok) throw new Error(data.error || 'No fue posible calcular las ventas.');
+        const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        result.innerHTML = `<p class="form-help">Cuentas utilizadas: ${data.cuentas.map(escapeSiigo).join(', ')}</p><table class="data-table"><thead><tr><th>Mes</th><th>Ventas PREVENT</th></tr></thead><tbody>${data.meses.map(item => `<tr><td>${meses[item.mes - 1]}</td><td>${formatoSiigoNumero(item.valor)}</td></tr>`).join('')}</tbody><tfoot><tr><th>Total</th><th>${formatoSiigoNumero(data.total)}</th></tr></tfoot></table>`;
+    } catch (error) {
+        result.textContent = error.message;
+    }
+}
+
 async function consultarClientesSiigo() {
     const query = document.getElementById('siigoClienteFiltro').value.trim();
     const container = document.getElementById('siigoConsultaResultado');
@@ -183,6 +252,8 @@ function inicializarVentasSiigo() {
     }
     configurarAutocompletadoTercerosSiigo();
     crearPanelComparativoSiigo();
+    crearPanelVentasMensualesSiigo();
+    cargarConfiguracionVentasSiigo();
     cargarResumenSiigo().catch(error => {
         const result = document.getElementById('siigoCargaResultado');
         if (result) result.textContent = error.message;
