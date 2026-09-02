@@ -23,6 +23,8 @@ from app.models import (
     ClienteComercialTarifa,
     ComercialCatalogoItem,
     ComercialPaqueteDetalle,
+    ComercialRecaudo,
+    ComercialRecaudoAtencion,
     ComisionLiquidacion,
     ComisionLiquidacionDetalle,
     SiigoCliente,
@@ -3241,3 +3243,400 @@ def eliminar_liquidacion_comision(liquidacion_id):
         db.session.rollback()
         logger.error("Error eliminando liquidacion de comision %s: %s", liquidacion_id, exc)
         return jsonify({'error': 'Error al eliminar la liquidacion'}), 500
+
+
+# ==================== RECAUDOS (COMPROBANTES DE PAGO AGRUPADOS) ====================
+
+MEDIOS_RECAUDO = {'EFECTIVO', 'TRANSFERENCIA', 'CONSIGNACION', 'CHEQUE', 'OTRO'}
+
+
+def _guardar_comprobante_recaudo(recaudo, archivo):
+    """Guarda el soporte de pago del recaudo bajo la carpeta del cliente."""
+    if not archivo or not archivo.filename:
+        return
+
+    upload_root = current_app.config['UPLOAD_FOLDER']
+    recaudo_dir = os.path.join(upload_root, 'comercial', 'clientes', str(recaudo.cliente_id), 'recaudos')
+    os.makedirs(recaudo_dir, exist_ok=True)
+
+    nombre_original = secure_filename(archivo.filename)
+    if not nombre_original:
+        return
+
+    nombre_guardado = f'{uuid.uuid4().hex}_{nombre_original}'
+    ruta_absoluta = os.path.join(recaudo_dir, nombre_guardado)
+    archivo.save(ruta_absoluta)
+
+    recaudo.nombre_comprobante = nombre_original
+    recaudo.ruta_comprobante = os.path.relpath(ruta_absoluta, upload_root)
+    recaudo.mime_type = archivo.mimetype
+    recaudo.tamano_bytes = os.path.getsize(ruta_absoluta)
+
+
+def _get_recaudo_comprobante_path(recaudo):
+    if not recaudo.ruta_comprobante:
+        raise FileNotFoundError('Comprobante no encontrado')
+    upload_root = os.path.abspath(current_app.config['UPLOAD_FOLDER'])
+    ruta = os.path.abspath(os.path.join(upload_root, recaudo.ruta_comprobante))
+    if not ruta.startswith(upload_root):
+        raise FileNotFoundError('Ruta de comprobante invalida')
+    if not os.path.exists(ruta):
+        raise FileNotFoundError('Comprobante no encontrado')
+    return ruta
+
+
+def _calcular_comision_recaudo(recaudo, vendedor):
+    """Comision = valor del comprobante x % de recaudo del vendedor."""
+    porcentaje = Decimal(str((vendedor.porcentaje_comision_recaudo if vendedor else 0) or 0))
+    valor = Decimal(str(recaudo.valor_comprobante or 0))
+    comision = (valor * porcentaje / Decimal('100')).quantize(Decimal('0.01'))
+    recaudo.porcentaje_aplicado = porcentaje
+    recaudo.comision_calculada = comision
+
+
+def _serialize_recaudo(recaudo, incluir_atenciones=False):
+    data = {
+        'id': recaudo.id,
+        'cliente_id': recaudo.cliente_id,
+        'cliente_nombre': recaudo.cliente.razon_social if recaudo.cliente else None,
+        'vendedor_id': recaudo.vendedor_id,
+        'vendedor_nombre': recaudo.vendedor.nombre if recaudo.vendedor else None,
+        'fecha_pago': recaudo.fecha_pago.strftime('%Y-%m-%d') if recaudo.fecha_pago else None,
+        'valor_comprobante': float(recaudo.valor_comprobante or 0),
+        'medio_pago': recaudo.medio_pago,
+        'canal_transferencia': recaudo.canal_transferencia,
+        'porcentaje_aplicado': float(recaudo.porcentaje_aplicado or 0),
+        'comision_calculada': float(recaudo.comision_calculada or 0),
+        'estado': recaudo.estado,
+        'observaciones': recaudo.observaciones,
+        'nombre_comprobante': recaudo.nombre_comprobante,
+        'comprobante_url': f'/api/comercial/recaudos/{recaudo.id}/comprobante' if recaudo.ruta_comprobante else None,
+        'cantidad_atenciones': recaudo.atenciones.count(),
+        'created_at': recaudo.created_at.strftime('%Y-%m-%d %H:%M:%S') if recaudo.created_at else None,
+    }
+    if incluir_atenciones:
+        asociaciones = recaudo.atenciones.all()
+        data['atenciones'] = [{
+            'id': asoc.id,
+            'atencion_id': asoc.atencion_id,
+            'nro_atencion': asoc.atencion.nro_atencion if asoc.atencion else None,
+            'paciente_nombre': asoc.atencion.paciente_nombre if asoc.atencion else None,
+            'valor_atencion': float(asoc.atencion.valor_total or 0) if asoc.atencion else 0,
+            'valor_aplicado': float(asoc.valor_aplicado or 0),
+        } for asoc in asociaciones]
+    return data
+
+
+def _resolver_atenciones_del_cliente_en_scope(cliente):
+    """Lista atenciones del cliente (respetando scope de vendedor)."""
+    return ClienteAtencion.query.filter_by(cliente_id=cliente.id).order_by(
+        ClienteAtencion.fecha_atencion.desc(),
+        ClienteAtencion.id.desc(),
+    ).all()
+
+
+def _aplicar_atenciones_a_recaudo(recaudo, atencion_ids):
+    """Reemplaza las atenciones asociadas al recaudo por la lista dada.
+
+    Solo permite atenciones del mismo cliente del recaudo."""
+    ids = []
+    for raw in (atencion_ids or []):
+        try:
+            ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    ids = list(dict.fromkeys(ids))  # unicos, preserva orden
+
+    # Borrar asociaciones actuales
+    for asoc in recaudo.atenciones.all():
+        db.session.delete(asoc)
+    db.session.flush()
+
+    for atencion_id in ids:
+        atencion = ClienteAtencion.query.get(atencion_id)
+        if atencion is None or atencion.cliente_id != recaudo.cliente_id:
+            raise ValueError('Solo puedes asociar atenciones del mismo cliente del recaudo')
+        db.session.add(ComercialRecaudoAtencion(
+            recaudo_id=recaudo.id,
+            atencion_id=atencion_id,
+            valor_aplicado=Decimal(str(atencion.valor_total or 0)),
+        ))
+
+
+@comercial_bp.route('/clientes/<int:cliente_id>/atenciones-pendientes', methods=['GET'])
+@login_required
+def get_atenciones_pendientes_recaudo(cliente_id):
+    """Atenciones del cliente para poder marcarlas en un recaudo agrupado.
+
+    Incluye si ya estan asociadas a algun recaudo (para el agrupado dinamico)."""
+    try:
+        _require_commercial_permission('atenciones', 'read')
+        cliente = _obtener_cliente_comercial_en_scope(cliente_id)
+        atenciones = _resolver_atenciones_del_cliente_en_scope(cliente)
+        resultado = []
+        for atencion in atenciones:
+            asociaciones = atencion.recaudo_asociaciones.all()
+            resultado.append({
+                'id': atencion.id,
+                'nro_atencion': atencion.nro_atencion,
+                'fecha_atencion': atencion.fecha_atencion.strftime('%Y-%m-%d') if atencion.fecha_atencion else None,
+                'paciente_nombre': atencion.paciente_nombre,
+                'paciente_documento': atencion.paciente_documento,
+                'valor_total': float(atencion.valor_total or 0),
+                'estado_cobro': atencion.estado_cobro,
+                'recaudos_asociados': [asoc.recaudo_id for asoc in asociaciones],
+                'tiene_recaudo': len(asociaciones) > 0,
+            })
+        return jsonify(resultado), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error obteniendo atenciones pendientes del cliente %s: %s", cliente_id, exc)
+        return jsonify({'error': 'Error al obtener las atenciones del cliente'}), 500
+
+
+@comercial_bp.route('/clientes/<int:cliente_id>/recaudos', methods=['GET'])
+@login_required
+def get_recaudos_cliente(cliente_id):
+    try:
+        _require_commercial_permission('pagos', 'read')
+        cliente = _obtener_cliente_comercial_en_scope(cliente_id)
+        recaudos = ComercialRecaudo.query.filter_by(cliente_id=cliente.id).order_by(
+            ComercialRecaudo.fecha_pago.desc(),
+            ComercialRecaudo.id.desc(),
+        ).all()
+        return jsonify([_serialize_recaudo(r, incluir_atenciones=True) for r in recaudos]), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error obteniendo recaudos del cliente %s: %s", cliente_id, exc)
+        return jsonify({'error': 'Error al obtener los recaudos del cliente'}), 500
+
+
+@comercial_bp.route('/clientes/<int:cliente_id>/recaudos', methods=['POST'])
+@login_required
+def crear_recaudo_cliente(cliente_id):
+    """Crea un recaudo (comprobante de pago). Puede venir con o sin atenciones.
+
+    La comision se calcula sobre el valor del comprobante x % recaudo del
+    vendedor. El soporte de pago es opcional al crear (se puede subir despues)."""
+    data = _get_payload()
+    try:
+        _require_commercial_permission('pagos', 'create')
+        cliente = _obtener_cliente_comercial_en_scope(cliente_id)
+
+        fecha_pago = _parse_date_field(data, 'fecha_pago')
+        if not fecha_pago:
+            raise ValueError('La fecha del pago es obligatoria')
+        valor_comprobante = _parse_decimal_field(data, 'valor_comprobante', minimum=0.01)
+
+        medio_pago = str(data.get('medio_pago') or 'TRANSFERENCIA').strip().upper()
+        if medio_pago not in MEDIOS_RECAUDO:
+            raise ValueError('El medio de pago del recaudo no es valido')
+
+        canal = _normalize_optional_text(data.get('canal_transferencia'))
+        if medio_pago == 'TRANSFERENCIA':
+            canal = str(canal or '').strip().upper()
+            if canal not in CANALES_TRANSFERENCIA:
+                raise ValueError('Indica si la transferencia fue por Nequi, Daviplata o Banco')
+        else:
+            canal = None
+
+        recaudo = ComercialRecaudo(
+            cliente_id=cliente.id,
+            vendedor_id=cliente.vendedor_id,
+            fecha_pago=fecha_pago,
+            valor_comprobante=valor_comprobante,
+            medio_pago=medio_pago,
+            canal_transferencia=canal,
+            estado='REGISTRADO',
+            observaciones=_normalize_optional_text(data.get('observaciones')),
+            usuario_id=current_user.id,
+        )
+        _calcular_comision_recaudo(recaudo, cliente.vendedor)
+        db.session.add(recaudo)
+        db.session.flush()
+
+        # Atenciones opcionales (agrupado dinamico)
+        atencion_ids = _parse_int_list_field(data, 'atencion_ids')
+        if atencion_ids:
+            _aplicar_atenciones_a_recaudo(recaudo, atencion_ids)
+
+        # Soporte opcional
+        comprobante = request.files.get('comprobante_pago')
+        if comprobante:
+            _guardar_comprobante_recaudo(recaudo, comprobante)
+
+        db.session.commit()
+        return jsonify({
+            'mensaje': 'Recaudo registrado',
+            'id': recaudo.id,
+            'comision_calculada': float(recaudo.comision_calculada or 0),
+        }), 201
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error creando recaudo para cliente %s: %s", cliente_id, exc)
+        return jsonify({'error': 'Error al registrar el recaudo'}), 500
+
+
+@comercial_bp.route('/recaudos/<int:recaudo_id>', methods=['PUT'])
+@login_required
+def actualizar_recaudo(recaudo_id):
+    """Actualiza un recaudo: valor, datos, atenciones asociadas y/o soporte.
+
+    Recalcula la comision si cambia el valor del comprobante."""
+    data = _get_payload()
+    try:
+        _require_commercial_permission('pagos', 'update')
+        recaudo = ComercialRecaudo.query.get_or_404(recaudo_id)
+        _asegurar_cliente_en_scope(recaudo.cliente)
+
+        fecha_pago = _parse_date_field(data, 'fecha_pago')
+        if fecha_pago:
+            recaudo.fecha_pago = fecha_pago
+        if data.get('valor_comprobante') not in (None, ''):
+            recaudo.valor_comprobante = _parse_decimal_field(data, 'valor_comprobante', minimum=0.01)
+        if data.get('medio_pago'):
+            medio_pago = str(data.get('medio_pago')).strip().upper()
+            if medio_pago not in MEDIOS_RECAUDO:
+                raise ValueError('El medio de pago del recaudo no es valido')
+            recaudo.medio_pago = medio_pago
+            if medio_pago == 'TRANSFERENCIA':
+                canal = str(_normalize_optional_text(data.get('canal_transferencia')) or '').strip().upper()
+                if canal not in CANALES_TRANSFERENCIA:
+                    raise ValueError('Indica si la transferencia fue por Nequi, Daviplata o Banco')
+                recaudo.canal_transferencia = canal
+            else:
+                recaudo.canal_transferencia = None
+        if 'observaciones' in data:
+            recaudo.observaciones = _normalize_optional_text(data.get('observaciones'))
+
+        _calcular_comision_recaudo(recaudo, recaudo.vendedor)
+
+        if data.get('atencion_ids') is not None:
+            atencion_ids = _parse_int_list_field(data, 'atencion_ids')
+            _aplicar_atenciones_a_recaudo(recaudo, atencion_ids)
+
+        comprobante = request.files.get('comprobante_pago')
+        if comprobante:
+            _guardar_comprobante_recaudo(recaudo, comprobante)
+
+        db.session.commit()
+        return jsonify({
+            'mensaje': 'Recaudo actualizado',
+            'comision_calculada': float(recaudo.comision_calculada or 0),
+        }), 200
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error actualizando recaudo %s: %s", recaudo_id, exc)
+        return jsonify({'error': 'Error al actualizar el recaudo'}), 500
+
+
+@comercial_bp.route('/recaudos/<int:recaudo_id>', methods=['DELETE'])
+@login_required
+def eliminar_recaudo(recaudo_id):
+    try:
+        _require_commercial_permission('pagos', 'delete')
+        recaudo = ComercialRecaudo.query.get_or_404(recaudo_id)
+        _asegurar_cliente_en_scope(recaudo.cliente)
+        if recaudo.ruta_comprobante:
+            try:
+                ruta = _get_recaudo_comprobante_path(recaudo)
+                if os.path.exists(ruta):
+                    os.remove(ruta)
+            except (FileNotFoundError, OSError):
+                pass
+        db.session.delete(recaudo)
+        db.session.commit()
+        return jsonify({'mensaje': 'Recaudo eliminado'}), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.session.rollback()
+        logger.error("Error eliminando recaudo %s: %s", recaudo_id, exc)
+        return jsonify({'error': 'Error al eliminar el recaudo'}), 500
+
+
+@comercial_bp.route('/recaudos/<int:recaudo_id>/comprobante', methods=['GET'])
+@login_required
+def descargar_comprobante_recaudo(recaudo_id):
+    try:
+        _require_commercial_permission('pagos', 'read')
+        recaudo = ComercialRecaudo.query.get_or_404(recaudo_id)
+        _asegurar_cliente_en_scope(recaudo.cliente)
+        ruta = _get_recaudo_comprobante_path(recaudo)
+        return send_file(ruta, as_attachment=True, download_name=recaudo.nombre_comprobante or 'comprobante_recaudo')
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except FileNotFoundError as exc:
+        return jsonify({'error': str(exc)}), 404
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Error descargando comprobante de recaudo %s: %s", recaudo_id, exc)
+        return jsonify({'error': 'Error al descargar el comprobante'}), 500
+
+
+@comercial_bp.route('/recaudos/comision-acumulada', methods=['GET'])
+@login_required
+def get_comision_acumulada_recaudos():
+    """Comision acumulada por recaudos, filtrable por vendedor/periodo.
+
+    Para un usuario-vendedor, se limita a su propia comision."""
+    try:
+        _require_commercial_permission('comisiones', 'read')
+        query = ComercialRecaudo.query
+
+        vendedor_scope = _resolver_vendedor_usuario_actual()
+        if vendedor_scope is not None:
+            query = query.filter_by(vendedor_id=vendedor_scope.id)
+        else:
+            vendedor_id = request.args.get('vendedor_id', type=int)
+            if vendedor_id:
+                query = query.filter_by(vendedor_id=vendedor_id)
+
+        mes = request.args.get('mes', type=int)
+        anio = request.args.get('anio', type=int)
+        if mes and anio:
+            inicio, fin = _rango_periodo(mes, anio)
+            query = query.filter(
+                ComercialRecaudo.fecha_pago >= inicio,
+                ComercialRecaudo.fecha_pago < fin,
+            )
+
+        recaudos = query.order_by(ComercialRecaudo.fecha_pago.desc(), ComercialRecaudo.id.desc()).all()
+        total_recaudado = sum(Decimal(str(r.valor_comprobante or 0)) for r in recaudos)
+        total_comision = sum(Decimal(str(r.comision_calculada or 0)) for r in recaudos)
+        return jsonify({
+            'total_recaudado': float(total_recaudado),
+            'total_comision': float(total_comision),
+            'cantidad_recaudos': len(recaudos),
+            'recaudos': [_serialize_recaudo(r, incluir_atenciones=True) for r in recaudos],
+        }), 200
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except Exception as exc:
+        logger.error("Error obteniendo comision acumulada de recaudos: %s", exc)
+        return jsonify({'error': 'Error al obtener la comision acumulada'}), 500

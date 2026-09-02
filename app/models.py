@@ -334,6 +334,74 @@ class ComisionLiquidacionDetalle(db.Model):
         return f'<ComisionLiquidacionDetalle liq={self.liquidacion_id} pago={self.pago_id}>'
 
 
+class ComercialRecaudo(db.Model):
+    """Comprobante de pago (recaudo) que un vendedor carga por un cliente.
+
+    Un recaudo puede existir SIN atenciones relacionadas (se relacionan luego)
+    y puede cubrir VARIAS atenciones (agrupado dinamico) via la tabla puente
+    ComercialRecaudoAtencion. La comision del vendedor se calcula sobre el
+    valor del comprobante (no sobre la suma de las atenciones, por retenciones)
+    usando el porcentaje de recaudo del vendedor."""
+    __tablename__ = 'comercial_recaudos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes_comerciales.id'), nullable=False, index=True)
+    vendedor_id = db.Column(db.Integer, db.ForeignKey('vendedores.id'), nullable=False, index=True)
+
+    fecha_pago = db.Column(db.DateTime, nullable=False, index=True)
+    valor_comprobante = db.Column(Numeric(15, 2), default=0, nullable=False)
+    medio_pago = db.Column(db.String(20), nullable=False, default='TRANSFERENCIA', index=True)
+    canal_transferencia = db.Column(db.String(20), index=True)
+
+    # Comision preliquidada al cargar el comprobante.
+    porcentaje_aplicado = db.Column(Numeric(5, 2), default=0, nullable=False)
+    comision_calculada = db.Column(Numeric(15, 2), default=0, nullable=False)
+
+    # Soporte de pago adjunto.
+    nombre_comprobante = db.Column(db.String(255))
+    ruta_comprobante = db.Column(db.String(500))
+    mime_type = db.Column(db.String(120))
+    tamano_bytes = db.Column(db.Integer)
+
+    estado = db.Column(db.String(20), nullable=False, default='REGISTRADO', index=True)
+    observaciones = db.Column(db.Text)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    cliente = db.relationship('ClienteComercial', backref=db.backref('recaudos', lazy='dynamic'))
+    vendedor = db.relationship('Vendedor', backref=db.backref('recaudos', lazy='dynamic'))
+    atenciones = db.relationship(
+        'ComercialRecaudoAtencion',
+        backref='recaudo',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
+
+    def __repr__(self):
+        return f'<ComercialRecaudo cliente={self.cliente_id} valor={self.valor_comprobante}>'
+
+
+class ComercialRecaudoAtencion(db.Model):
+    """Puente entre un recaudo (comprobante) y las atenciones que cubre."""
+    __tablename__ = 'comercial_recaudo_atenciones'
+
+    id = db.Column(db.Integer, primary_key=True)
+    recaudo_id = db.Column(db.Integer, db.ForeignKey('comercial_recaudos.id'), nullable=False, index=True)
+    atencion_id = db.Column(db.Integer, db.ForeignKey('clientes_atenciones.id'), nullable=False, index=True)
+    valor_aplicado = db.Column(Numeric(15, 2), default=0, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    atencion = db.relationship('ClienteAtencion', backref=db.backref('recaudo_asociaciones', lazy='dynamic'))
+
+    __table_args__ = (
+        db.UniqueConstraint('recaudo_id', 'atencion_id', name='uq_recaudo_atencion'),
+    )
+
+    def __repr__(self):
+        return f'<ComercialRecaudoAtencion recaudo={self.recaudo_id} atencion={self.atencion_id}>'
+
+
 class ClienteComercialAdjunto(db.Model):
     """Soportes cargados para la ficha comercial del cliente"""
     __tablename__ = 'clientes_comerciales_adjuntos'
