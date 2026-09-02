@@ -751,9 +751,9 @@ function renderRoleMenuPermissions(selectedIds = []) {
                 ${menuOptions.map(renderOption).join('')}
             </div>
         </section>
-        <section class="role-permission-section">
+        <section class="role-permission-section" id="rolComercialSubopcionesSection" style="display:none;">
             <h4 class="role-permission-group-title">Vendedores: subopciones</h4>
-            <p class="role-permission-group-help">Coinciden con las pestanas visibles dentro de Vendedores.</p>
+            <p class="role-permission-group-help">Marca las pestanas que este rol podra usar dentro de Vendedores.</p>
             <label class="role-menu-option">
                 <input type="checkbox" data-select-all-commercial>
                 <div>
@@ -775,14 +775,24 @@ function renderRoleMenuPermissions(selectedIds = []) {
         container.querySelectorAll('input[data-role-section]')
     );
     const selectAllCommercial = container.querySelector('input[data-select-all-commercial]');
+    const comercialSubopcionesSection = container.querySelector('#rolComercialSubopcionesSection');
+
+    // El bloque de subopciones de Vendedores solo se muestra cuando el menu
+    // Vendedores esta marcado, para que el modal arranque corto y sin ruido.
+    const actualizarVisibilidadSubopcionesComercial = () => {
+        if (!comercialSubopcionesSection) return;
+        const visible = Boolean(commercialMenuCheckbox && commercialMenuCheckbox.checked);
+        comercialSubopcionesSection.style.display = visible ? '' : 'none';
+    };
 
     const syncCommercialSelection = () => {
         const selectedCount = commercialOptionCheckboxes.filter(checkbox => checkbox.checked).length;
-        if (commercialMenuCheckbox) commercialMenuCheckbox.checked = selectedCount > 0;
+        if (commercialMenuCheckbox && selectedCount > 0) commercialMenuCheckbox.checked = true;
         if (selectAllCommercial) {
             selectAllCommercial.checked = selectedCount > 0 && selectedCount === commercialOptionCheckboxes.length;
             selectAllCommercial.indeterminate = selectedCount > 0 && selectedCount < commercialOptionCheckboxes.length;
         }
+        actualizarVisibilidadSubopcionesComercial();
     };
 
     commercialOptionCheckboxes.forEach(checkbox => {
@@ -798,6 +808,7 @@ function renderRoleMenuPermissions(selectedIds = []) {
                     checkbox.checked = false;
                 });
             }
+            actualizarVisibilidadSubopcionesComercial();
             syncCommercialSelection();
         });
     }
@@ -811,6 +822,7 @@ function renderRoleMenuPermissions(selectedIds = []) {
         });
     }
 
+    actualizarVisibilidadSubopcionesComercial();
     syncCommercialSelection();
 }
 
