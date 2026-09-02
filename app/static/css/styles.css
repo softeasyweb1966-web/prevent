@@ -5373,3 +5373,93 @@ body.body-siigo-cartera-focus .main-content {
         align-items: stretch;
     }
 }
+
+
+/* ==================== CLIENTE COMERCIAL: DOCUMENTOS CON SEMAFORO ==================== */
+.cliente-docs-lista {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.cliente-doc-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.cliente-doc-row.is-ok {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+}
+
+.cliente-doc-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cliente-doc-semaforo {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+}
+
+.cliente-doc-semaforo.ok {
+    background: #22c55e;
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18);
+}
+
+.cliente-doc-semaforo.pend {
+    background: #cbd5e1;
+    box-shadow: 0 0 0 3px rgba(203, 213, 225, 0.3);
+}
+
+.cliente-doc-chip {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.cliente-doc-chip-ok {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.cliente-doc-chip-pend {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.cliente-doc-existentes,
+.cliente-doc-nuevo {
+    margin-top: 4px;
+    font-size: 0.82rem;
+    color: #475569;
+}
+
+.cliente-doc-existentes a {
+    color: #2563eb;
+    margin-right: 8px;
+}
+
+.cliente-doc-upload {
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.cliente-doc-upload .btn-sm {
+    padding: 5px 12px;
+    font-size: 0.85rem;
+}

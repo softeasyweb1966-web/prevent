@@ -6078,6 +6078,143 @@ function obtenerComponentesSeleccionadosCatalogo() {
     return [...catalogoComercialComponentesSeleccionados];
 }
 
+// ==================== CLIENTE COMERCIAL: CASOS Y DOCUMENTOS ====================
+
+// Catalogo de documentos con su tipo (usado como tipo_documento del adjunto)
+const CLIENTE_DOCUMENTOS_CATALOGO = [
+    { tipo: 'RUT', nombre: 'RUT' },
+    { tipo: 'CAMARA_COMERCIO', nombre: 'Cámara de Comercio' },
+    { tipo: 'CEDULA_REP_LEGAL', nombre: 'Foto cédula rep. legal' },
+    { tipo: 'CONTRATO', nombre: 'Contrato' },
+    { tipo: 'FORMULARIO', nombre: 'Formulario' },
+    { tipo: 'ACUERDO', nombre: 'Acuerdo' },
+    { tipo: 'PAGARE', nombre: 'Pagaré' },
+];
+
+// Documentos requeridos por caso (combinacion requiere_factura x condicion de pago)
+function _documentosDelCasoCliente(requiereFactura, pago) {
+    if (requiereFactura === 'SI' && pago === 'CREDITO') {
+        return ['RUT', 'CAMARA_COMERCIO', 'CEDULA_REP_LEGAL', 'CONTRATO', 'FORMULARIO', 'ACUERDO', 'PAGARE'];
+    }
+    if (requiereFactura === 'SI' && pago === 'CONTADO') {
+        return ['RUT'];
+    }
+    return []; // Requiere factura NO -> sin documentos
+}
+
+// Estado en memoria de los archivos seleccionados por tipo de documento (nuevos)
+// y de los adjuntos ya cargados (existentes en BD).
+window._clienteComercialDocsState = window._clienteComercialDocsState || {
+    nuevos: {},      // { TIPO: File }
+    existentes: {}   // { TIPO: [ {id, nombre_original, download_url} ] }
+};
+
+function _resetDocsStateCliente(adjuntos = []) {
+    const existentes = {};
+    (Array.isArray(adjuntos) ? adjuntos : []).forEach(adj => {
+        const tipo = String(adj.tipo_documento || '').toUpperCase();
+        if (!existentes[tipo]) existentes[tipo] = [];
+        existentes[tipo].push(adj);
+    });
+    window._clienteComercialDocsState = { nuevos: {}, existentes };
+}
+
+function seleccionarDocumentoCliente(tipo, input) {
+    const file = input?.files?.[0] || null;
+    if (file) {
+        window._clienteComercialDocsState.nuevos[tipo] = file;
+    } else {
+        delete window._clienteComercialDocsState.nuevos[tipo];
+    }
+    renderDocumentosCliente();
+}
+
+function renderDocumentosCliente() {
+    const container = document.getElementById('clienteComercialDocumentosLista');
+    if (!container) return;
+
+    const requiereFactura = document.getElementById('clienteComercialRequiereFacturaSel')?.value || 'NO';
+    const pago = document.getElementById('clienteComercialPagoSel')?.value || 'CONTADO';
+    const tipos = _documentosDelCasoCliente(requiereFactura, pago);
+    const state = window._clienteComercialDocsState || { nuevos: {}, existentes: {} };
+
+    if (!tipos.length) {
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = tipos.map(tipo => {
+        const def = CLIENTE_DOCUMENTOS_CATALOGO.find(d => d.tipo === tipo) || { nombre: tipo };
+        const existentes = state.existentes[tipo] || [];
+        const nuevo = state.nuevos[tipo] || null;
+        const cargado = Boolean(nuevo) || existentes.length > 0;
+
+        const estadoChip = cargado
+            ? '<span class="cliente-doc-chip cliente-doc-chip-ok">Cargado</span>'
+            : '<span class="cliente-doc-chip cliente-doc-chip-pend">Pendiente</span>';
+
+        const existentesHtml = existentes.length
+            ? `<div class="cliente-doc-existentes">${existentes.map(adj =>
+                `<a href="${adj.download_url}" target="_blank" rel="noopener noreferrer">${escapeHtml(adj.nombre_original || 'Documento')}</a>`
+              ).join('')}</div>`
+            : '';
+
+        const nuevoHtml = nuevo
+            ? `<div class="cliente-doc-nuevo">Nuevo: ${escapeHtml(nuevo.name)}</div>`
+            : '';
+
+        return `
+            <div class="cliente-doc-row ${cargado ? 'is-ok' : 'is-pend'}">
+                <div class="cliente-doc-info">
+                    <span class="cliente-doc-semaforo ${cargado ? 'ok' : 'pend'}"></span>
+                    <div>
+                        <strong>${escapeHtml(def.nombre)}</strong>
+                        ${estadoChip}
+                        ${existentesHtml}
+                        ${nuevoHtml}
+                    </div>
+                </div>
+                <label class="cliente-doc-upload">
+                    <span class="btn btn-secondary btn-sm">${cargado ? 'Reemplazar' : 'Adjuntar'}</span>
+                    <input type="file" style="display:none;" onchange="seleccionarDocumentoCliente('${tipo}', this)" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx">
+                </label>
+            </div>
+        `;
+    }).join('');
+}
+
+// Sincroniza los 2 selectores de negocio con los campos ocultos que espera el
+// backend (condicion_comercial + requiere_factura) y refresca documentos.
+function actualizarCasoClienteComercial() {
+    const requiereFacturaSel = document.getElementById('clienteComercialRequiereFacturaSel')?.value || 'NO';
+    const pago = document.getElementById('clienteComercialPagoSel')?.value || 'CONTADO';
+
+    // Campos ocultos que consume el backend
+    const requiereFacturaChk = document.getElementById('clienteComercialRequiereFactura');
+    const condicionHidden = document.getElementById('clienteComercialCondicion');
+    if (requiereFacturaChk) requiereFacturaChk.checked = requiereFacturaSel === 'SI';
+    if (condicionHidden) condicionHidden.value = pago === 'CREDITO' ? 'CREDITO' : 'EFECTIVO';
+
+    // Seccion de documentos: visible solo cuando el caso pide documentos
+    const docsSection = document.getElementById('clienteComercialDocumentosSection');
+    const tipos = _documentosDelCasoCliente(requiereFacturaSel, pago);
+    if (docsSection) docsSection.style.display = tipos.length ? '' : 'none';
+
+    // Hint del caso
+    const hint = document.getElementById('clienteComercialCasoHint');
+    if (hint) {
+        if (requiereFacturaSel === 'SI' && pago === 'CREDITO') {
+            hint.textContent = 'Requiere factura y crédito: registra los datos de la empresa y adjunta los documentos legales (RUT, cámara de comercio, cédula, contrato, formulario, acuerdo y pagaré).';
+        } else if (requiereFacturaSel === 'SI' && pago === 'CONTADO') {
+            hint.textContent = 'Requiere factura de contado: registra los datos de la empresa y adjunta el RUT.';
+        } else {
+            hint.textContent = 'Sin factura: solo se registran los datos de la empresa.';
+        }
+    }
+
+    renderDocumentosCliente();
+}
+
 async function mostrarAgregarClienteComercial() {
     const form = document.getElementById('clienteComercialForm');
     if (!form) return;
@@ -6104,7 +6241,13 @@ async function mostrarAgregarClienteComercial() {
     }
     await renderTarifasClienteComercial('');
     await llenarSelectVendedorComercial();
-    actualizarEstadoFacturaClienteComercial();
+    // Nuevos selectores de negocio: por defecto NO requiere factura / CONTADO
+    const reqSel = document.getElementById('clienteComercialRequiereFacturaSel');
+    const pagoSel = document.getElementById('clienteComercialPagoSel');
+    if (reqSel) reqSel.value = 'NO';
+    if (pagoSel) pagoSel.value = 'CONTADO';
+    _resetDocsStateCliente([]);
+    actualizarCasoClienteComercial();
     document.getElementById('clienteComercialModal').classList.add('active');
 }
 
@@ -6165,7 +6308,13 @@ async function editarClienteComercial(id) {
         seguimientoBtn.disabled = false;
     }
     await renderTarifasClienteComercial(cliente.id);
-    actualizarEstadoFacturaClienteComercial();
+    // Reconstruir los selectores de negocio desde los campos guardados
+    const reqSel = document.getElementById('clienteComercialRequiereFacturaSel');
+    const pagoSel = document.getElementById('clienteComercialPagoSel');
+    if (reqSel) reqSel.value = cliente.requiere_factura === true ? 'SI' : 'NO';
+    if (pagoSel) pagoSel.value = String(cliente.condicion_comercial || '').toUpperCase() === 'CREDITO' ? 'CREDITO' : 'CONTADO';
+    _resetDocsStateCliente(cliente.adjuntos || []);
+    actualizarCasoClienteComercial();
     document.getElementById('clienteComercialModal').classList.add('active');
 }
 
@@ -6396,16 +6545,20 @@ async function guardarClienteComercialConfig(event) {
     formData.append('documentos_legales_completos', document.getElementById('clienteComercialDocumentosCompletos').checked ? 'true' : 'false');
     formData.append('confirmado_administrativo', document.getElementById('clienteComercialConfirmadoAdministrativo').checked ? 'true' : 'false');
     formData.append('documentos_legales_detalle', document.getElementById('clienteComercialDocumentosDetalle').value.trim());
-    formData.append('pagare_firmado', document.getElementById('clienteComercialPagareFirmado').checked ? 'true' : 'false');
     formData.append('pagare_detalle', document.getElementById('clienteComercialPagareDetalle').value.trim());
     formData.append('observaciones', document.getElementById('clienteComercialObservaciones').value.trim());
 
-    Array.from(document.getElementById('clienteComercialDocumentosAdjuntos').files || []).forEach(file => {
-        formData.append('documentos_legales_adjuntos', file);
+    // Documentos por tipo (semaforo). Cada archivo nuevo se envia con un campo
+    // "documento_<TIPO>" para que el backend lo guarde con ese tipo_documento.
+    const docsState = window._clienteComercialDocsState || { nuevos: {} };
+    const tiposConNuevo = Object.keys(docsState.nuevos || {});
+    tiposConNuevo.forEach(tipo => {
+        const file = docsState.nuevos[tipo];
+        if (file) formData.append(`documento_${tipo}`, file);
     });
-    Array.from(document.getElementById('clienteComercialPagareAdjuntos').files || []).forEach(file => {
-        formData.append('pagare_adjuntos', file);
-    });
+    formData.append('documentos_tipos', JSON.stringify(tiposConNuevo));
+    // Coherencia: si adjuntan el pagare, marcamos pagare_firmado en true.
+    formData.append('pagare_firmado', tiposConNuevo.includes('PAGARE') ? 'true' : 'false');
 
     try {
         const response = await fetch(id ? `/api/comercial/clientes/${id}` : '/api/comercial/clientes', {

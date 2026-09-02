@@ -1963,14 +1963,6 @@
                         <select id="clienteComercialVendedorId" required></select>
                     </div>
                     <div class="form-group">
-                        <label for="clienteComercialCondicion">Condición comercial *</label>
-                        <select id="clienteComercialCondicion" required>
-                            <option value="EFECTIVO">EFECTIVO</option>
-                            <option value="CREDITO">CREDITO</option>
-                            <option value="MIXTO">MIXTO</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
                         <label for="clienteComercialEstado">Estado del cliente *</label>
                         <select id="clienteComercialEstado" required>
                             <option value="ACTIVO">ACTIVO</option>
@@ -1979,204 +1971,106 @@
                         </select>
                     </div>
                 </div>
-                <div class="form-row" style="margin-top:10px;">
-                    <div class="form-group checkbox-group">
-                        <label><input type="checkbox" id="clienteComercialConfirmadoAdministrativo"> Creado y validado en el sistema administrativo</label>
-                        <small class="form-help">El sistema verificara automaticamente el registro contable en SIIGO al guardar.</small>
+                <div class="form-row cliente-form-row" style="margin-top:10px;">
+                    <div class="form-group">
+                        <label for="clienteComercialRequiereFacturaSel">¿Requiere factura? *</label>
+                        <select id="clienteComercialRequiereFacturaSel" required onchange="actualizarCasoClienteComercial()">
+                            <option value="NO">NO</option>
+                            <option value="SI">SÍ</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="clienteComercialPagoSel">Condición de pago *</label>
+                        <select id="clienteComercialPagoSel" required onchange="actualizarCasoClienteComercial()">
+                            <option value="CONTADO">CONTADO</option>
+                            <option value="CREDITO">CRÉDITO</option>
+                        </select>
                     </div>
                 </div>
+                <p id="clienteComercialCasoHint" class="form-help" style="margin-top:8px; color:#475569;"></p>
             </div>
 
             <div class="recent-section cliente-form-section">
                 <h3 style="margin-top:0;">Datos de la Empresa</h3>
-                <div class="form-row cliente-form-row cliente-form-row-empresa-top">
+                <div class="form-row cliente-form-row">
                     <div class="form-group">
-                        <label for="clienteComercialRazonSocial">Razón social *</label>
+                        <label for="clienteComercialRazonSocial">Nombre / Razón social *</label>
                         <input type="text" id="clienteComercialRazonSocial" maxlength="200" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="clienteComercialNombreComercial">Nombre comercial</label>
-                        <input type="text" id="clienteComercialNombreComercial" maxlength="200">
                     </div>
                     <div class="form-group">
                         <label for="clienteComercialNit">NIT</label>
                         <input type="text" id="clienteComercialNit" maxlength="50">
                     </div>
-                    <div class="form-group">
-                        <label for="clienteComercialCiudad">Ciudad</label>
-                        <input type="text" id="clienteComercialCiudad" maxlength="120">
-                    </div>
                 </div>
-                <div class="form-row cliente-form-row cliente-form-row-empresa-bottom">
+                <div class="form-row cliente-form-row">
                     <div class="form-group">
-                        <label for="clienteComercialDireccion">Dirección *</label>
-                        <input type="text" id="clienteComercialDireccion" maxlength="255" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="clienteComercialTelefonoEmpresa">Teléfono empresa *</label>
-                        <input type="text" id="clienteComercialTelefonoEmpresa" maxlength="50" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="clienteComercialEmailEmpresa">Email empresa *</label>
-                        <input type="email" id="clienteComercialEmailEmpresa" maxlength="120" required>
-                    </div>
-                </div>
-                <div class="form-row cliente-form-row cliente-form-row-empresa-extra">
-                    <div class="form-group">
-                        <label for="clienteComercialMedioAutorizacion">Medio de autorización *</label>
-                        <select id="clienteComercialMedioAutorizacion" required>
-                            <option value="WHATSAPP">WHATSAPP</option>
-                            <option value="EMAIL">EMAIL</option>
-                            <option value="PAGINA_WEB">PAGINA WEB</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <div class="recent-section cliente-form-section">
-                <h3 style="margin-top:0;">Contactos</h3>
-                <div class="form-row cliente-form-row cliente-form-row-contacto">
-                    <div class="form-group">
-                        <label for="clienteComercialContactoPrincipal">Contacto principal *</label>
+                        <label for="clienteComercialContactoPrincipal">Persona contacto *</label>
                         <input type="text" id="clienteComercialContactoPrincipal" maxlength="150" required>
                     </div>
                     <div class="form-group">
-                        <label for="clienteComercialCargoPrincipal">Cargo principal</label>
-                        <input type="text" id="clienteComercialCargoPrincipal" maxlength="150">
+                        <label for="clienteComercialTelefonoEmpresa">Teléfono *</label>
+                        <input type="text" id="clienteComercialTelefonoEmpresa" maxlength="50" required>
                     </div>
                     <div class="form-group">
-                        <label for="clienteComercialCelularPrincipal">Celular principal *</label>
-                        <input type="text" id="clienteComercialCelularPrincipal" maxlength="50" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="clienteComercialEmailPrincipal">Email principal</label>
-                        <input type="email" id="clienteComercialEmailPrincipal" maxlength="120">
-                    </div>
-                </div>
-                <div class="form-row cliente-form-row cliente-form-row-contacto">
-                    <div class="form-group">
-                        <label for="clienteComercialContactoFacturacion">Contacto facturación</label>
-                        <input type="text" id="clienteComercialContactoFacturacion" maxlength="150">
-                    </div>
-                    <div class="form-group">
-                        <label for="clienteComercialCargoFacturacion">Cargo facturación</label>
-                        <input type="text" id="clienteComercialCargoFacturacion" maxlength="150">
-                    </div>
-                    <div class="form-group">
-                        <label for="clienteComercialCelularFacturacion">Celular facturación</label>
-                        <input type="text" id="clienteComercialCelularFacturacion" maxlength="50">
-                    </div>
-                    <div class="form-group">
-                        <label for="clienteComercialEmailFacturacion">Email facturación</label>
-                        <input type="email" id="clienteComercialEmailFacturacion" maxlength="120">
+                        <label for="clienteComercialEmailEmpresa">Correo *</label>
+                        <input type="email" id="clienteComercialEmailEmpresa" maxlength="120" required>
                     </div>
                 </div>
             </div>
 
-            <div class="recent-section cliente-form-section">
-                <h3 style="margin-top:0;">Facturación y Condiciones</h3>
-                <div class="form-row cliente-form-row cliente-form-row-facturacion">
-                    <div class="form-group checkbox-group">
-                        <label>
-                            <input type="checkbox" id="clienteComercialRequiereFactura">
-                            Requiere factura
-                        </label>
-                    </div>
-                    <div class="form-group">
-                        <label for="clienteComercialFechasFacturacion">Días o fechas pactadas de facturación</label>
-                        <input type="text" id="clienteComercialFechasFacturacion" maxlength="120" placeholder="Ej. 5 y 20 de cada mes">
-                    </div>
-                    <div class="form-group">
-                        <label for="clienteComercialFechaSolicitudFactura">Fecha primera factura</label>
-                        <input type="date" id="clienteComercialFechaSolicitudFactura" disabled>
-                    </div>
-                </div>
-                <p id="clienteComercialFacturaHint" style="margin-top:0; color:#666; font-size:0.92rem;">Si el cliente requiere factura, registra aquí los días pactados. La fecha de la primera factura quedará bloqueada por ahora y más adelante se llenará automáticamente desde el módulo de facturación.</p>
-            </div>
-
-            <div class="recent-section cliente-form-section">
-                <h3 style="margin-top:0;">Anotaciones Especiales para Recepción</h3>
-                <div class="form-group" style="margin-bottom:0;">
-                    <label for="clienteComercialPuntosAtencionRecepcion">Anotaciones especiales que debe ver recepción</label>
-                    <textarea id="clienteComercialPuntosAtencionRecepcion" rows="4" placeholder="Escriba aquí las anotaciones especiales para recepción."></textarea>
-                    <small class="cliente-form-minihelp">Ejemplo: si paga o no, si se lleva el concepto, validaciones para mujeres, mayores de 50 años, restricciones o pasos especiales de ingreso.</small>
-                </div>
-            </div>
-
-            <div class="recent-section cliente-form-section">
-                <h3 style="margin-top:0;">Valores y Exámenes Negociados</h3>
-                <div id="clienteComercialTarifasResumen" class="recent-section" style="padding:12px; min-height: 52px;">Sin tarifas configuradas.</div>
-                <div class="cliente-convenio-toolbar" style="margin-top:10px;">
-                    <button type="button" class="btn btn-primary" id="clienteComercialAsignarTarifaBtn" onclick="abrirGestionTarifasCliente()" style="min-width:0;">
-                        <span class="btn-label">Gestión Exámenes y/o Paquetes</span>
-                    </button>
-                </div>
-                <div style="display:none;">
-                    <textarea id="clienteComercialExamenes" rows="3"></textarea>
-                    <textarea id="clienteComercialServicios" rows="3"></textarea>
-                    <textarea id="clienteComercialTarifas" rows="3"></textarea>
-                    <input type="text" id="clienteComercialExamenesSearch">
-                    <input type="text" id="clienteComercialServiciosSearch">
-                    <div id="clienteComercialConveniosHelp"></div>
-                    <div id="clienteComercialExamenesList"></div>
-                    <div id="clienteComercialServiciosList"></div>
-                    <button id="clienteComercialToggleAsignacionBtn"></button>
-                    <button id="clienteComercialExamenesToggleAllBtn"></button>
-                </div>
-            </div>
-
-            <div class="recent-section cliente-form-section">
+            <div class="recent-section cliente-form-section" id="clienteComercialDocumentosSection" style="display:none;">
                 <h3 style="margin-top:0;">Documentos y Soportes</h3>
-                <div class="form-row cliente-form-row">
-                    <div class="form-group checkbox-group">
-                        <label>
-                            <input type="checkbox" id="clienteComercialDocumentosCompletos">
-                            Documentos legales completos
-                        </label>
-                    </div>
-                    <div class="form-group checkbox-group">
-                        <label>
-                            <input type="checkbox" id="clienteComercialPagareFirmado">
-                            Pagaré diligenciado y firmado
-                        </label>
-                    </div>
-                </div>
-                <div class="form-row cliente-form-row">
-                    <div class="form-group">
-                        <label for="clienteComercialDocumentosDetalle">Detalle documentos legales</label>
-                        <textarea id="clienteComercialDocumentosDetalle" rows="3" placeholder="RUT, cámara de comercio, cédula representante, contrato, etc."></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label for="clienteComercialPagareDetalle">Detalle pagaré / crédito</label>
-                        <textarea id="clienteComercialPagareDetalle" rows="3" placeholder="Condición del pagaré, fecha firma, observaciones de crédito"></textarea>
-                    </div>
-                </div>
-                <div class="form-row cliente-form-row">
-                    <div class="form-group">
-                        <label for="clienteComercialDocumentosAdjuntos">Adjuntar documentos legales</label>
-                        <input type="file" id="clienteComercialDocumentosAdjuntos" multiple>
-                    </div>
-                    <div class="form-group">
-                        <label for="clienteComercialPagareAdjuntos">Adjuntar pagaré firmado</label>
-                        <input type="file" id="clienteComercialPagareAdjuntos" multiple>
-                        <small id="clienteComercialPagareHint" class="form-help">Obligatorio para clientes con condición crédito o mixta.</small>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Documentos legales cargados</label>
-                        <div id="clienteComercialDocumentosExistentes" class="recent-section" style="padding:12px; min-height: 52px;">Sin adjuntos cargados.</div>
-                    </div>
-                    <div class="form-group">
-                        <label>Pagarés cargados</label>
-                        <div id="clienteComercialPagareExistentes" class="recent-section" style="padding:12px; min-height: 52px;">Sin adjuntos cargados.</div>
-                    </div>
-                </div>
+                <p class="form-help" style="margin-top:0;">Puedes guardar el cliente aunque falten documentos. El semáforo muestra cuáles ya están cargados (verde) y cuáles quedan pendientes (gris).</p>
+                <div id="clienteComercialDocumentosLista" class="cliente-docs-lista"></div>
             </div>
 
-            <div class="form-group">
-                <label for="clienteComercialObservaciones">Observaciones comerciales</label>
-                <textarea id="clienteComercialObservaciones" rows="3"></textarea>
+            <!-- Campos conservados para compatibilidad con backend y logica existente -->
+            <div style="display:none;" aria-hidden="true">
+                <select id="clienteComercialCondicion">
+                    <option value="EFECTIVO">EFECTIVO</option>
+                    <option value="CREDITO">CREDITO</option>
+                    <option value="MIXTO">MIXTO</option>
+                </select>
+                <input type="checkbox" id="clienteComercialRequiereFactura">
+                <input type="checkbox" id="clienteComercialConfirmadoAdministrativo">
+                <input type="text" id="clienteComercialNombreComercial">
+                <input type="text" id="clienteComercialCiudad">
+                <input type="text" id="clienteComercialDireccion">
+                <select id="clienteComercialMedioAutorizacion">
+                    <option value="WHATSAPP">WHATSAPP</option>
+                    <option value="EMAIL">EMAIL</option>
+                    <option value="PAGINA_WEB">PAGINA WEB</option>
+                </select>
+                <input type="text" id="clienteComercialCargoPrincipal">
+                <input type="text" id="clienteComercialCelularPrincipal">
+                <input type="email" id="clienteComercialEmailPrincipal">
+                <input type="text" id="clienteComercialContactoFacturacion">
+                <input type="text" id="clienteComercialCargoFacturacion">
+                <input type="text" id="clienteComercialCelularFacturacion">
+                <input type="email" id="clienteComercialEmailFacturacion">
+                <input type="text" id="clienteComercialFechasFacturacion">
+                <input type="date" id="clienteComercialFechaSolicitudFactura">
+                <textarea id="clienteComercialPuntosAtencionRecepcion"></textarea>
+                <input type="checkbox" id="clienteComercialDocumentosCompletos">
+                <input type="checkbox" id="clienteComercialPagareFirmado">
+                <textarea id="clienteComercialDocumentosDetalle"></textarea>
+                <textarea id="clienteComercialPagareDetalle"></textarea>
+                <textarea id="clienteComercialObservaciones"></textarea>
+                <textarea id="clienteComercialExamenes"></textarea>
+                <textarea id="clienteComercialServicios"></textarea>
+                <textarea id="clienteComercialTarifas"></textarea>
+                <input type="text" id="clienteComercialExamenesSearch">
+                <input type="text" id="clienteComercialServiciosSearch">
+                <div id="clienteComercialConveniosHelp"></div>
+                <div id="clienteComercialExamenesList"></div>
+                <div id="clienteComercialServiciosList"></div>
+                <button type="button" id="clienteComercialToggleAsignacionBtn"></button>
+                <button type="button" id="clienteComercialExamenesToggleAllBtn"></button>
+                <p id="clienteComercialFacturaHint"></p>
+                <button type="button" id="clienteComercialAsignarTarifaBtn"></button>
+                <div id="clienteComercialTarifasResumen"></div>
+                <div id="clienteComercialDocumentosExistentes"></div>
+                <div id="clienteComercialPagareExistentes"></div>
             </div>
 
             <div class="modal-footer">

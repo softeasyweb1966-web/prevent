@@ -419,27 +419,23 @@ def _build_cliente_payload(data):
 
     razon_social = (data.get('razon_social') or '').strip()
     if not razon_social:
-        raise ValueError('La razón social es obligatoria')
-
-    direccion = (data.get('direccion') or '').strip()
-    if not direccion:
-        raise ValueError('La dirección es obligatoria')
-
-    telefono_empresa = (data.get('telefono_empresa') or '').strip()
-    if not telefono_empresa:
-        raise ValueError('El teléfono de la empresa es obligatorio')
-
-    email_empresa = (data.get('email_empresa') or '').strip()
-    if not email_empresa:
-        raise ValueError('El email de la empresa es obligatorio')
+        raise ValueError('El nombre / razón social es obligatorio')
 
     contacto_principal = (data.get('contacto_principal') or '').strip()
     if not contacto_principal:
-        raise ValueError('El contacto principal es obligatorio')
+        raise ValueError('La persona de contacto es obligatoria')
 
+    telefono_empresa = (data.get('telefono_empresa') or '').strip()
+    if not telefono_empresa:
+        raise ValueError('El teléfono es obligatorio')
+
+    email_empresa = (data.get('email_empresa') or '').strip()
+    if not email_empresa:
+        raise ValueError('El correo es obligatorio')
+
+    # Campos que dejaron de ser obligatorios al simplificar el formulario.
+    direccion = (data.get('direccion') or '').strip()
     celular_contacto_principal = (data.get('celular_contacto_principal') or '').strip()
-    if not celular_contacto_principal:
-        raise ValueError('El celular principal es obligatorio')
 
     estado_cliente = str(data.get('estado_cliente') or 'ACTIVO').strip().upper()
     if estado_cliente not in ESTADOS_CLIENTE:
@@ -457,10 +453,9 @@ def _build_cliente_payload(data):
     fechas_facturacion = _normalize_optional_text(data.get('fechas_facturacion'))
     fecha_solicitud_factura = _parse_date_field(data, 'fecha_solicitud_factura')
 
-    if requiere_factura:
-        if not fechas_facturacion:
-            raise ValueError('Debe indicar las fechas de facturación cuando el cliente requiere factura')
-    else:
+    # Sin factura, el cliente queda como pago de contado (EFECTIVO) y sin datos
+    # de facturacion. Con factura, se respeta la condicion elegida (EFECTIVO/CREDITO).
+    if not requiere_factura:
         condicion = 'EFECTIVO'
         fechas_facturacion = None
         fecha_solicitud_factura = None
@@ -503,17 +498,33 @@ def _build_cliente_payload(data):
 
 
 def _validar_pagare_cliente(payload, cliente=None):
-    if payload.get('condicion_comercial') not in {'CREDITO', 'MIXTO'}:
-        return
+    # Los documentos (incluido el pagaré) ahora son opcionales y se controlan
+    # con un semáforo en el formulario. No se bloquea el guardado si faltan.
+    return
 
-    if payload.get('pagare_firmado') is not True:
-        raise ValueError('Para clientes con condición crédito o mixta debe confirmar el pagaré diligenciado y firmado')
 
-    nuevos_pagare = [archivo for archivo in request.files.getlist('pagare_adjuntos') if getattr(archivo, 'filename', '')]
-    tiene_pagare_existente = bool(cliente and cliente.adjuntos.filter_by(tipo_documento='PAGARE').count())
+# Tipos de documento admitidos para el semáforo de soportes del cliente.
+DOCUMENTOS_CLIENTE_TIPOS = {
+    'RUT', 'CAMARA_COMERCIO', 'CEDULA_REP_LEGAL', 'CONTRATO',
+    'FORMULARIO', 'ACUERDO', 'PAGARE',
+}
 
-    if not nuevos_pagare and not tiene_pagare_existente:
-        raise ValueError('Debe cargar el pagaré firmado para clientes con condición crédito o mixta')
+
+def _guardar_documentos_cliente_por_tipo(cliente, data):
+    """Guarda los archivos enviados como campos documento_<TIPO> con su tipo."""
+    import json as _json
+    try:
+        tipos = _json.loads(data.get('documentos_tipos') or '[]')
+    except (ValueError, TypeError):
+        tipos = []
+
+    for tipo in tipos:
+        tipo_norm = str(tipo or '').strip().upper()
+        if tipo_norm not in DOCUMENTOS_CLIENTE_TIPOS:
+            continue
+        archivos = [a for a in request.files.getlist(f'documento_{tipo_norm}') if getattr(a, 'filename', '')]
+        if archivos:
+            _guardar_adjuntos(cliente, archivos, tipo_norm)
 
 
 def _build_catalogo_item_payload(data):
@@ -1330,6 +1341,7 @@ def _serialize_cliente(cliente):
         'activo': cliente.activo,
         'documentos_legales_adjuntos': documentos_legales,
         'pagare_adjuntos': pagares,
+        'adjuntos': [_serialize_adjunto(cliente, adjunto) for adjunto in adjuntos],
         'created_at': cliente.created_at.strftime('%Y-%m-%d %H:%M:%S') if cliente.created_at else None,
         'updated_at': cliente.updated_at.strftime('%Y-%m-%d %H:%M:%S') if cliente.updated_at else None,
     }
@@ -1982,6 +1994,7 @@ def crear_cliente():
 
         _guardar_adjuntos(cliente, request.files.getlist('documentos_legales_adjuntos'), 'DOCUMENTO_LEGAL')
         _guardar_adjuntos(cliente, request.files.getlist('pagare_adjuntos'), 'PAGARE')
+        _guardar_documentos_cliente_por_tipo(cliente, data)
 
         db.session.commit()
         return jsonify({'mensaje': 'Cliente comercial creado', 'id': cliente.id}), 201
@@ -2034,6 +2047,7 @@ def actualizar_cliente(cliente_id):
 
         _guardar_adjuntos(cliente, request.files.getlist('documentos_legales_adjuntos'), 'DOCUMENTO_LEGAL')
         _guardar_adjuntos(cliente, request.files.getlist('pagare_adjuntos'), 'PAGARE')
+        _guardar_documentos_cliente_por_tipo(cliente, data)
 
         db.session.commit()
         return jsonify({'mensaje': 'Cliente comercial actualizado'}), 200
