@@ -876,7 +876,7 @@ function switchModule(moduleName) {
     if (moduleName === 'comercial') {
         displayName = window._comercialSeccionActual === 'vendedores'
             ? 'Vendedores'
-            : 'Gestion Comercial';
+            : 'Registro Atenciones';
     } else if (moduleName === 'gestion_informacion') {
         displayName = 'Atenciones';
     } else if (moduleName === 'compras') {
@@ -1050,7 +1050,7 @@ function openModuleFull(moduleName) {
         document.getElementById('moduleTitle').textContent = moduleName.charAt(0).toUpperCase() + moduleName.slice(1);
         if (userMenu) userMenu.style.display = '';
         if (moduleName === 'comercial') {
-            document.getElementById('moduleTitle').textContent = 'Gestion Comercial';
+            document.getElementById('moduleTitle').textContent = 'Registro Atenciones';
         }
         // load module-specific handlers
         if (moduleName === 'usuarios') loadUsuariosManagement();
