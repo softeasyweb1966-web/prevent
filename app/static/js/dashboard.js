@@ -1780,8 +1780,8 @@ function renderRoleMenuPermissions(selectedIds = []) {
             </div>
         </section>
         <section class="role-permission-section">
-            <h4 class="role-permission-group-title">Comercial: subopciones</h4>
-            <p class="role-permission-group-help">Al seleccionar una subopcion se habilita tambien el menu Comercial.</p>
+            <h4 class="role-permission-group-title">Vendedores: subopciones</h4>
+            <p class="role-permission-group-help">Al seleccionar una subopcion se habilita tambien el menu Vendedores.</p>
             ${Object.entries(commercialGroups).map(([groupName, options]) => `
                 <div class="role-permission-group">
                     <h5 class="role-permission-group-title">${escapeHtml(groupName)}</h5>

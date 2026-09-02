@@ -28,7 +28,7 @@ MENU_OPTION_DEFINITIONS = [
     {
         'module': 'comercial',
         'permiso': 'menu_comercial',
-        'nombre': 'Comercial',
+        'nombre': 'Vendedores',
         'descripcion': 'Acceso al módulo comercial',
         'orden': 40,
     },
