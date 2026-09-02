@@ -83,6 +83,41 @@ def _seed_admin_user(app):
     return True
 
 
+def _build_role_permission_options():
+    """Serializa las definiciones de permisos con el mismo formato que expone
+    el endpoint /api/usuarios/menu-options (incluye permiso_nombre, category,
+    group y el permiso_id real cuando ya existe en la base de datos)."""
+    from app.models import Permiso
+    from app.security import ROLE_PERMISSION_DEFINITIONS
+
+    try:
+        permisos_by_name = {
+            permiso.nombre: permiso
+            for permiso in Permiso.query.all()
+            if permiso.nombre
+        }
+    except Exception:
+        # Si la BD no esta disponible aun, seguimos sin el permiso_id real.
+        permisos_by_name = {}
+
+    opciones = []
+    for definition in ROLE_PERMISSION_DEFINITIONS:
+        permiso = permisos_by_name.get(definition['permiso'])
+        opciones.append({
+            'permiso_id': permiso.id if permiso else None,
+            'permiso_nombre': definition['permiso'],
+            'module': definition['module'],
+            'category': definition.get('category', 'menu'),
+            'group': definition.get('group') or definition.get('nombre'),
+            'entity': definition.get('entity'),
+            'action': definition.get('action'),
+            'nombre': definition['nombre'],
+            'descripcion': definition['descripcion'],
+            'orden': definition['orden'],
+        })
+    return opciones
+
+
 def _seed_menu_permissions(app):
     """Garantiza permisos base para el menú lateral y se los asigna al rol administrador."""
     from app.models import Permiso, Role, db
@@ -658,7 +693,6 @@ def create_app(config_name='development'):
 def register_blueprints(app):
     """Registrar todos los blueprints de la aplicacion."""
     from flask import render_template
-    from app.security import ROLE_PERMISSION_DEFINITIONS
 
     from app.routes import (
         auth_bp,
@@ -677,10 +711,13 @@ def register_blueprints(app):
     @app.route('/dashboard')
     def dashboard():
         # Los permisos se entregan con la pagina para que crear roles no dependa
-        # de una segunda consulta del navegador.
+        # de una segunda consulta del navegador. Se serializan con el MISMO
+        # formato que el endpoint /api/usuarios/menu-options (permiso_nombre,
+        # category, group, permiso_id) para que el frontend los pinte igual.
+        role_permission_options = _build_role_permission_options()
         return render_template(
             'dashboard.html',
-            role_permission_options=ROLE_PERMISSION_DEFINITIONS,
+            role_permission_options=role_permission_options,
         )
 
     @app.route('/api')

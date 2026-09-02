@@ -1746,19 +1746,26 @@ function renderRoleMenuPermissions(selectedIds = []) {
     }
 
     const selected = new Set((selectedIds || []).map(id => String(id)));
-    const renderOption = option => `
+    // Nombre canonico del permiso, tolerante a los dos formatos posibles.
+    const permisoNombreDe = option => option.permiso_nombre || option.permiso || '';
+    // Una opcion es comercial si su categoria lo dice o si su permiso empieza por 'comercial_'.
+    const esComercial = option => option.category === 'comercial' || String(permisoNombreDe(option)).startsWith('comercial_');
+    const renderOption = option => {
+        const nombrePermiso = permisoNombreDe(option);
+        return `
         <label class="role-menu-option">
-            <input type="checkbox" value="${escapeHtml(option.permiso_nombre || option.permiso || option.permiso_id || '')}" data-permission-name="${escapeHtml(option.permiso_nombre || option.permiso || '')}" ${selected.has(String(option.permiso_nombre || option.permiso || option.permiso_id)) ? 'checked' : ''}>
+            <input type="checkbox" value="${escapeHtml(nombrePermiso)}" data-permission-name="${escapeHtml(nombrePermiso)}" ${selected.has(String(nombrePermiso)) ? 'checked' : ''}>
             <div>
                 <strong>${escapeHtml(option.nombre || option.group || 'Permiso')}</strong>
                 <span>${escapeHtml(option.descripcion || '')}</span>
             </div>
         </label>
     `;
+    };
 
-    const menuOptions = menuOptionsData.filter(option => option.category !== 'comercial');
+    const menuOptions = menuOptionsData.filter(option => !esComercial(option));
     const commercialGroups = {};
-    menuOptionsData.filter(option => option.category === 'comercial').forEach(option => {
+    menuOptionsData.filter(esComercial).forEach(option => {
         const key = option.group || 'Comercial';
         commercialGroups[key] = commercialGroups[key] || [];
         commercialGroups[key].push(option);
