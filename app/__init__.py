@@ -166,34 +166,6 @@ def _seed_menu_permissions(app):
         db.session.commit()
         return True
 
-    recepcion_role = Role.query.filter_by(nombre="Recepcion").first()
-    chat_permission = permisos_by_name.get("menu_chat")
-    recepcion_has_base_access = (
-        recepcion_role is not None
-        and Role.query.filter(
-            Role.id == recepcion_role.id,
-            Role.permisos.any(nombre="menu_recepcion"),
-        ).first() is not None
-    )
-    recepcion_has_chat = (
-        recepcion_role is not None
-        and Role.query.filter(
-            Role.id == recepcion_role.id,
-            Role.permisos.any(nombre="menu_chat"),
-        ).first() is not None
-    )
-
-    if (
-        recepcion_role is not None
-        and chat_permission is not None
-        and recepcion_has_base_access
-        and not recepcion_has_chat
-    ):
-        recepcion_role.permisos.append(chat_permission)
-        db.session.commit()
-        app.logger.info("[DB] Rol 'Recepcion' actualizado con permiso menu_chat")
-        return True
-
     return created or updated
 
 

@@ -98,10 +98,26 @@ MENU_OPTION_DEFINITIONS = [
 ]
 
 
-MENU_OPTION_DEFINITIONS = [
+MENU_OPTION_DEFINITIONS = sorted([
     definition for definition in MENU_OPTION_DEFINITIONS
-    if definition['module'] not in {'nomina', 'servicios', 'bancos', 'impuestos', 'sabor_artesanal'}
-]
+    if definition['module'] not in {
+        'nomina',
+        'servicios',
+        'bancos',
+        'impuestos',
+        'sabor_artesanal',
+        'recepcion',
+        'chat',
+    }
+] + [
+    {
+        'module': 'gestion_informacion',
+        'permiso': 'menu_gestion_informacion',
+        'nombre': 'Atenciones',
+        'descripcion': 'Acceso al modulo de atenciones',
+        'orden': 50,
+    },
+], key=lambda definition: definition['orden'])
 
 
 def _build_commercial_crud_definitions(entity: str, nombre: str, orden_base: int):
