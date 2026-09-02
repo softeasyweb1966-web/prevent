@@ -111,6 +111,8 @@ def _build_role_permission_options():
             'group': definition.get('group') or definition.get('nombre'),
             'entity': definition.get('entity'),
             'action': definition.get('action'),
+            'section': definition.get('section'),
+            'permission_names': definition.get('permission_names'),
             'nombre': definition['nombre'],
             'descripcion': definition['descripcion'],
             'orden': definition['orden'],
@@ -193,27 +195,13 @@ def register_shell_context(app):
     @app.shell_context_processor
     def make_shell_context():
         from app.models import (
-            ConceptoAutomatico,
             ClienteComercial,
             ClienteComercialAdjunto,
             ClienteComercialTarifa,
             ComercialCatalogoItem,
             ComercialPaqueteDetalle,
-            Empleado,
-            LiquidoQuincena,
-            Pago,
-            ParametroDescuento,
             Permiso,
-            PrestamoEmpresa,
-            PrestamoNovedad,
-            PrestamoPago,
-            Quincena,
             Role,
-            Servicio,
-            ServicioNovedad,
-            ServicioPago,
-            ServicioPeriodo,
-            TipoNovedad,
             Usuario,
             Vendedor,
             db,
@@ -224,25 +212,11 @@ def register_shell_context(app):
             "Usuario": Usuario,
             "Role": Role,
             "Permiso": Permiso,
-            "Empleado": Empleado,
-            "TipoNovedad": TipoNovedad,
-            "ConceptoAutomatico": ConceptoAutomatico,
             "ClienteComercial": ClienteComercial,
             "ClienteComercialAdjunto": ClienteComercialAdjunto,
             "ClienteComercialTarifa": ClienteComercialTarifa,
             "ComercialCatalogoItem": ComercialCatalogoItem,
             "ComercialPaqueteDetalle": ComercialPaqueteDetalle,
-            "Quincena": Quincena,
-            "LiquidoQuincena": LiquidoQuincena,
-            "Pago": Pago,
-            "Servicio": Servicio,
-            "ServicioNovedad": ServicioNovedad,
-            "ServicioPago": ServicioPago,
-            "ServicioPeriodo": ServicioPeriodo,
-            "PrestamoEmpresa": PrestamoEmpresa,
-            "PrestamoNovedad": PrestamoNovedad,
-            "PrestamoPago": PrestamoPago,
-            "ParametroDescuento": ParametroDescuento,
             "Vendedor": Vendedor,
         }
 
@@ -668,11 +642,9 @@ def register_blueprints(app):
 
     from app.routes import (
         auth_bp,
-        chat_bp,
         comercial_bp,
         contable_bp,
         dashboard_bp,
-        parametros_bp,
         usuarios_bp,
     )
 
@@ -702,10 +674,8 @@ def register_blueprints(app):
                 'auth': '/api/auth',
                 'dashboard': '/api/dashboard',
                 'usuarios': '/api/usuarios',
-                'parametros': '/api/parametros',
                 'comercial': '/api/comercial',
                 'contable': '/api/contable',
-                'chat': '/api/chat',
             },
             'instrucciones': 'Primero: POST /api/auth/login con usuario y contrasena',
         }
@@ -713,10 +683,8 @@ def register_blueprints(app):
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(usuarios_bp)
-    app.register_blueprint(parametros_bp)
     app.register_blueprint(comercial_bp)
     app.register_blueprint(contable_bp)
-    app.register_blueprint(chat_bp)
 
 
 def setup_logging():

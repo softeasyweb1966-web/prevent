@@ -5,120 +5,55 @@ from typing import Iterable
 
 MENU_OPTION_DEFINITIONS = [
     {
-        'module': 'nomina',
-        'permiso': 'menu_nomina',
-        'nombre': 'Nómina',
-        'descripcion': 'Acceso al módulo de nómina',
+        'module': 'gestion_informacion',
+        'permiso': 'menu_gestion_informacion',
+        'nombre': 'Atenciones',
+        'descripcion': 'Acceso al modulo de atenciones',
         'orden': 10,
     },
     {
-        'module': 'servicios',
-        'permiso': 'menu_servicios',
-        'nombre': 'Servicios',
-        'descripcion': 'Acceso al módulo de servicios',
+        'module': 'ventas',
+        'permiso': 'menu_ventas',
+        'nombre': 'Ventas',
+        'descripcion': 'Acceso al modulo de ventas',
         'orden': 20,
     },
     {
-        'module': 'bancos',
-        'permiso': 'menu_bancos',
-        'nombre': 'Bancos',
-        'descripcion': 'Acceso al módulo de préstamos y bancos',
+        'module': 'compras',
+        'permiso': 'menu_compras',
+        'nombre': 'Compras',
+        'descripcion': 'Acceso al modulo de compras',
         'orden': 30,
     },
     {
         'module': 'comercial',
         'permiso': 'menu_comercial',
         'nombre': 'Vendedores',
-        'descripcion': 'Acceso al módulo comercial',
+        'descripcion': 'Acceso al modulo Vendedores',
         'orden': 40,
-    },
-    {
-        'module': 'recepcion',
-        'permiso': 'menu_recepcion',
-        'nombre': 'Consulta Clientes',
-        'descripcion': 'Acceso al módulo RP Consulta Clientes',
-        'orden': 50,
-    },
-    {
-        'module': 'chat',
-        'permiso': 'menu_chat',
-        'nombre': 'Chat Interno',
-        'descripcion': 'Acceso al módulo de chat interno',
-        'orden': 60,
-    },
-    {
-        'module': 'impuestos',
-        'permiso': 'menu_impuestos',
-        'nombre': 'Impuestos',
-        'descripcion': 'Acceso al módulo de impuestos',
-        'orden': 70,
-    },
-    {
-        'module': 'compras',
-        'permiso': 'menu_compras',
-        'nombre': 'Compras',
-        'descripcion': 'Acceso al módulo de compras',
-        'orden': 80,
-    },
-    {
-        'module': 'ventas',
-        'permiso': 'menu_ventas',
-        'nombre': 'Ventas',
-        'descripcion': 'Acceso al módulo de ventas',
-        'orden': 90,
     },
     {
         'module': 'informes',
         'permiso': 'menu_informes',
         'nombre': 'Informes',
-        'descripcion': 'Acceso al módulo de informes',
-        'orden': 100,
+        'descripcion': 'Acceso al modulo de informes',
+        'orden': 50,
     },
     {
         'module': 'usuarios',
         'permiso': 'menu_usuarios',
         'nombre': 'Usuarios',
-        'descripcion': 'Acceso al módulo de usuarios y roles',
-        'orden': 110,
+        'descripcion': 'Acceso al modulo de usuarios y roles',
+        'orden': 60,
     },
     {
         'module': 'tablas',
         'permiso': 'menu_tablas',
         'nombre': 'Tablas',
-        'descripcion': 'Acceso al módulo de tablas de configuración',
-        'orden': 120,
-    },
-    {
-        'module': 'sabor_artesanal',
-        'permiso': 'menu_sabor_artesanal',
-        'nombre': 'Sabor Artesanal',
-        'descripcion': 'Acceso al mÃ³dulo de Sabor Artesanal',
-        'orden': 125,
+        'descripcion': 'Acceso al modulo de tablas',
+        'orden': 70,
     },
 ]
-
-
-MENU_OPTION_DEFINITIONS = sorted([
-    definition for definition in MENU_OPTION_DEFINITIONS
-    if definition['module'] not in {
-        'nomina',
-        'servicios',
-        'bancos',
-        'impuestos',
-        'sabor_artesanal',
-        'recepcion',
-        'chat',
-    }
-] + [
-    {
-        'module': 'gestion_informacion',
-        'permiso': 'menu_gestion_informacion',
-        'nombre': 'Atenciones',
-        'descripcion': 'Acceso al modulo de atenciones',
-        'orden': 50,
-    },
-], key=lambda definition: definition['orden'])
-
 
 def _build_commercial_crud_definitions(entity: str, nombre: str, orden_base: int):
     acciones = [
@@ -169,7 +104,60 @@ COMMERCIAL_PERMISSION_DEFINITIONS = (
 )
 
 
-ROLE_PERMISSION_DEFINITIONS = MENU_OPTION_DEFINITIONS + COMMERCIAL_PERMISSION_DEFINITIONS
+def _commercial_section_permissions(*entities: str, include_validate: bool = False) -> list[str]:
+    actions = ('read', 'create', 'update', 'delete')
+    permissions = [
+        f'comercial_{entity}_{action}'
+        for entity in entities
+        for action in actions
+    ]
+    if include_validate:
+        permissions.append('comercial_comisiones_validate')
+    return permissions
+
+
+def _commercial_section_definition(
+    section: str,
+    nombre: str,
+    descripcion: str,
+    orden: int,
+    *entities: str,
+    include_validate: bool = False,
+):
+    section_permission = f'comercial_section_{section}'
+    return {
+        'category': 'comercial_section',
+        'module': 'comercial',
+        'group': 'Vendedores',
+        'section': section,
+        'permiso': section_permission,
+        'permission_names': [
+            section_permission,
+            *_commercial_section_permissions(*entities, include_validate=include_validate),
+        ],
+        'nombre': nombre,
+        'descripcion': descripcion,
+        'orden': orden,
+    }
+
+
+COMMERCIAL_SECTION_DEFINITIONS = [
+    _commercial_section_definition('vendedores', 'Vendedores', 'Acceso a la pestana Vendedores', 2000, 'vendedores'),
+    _commercial_section_definition('examenes', 'Examenes', 'Acceso a la pestana Examenes', 2010, 'examenes', 'paquetes'),
+    _commercial_section_definition('clientes', 'Clientes', 'Acceso a la pestana Clientes', 2020, 'clientes', 'tarifas', 'documentos', 'pagos'),
+    _commercial_section_definition('gestion_informacion', 'Gestion Informacion', 'Acceso a la pestana Gestion Informacion', 2030, 'atenciones'),
+    _commercial_section_definition('caja', 'Registro Caja', 'Acceso a la pestana Registro Caja', 2040, 'atenciones'),
+    _commercial_section_definition('mes', 'Mes', 'Acceso a la pestana Mes', 2050),
+    _commercial_section_definition('comisiones', 'Comisiones', 'Acceso a la pestana Comisiones', 2060, 'comisiones', include_validate=True),
+    _commercial_section_definition('inicio', 'Inicio', 'Acceso a la pestana Inicio', 2070),
+]
+
+
+ROLE_PERMISSION_DEFINITIONS = (
+    MENU_OPTION_DEFINITIONS
+    + COMMERCIAL_PERMISSION_DEFINITIONS
+    + COMMERCIAL_SECTION_DEFINITIONS
+)
 
 
 def get_menu_definition_by_permission(permission_name: str):

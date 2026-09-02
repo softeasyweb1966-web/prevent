@@ -1538,6 +1538,23 @@ function hasAnyCatalogoPermission() {
     ));
 }
 
+function hasComercialSectionPermission(section) {
+    if (hasRolePermission(`comercial_section_${section}`)) return true;
+
+    // Compatibilidad con los roles creados antes de los permisos por pestana.
+    const legacyAccess = {
+        vendedores: () => hasAnyComercialPermission('vendedores'),
+        examenes: () => hasAnyCatalogoPermission(),
+        clientes: () => hasAnyComercialPermission('clientes'),
+        gestion_informacion: () => canManageComercial('atenciones', 'read') || canManageComercial('atenciones', 'create'),
+        caja: () => canManageComercial('atenciones', 'read') || canManageComercial('atenciones', 'create'),
+        mes: () => hasRolePermission('menu_comercial'),
+        comisiones: () => hasAnyComercialPermission('comisiones'),
+        inicio: () => hasRolePermission('menu_comercial'),
+    };
+    return legacyAccess[section] ? legacyAccess[section]() : false;
+}
+
 function setComercialElementsVisibility(selector, visible) {
     document.querySelectorAll(selector).forEach(element => {
         element.style.display = visible ? '' : 'none';
@@ -1545,10 +1562,14 @@ function setComercialElementsVisibility(selector, visible) {
 }
 
 function syncComercialPermissionUI() {
-    setComercialElementsVisibility('#comercialNavVendedores', hasAnyComercialPermission('vendedores'));
-    setComercialElementsVisibility('#comercialNavExamenes', hasAnyCatalogoPermission());
-    setComercialElementsVisibility('#comercialNavClientes', hasAnyComercialPermission('clientes'));
-    setComercialElementsVisibility('#comercialNavCargue', canManageComercial('atenciones', 'read') || canManageComercial('atenciones', 'create'));
+    setComercialElementsVisibility('#comercialNavVendedores', hasComercialSectionPermission('vendedores'));
+    setComercialElementsVisibility('#comercialNavExamenes', hasComercialSectionPermission('examenes'));
+    setComercialElementsVisibility('#comercialNavClientes', hasComercialSectionPermission('clientes'));
+    setComercialElementsVisibility('#comercialNavCargue', hasComercialSectionPermission('gestion_informacion'));
+    setComercialElementsVisibility('#comercialNavCaja', hasComercialSectionPermission('caja'));
+    setComercialElementsVisibility('#comercialNavMes', hasComercialSectionPermission('mes'));
+    setComercialElementsVisibility('#comercialNavComisiones', hasComercialSectionPermission('comisiones'));
+    setComercialElementsVisibility('#comercialNavInicio', hasComercialSectionPermission('inicio'));
     setComercialElementsVisibility('button[onclick="mostrarAgregarVendedor()"]', canManageComercial('vendedores', 'create'));
     setComercialElementsVisibility('button[onclick="consultarComercial(\'vendedores\')"]', canManageComercial('vendedores', 'read'));
     setComercialElementsVisibility('button[onclick="mostrarAgregarItemCatalogoComercial()"]', canCreateCatalogoComercial());
@@ -1748,13 +1769,21 @@ function renderRoleMenuPermissions(selectedIds = []) {
     const selected = new Set((selectedIds || []).map(id => String(id)));
     // Nombre canonico del permiso, tolerante a los dos formatos posibles.
     const permisoNombreDe = option => option.permiso_nombre || option.permiso || '';
-    // Una opcion es comercial si su categoria lo dice o si su permiso empieza por 'comercial_'.
-    const esComercial = option => option.category === 'comercial' || String(permisoNombreDe(option)).startsWith('comercial_');
+    const nombresPermisoDe = option => {
+        const names = Array.isArray(option.permission_names) ? option.permission_names : [];
+        return names.length ? names.map(String) : [String(permisoNombreDe(option))];
+    };
+    const esSubopcionComercial = option => option.category === 'comercial_section';
     const renderOption = option => {
         const nombrePermiso = permisoNombreDe(option);
+        const permissionNames = nombresPermisoDe(option);
+        const isSelected = permissionNames.some(name => selected.has(name));
+        const sectionAttribute = option.section
+            ? ` data-role-section="${escapeHtml(option.section)}"`
+            : '';
         return `
         <label class="role-menu-option">
-            <input type="checkbox" value="${escapeHtml(nombrePermiso)}" data-permission-name="${escapeHtml(nombrePermiso)}" ${selected.has(String(nombrePermiso)) ? 'checked' : ''}>
+            <input type="checkbox" value="${escapeHtml(nombrePermiso)}" data-permission-name="${escapeHtml(nombrePermiso)}" data-permission-names="${escapeHtml(JSON.stringify(permissionNames))}"${sectionAttribute} ${isSelected ? 'checked' : ''}>
             <div>
                 <strong>${escapeHtml(option.nombre || option.group || 'Permiso')}</strong>
                 <span>${escapeHtml(option.descripcion || '')}</span>
@@ -1763,13 +1792,10 @@ function renderRoleMenuPermissions(selectedIds = []) {
     `;
     };
 
-    const menuOptions = menuOptionsData.filter(option => !esComercial(option));
-    const commercialGroups = {};
-    menuOptionsData.filter(esComercial).forEach(option => {
-        const key = option.group || 'Comercial';
-        commercialGroups[key] = commercialGroups[key] || [];
-        commercialGroups[key].push(option);
-    });
+    const menuOptions = menuOptionsData.filter(option => option.category === 'menu');
+    const commercialSections = menuOptionsData
+        .filter(esSubopcionComercial)
+        .sort((a, b) => Number(a.orden || 0) - Number(b.orden || 0));
 
     container.innerHTML = `
         <section class="role-permission-section">
@@ -1781,15 +1807,17 @@ function renderRoleMenuPermissions(selectedIds = []) {
         </section>
         <section class="role-permission-section">
             <h4 class="role-permission-group-title">Vendedores: subopciones</h4>
-            <p class="role-permission-group-help">Al seleccionar una subopcion se habilita tambien el menu Vendedores.</p>
-            ${Object.entries(commercialGroups).map(([groupName, options]) => `
-                <div class="role-permission-group">
-                    <h5 class="role-permission-group-title">${escapeHtml(groupName)}</h5>
-                    <div class="role-menu-grid">
-                        ${options.map(renderOption).join('')}
-                    </div>
+            <p class="role-permission-group-help">Coinciden con las pestanas visibles dentro de Vendedores.</p>
+            <label class="role-menu-option">
+                <input type="checkbox" data-select-all-commercial>
+                <div>
+                    <strong>Todas las subopciones</strong>
+                    <span>Habilita todas las opciones del menu Vendedores.</span>
                 </div>
-            `).join('')}
+            </label>
+            <div class="role-menu-grid">
+                ${commercialSections.map(renderOption).join('')}
+            </div>
         </section>
     `;
 
@@ -1798,14 +1826,22 @@ function renderRoleMenuPermissions(selectedIds = []) {
         ? container.querySelector(`input[value="${comercialMenu.permiso_nombre || comercialMenu.permiso || comercialMenu.permiso_id}"]`)
         : null;
     const commercialOptionCheckboxes = Array.from(
-        container.querySelectorAll('input[data-permission-name^="comercial_"]')
+        container.querySelectorAll('input[data-role-section]')
     );
+    const selectAllCommercial = container.querySelector('input[data-select-all-commercial]');
+
+    const syncCommercialSelection = () => {
+        const selectedCount = commercialOptionCheckboxes.filter(checkbox => checkbox.checked).length;
+        if (commercialMenuCheckbox) commercialMenuCheckbox.checked = selectedCount > 0;
+        if (selectAllCommercial) {
+            selectAllCommercial.checked = selectedCount > 0 && selectedCount === commercialOptionCheckboxes.length;
+            selectAllCommercial.indeterminate = selectedCount > 0 && selectedCount < commercialOptionCheckboxes.length;
+        }
+    };
 
     commercialOptionCheckboxes.forEach(checkbox => {
         checkbox.addEventListener('change', () => {
-            if (checkbox.checked && commercialMenuCheckbox) {
-                commercialMenuCheckbox.checked = true;
-            }
+            syncCommercialSelection();
         });
     });
 
@@ -1816,8 +1852,20 @@ function renderRoleMenuPermissions(selectedIds = []) {
                     checkbox.checked = false;
                 });
             }
+            syncCommercialSelection();
         });
     }
+
+    if (selectAllCommercial) {
+        selectAllCommercial.addEventListener('change', () => {
+            commercialOptionCheckboxes.forEach(checkbox => {
+                checkbox.checked = selectAllCommercial.checked;
+            });
+            syncCommercialSelection();
+        });
+    }
+
+    syncCommercialSelection();
 }
 
 window.setTimeout(syncComercialPermissionUI, 0);
@@ -4462,6 +4510,10 @@ function mostrarPanelesComercial(sectionName) {
 async function switchComercialSection(sectionName = 'inicio', options = {}) {
     const normalizedSection = COMERCIAL_SECTION_CONFIG[sectionName] ? sectionName : 'inicio';
     const { reload = false, focus = true } = options;
+    if (!hasComercialSectionPermission(normalizedSection)) {
+        showError('No tienes acceso a esta subopcion de Vendedores.');
+        return;
+    }
     const panelMes = document.getElementById('comercialMesPanel');
     const homeHeader = document.getElementById('comercialHomeHeader');
     const mesActualPanel = document.getElementById('comercialMesActualPanel');
@@ -8490,9 +8542,17 @@ function fillRoleSelect(selectedId = '') {
 }
 
 function getSelectedRolePermissionIds() {
-    return Array.from(document.querySelectorAll('#rolMenuPermissions input[type="checkbox"]:checked'))
-        .map(input => input.value)
-        .filter(Boolean);
+    const permissionNames = new Set();
+    document.querySelectorAll('#rolMenuPermissions input[data-permission-names]:checked').forEach(input => {
+        try {
+            JSON.parse(input.dataset.permissionNames || '[]').forEach(permissionName => {
+                if (permissionName) permissionNames.add(String(permissionName));
+            });
+        } catch (error) {
+            if (input.value) permissionNames.add(input.value);
+        }
+    });
+    return Array.from(permissionNames);
 }
 
 async function showNewUserForm() {
@@ -9088,18 +9148,11 @@ function notifyIncomingChatMessages(previousConversations, nextConversations) {
 }
 
 function ensureChatMonitoring() {
-    if (!hasChatModuleAccess()) {
-        stopChatPolling();
-        chatState.notificationPrimed = false;
-        chatState.conversations = [];
-        return;
-    }
-
-    setupChatModule();
-    if (!chatState.pollHandle) {
-        loadChatConversations({ preserveSelection: true, silent: true });
-    }
-    startChatPolling();
+    // Chat interno fue retirado. Conservamos el punto de entrada para que la
+    // inicializacion compartida del dashboard no intente consultar su API.
+    stopChatPolling();
+    chatState.notificationPrimed = false;
+    chatState.conversations = [];
 }
 
 function startChatPolling() {

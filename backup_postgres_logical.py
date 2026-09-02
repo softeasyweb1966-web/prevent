@@ -15,6 +15,11 @@ from psycopg2.extras import RealDictCursor
 DEFAULT_BACKUP_ROOT = Path("backups")
 
 
+def normalize_database_url(database_url):
+    """Accept SQLAlchemy PostgreSQL URLs as well as native psycopg2 URLs."""
+    return database_url.strip().replace("postgresql+psycopg2://", "postgresql://", 1)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Crea un respaldo logico de PostgreSQL para PREVENT."
@@ -63,7 +68,7 @@ def fetch_all(cursor, query, params=None):
 
 def main():
     args = parse_args()
-    database_url = args.database_url
+    database_url = normalize_database_url(args.database_url)
     if not database_url:
         raise SystemExit("DATABASE_URL no esta definida.")
 

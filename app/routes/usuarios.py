@@ -70,6 +70,8 @@ def _serialize_menu_option(definition, permiso=None):
         'group': definition.get('group') or definition.get('nombre'),
         'entity': definition.get('entity'),
         'action': definition.get('action'),
+        'section': definition.get('section'),
+        'permission_names': definition.get('permission_names'),
         'nombre': definition['nombre'],
         'descripcion': definition['descripcion'],
         'orden': definition['orden'],
@@ -191,6 +193,11 @@ def _resolve_role_permissions(permission_ids):
 
     permission_names = {permiso.nombre for permiso in permisos}
     if 'menu_comercial' in permission_names:
+        commercial_section_permissions = {
+            definition['permiso']
+            for definition in ROLE_PERMISSION_DEFINITIONS
+            if definition.get('category') == 'comercial_section'
+        }
         commercial_read_permissions = {
             'comercial_vendedores_read',
             'comercial_clientes_read',
@@ -201,8 +208,8 @@ def _resolve_role_permissions(permission_ids):
             'comercial_documentos_read',
             'comercial_pagos_read',
         }
-        if not permission_names.intersection(commercial_read_permissions):
-            raise ValueError('Si habilita el modulo comercial, seleccione al menos una consulta comercial')
+        if not permission_names.intersection(commercial_read_permissions | commercial_section_permissions):
+            raise ValueError('Si habilita el modulo comercial, seleccione al menos una subopcion')
 
     return sort_role_permission_records(permisos)
 
