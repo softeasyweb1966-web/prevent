@@ -39,10 +39,19 @@ RETIRED_PERMISSION_SQL = ', '.join(f"'{name}'" for name in RETIRED_PERMISSION_NA
 
 
 def upgrade():
+    # Esta migracion elimina datos de forma IRREVERSIBLE. Por seguridad NO se
+    # ejecuta durante el deploy automatico: solo corre si se confirma de forma
+    # explicita con la variable de entorno PREVENT_CONFIRM_RETIREMENT_PURGE=yes.
+    # Si no se confirma, la migracion se marca como aplicada pero NO borra nada,
+    # para que el despliegue no falle. El purgado se ejecuta luego de forma
+    # manual y controlada (con respaldo previo).
     if os.environ.get('PREVENT_CONFIRM_RETIREMENT_PURGE') != 'yes':
-        raise RuntimeError(
-            'Confirma el respaldo y define PREVENT_CONFIRM_RETIREMENT_PURGE=yes antes de borrar los modulos retirados.'
+        print(
+            '[migracion 036] Purga de modulos retirados OMITIDA: '
+            'define PREVENT_CONFIRM_RETIREMENT_PURGE=yes para ejecutarla. '
+            'La migracion queda marcada como aplicada sin borrar datos.'
         )
+        return
 
     bind = op.get_bind()
     existing_tables = set(sa.inspect(bind).get_table_names())
