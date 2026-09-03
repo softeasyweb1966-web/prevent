@@ -7101,7 +7101,11 @@ async function guardarClienteComercialConfig(event) {
             loadComercialDashboard()
         ]);
         if (!id && data.id) {
-            showSuccess('Cliente comercial creado. Ya puedes asignar tarifas.');
+            if (data.aviso) {
+                showSuccess(`Cliente comercial creado. ${data.aviso}`);
+            } else {
+                showSuccess('Cliente comercial creado. Ya puedes asignar tarifas.');
+            }
             await editarClienteComercial(data.id);
             return;
         }

@@ -1981,9 +1981,10 @@ def crear_cliente():
         nit = payload['nit']
         if nit and ClienteComercial.query.filter_by(nit=nit).first():
             return jsonify({'error': 'Ya existe un cliente con ese NIT'}), 409
+        # La existencia en interfaces (SIIGO / Administrativo) ya NO bloquea la
+        # creacion: mientras se pone el modulo al dia se permite registrar el
+        # cliente y solo se informa que ya existe en el sistema contable.
         origen_existente = _cliente_ya_existe_en_interfaces(nit, payload['razon_social'])
-        if origen_existente:
-            return jsonify({'error': f'El cliente ya existe en {origen_existente}. Debe gestionarse como cliente existente, no crearse de nuevo.'}), 409
 
         _validar_pagare_cliente(payload)
 
@@ -1999,7 +2000,10 @@ def crear_cliente():
         _guardar_documentos_cliente_por_tipo(cliente, data)
 
         db.session.commit()
-        return jsonify({'mensaje': 'Cliente comercial creado', 'id': cliente.id}), 201
+        respuesta = {'mensaje': 'Cliente comercial creado', 'id': cliente.id}
+        if origen_existente:
+            respuesta['aviso'] = f'Nota: este cliente ya existe en {origen_existente}. Se registró aquí para poner al día el módulo comercial.'
+        return jsonify(respuesta), 201
     except ValueError as exc:
         db.session.rollback()
         return jsonify({'error': str(exc)}), 400
