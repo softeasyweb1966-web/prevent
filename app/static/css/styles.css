@@ -5463,3 +5463,36 @@ body.body-siigo-cartera-focus .main-content {
     padding: 5px 12px;
     font-size: 0.85rem;
 }
+
+/* ==========================================================================
+   Registro de Atenciones / Recaudos (seccion comercial)
+   ========================================================================== */
+#comercialRegistroAtencionesSection .registro-atenciones-tabla {
+    margin-top: 8px;
+}
+
+#comercialRegistroAtencionesSection .registro-atenciones-tabla .data-table th,
+#comercialRegistroAtencionesSection .registro-atenciones-tabla .data-table td {
+    vertical-align: middle;
+}
+
+#comercialRegistroAtencionesSection .registro-atenciones-tabla .button-group {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+#registroAtencionesSeleccionResumen {
+    font-size: 0.9rem;
+}
+
+#recaudoAtencionesResumen {
+    font-size: 0.9rem;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+#recaudoAtencionesResumen > div {
+    padding: 2px 0;
+    border-bottom: 1px dashed #e2e2e2;
+}

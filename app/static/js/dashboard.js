@@ -494,6 +494,7 @@ function hasComercialSectionPermission(section) {
         clientes: () => hasAnyComercialPermission('clientes'),
         gestion_informacion: () => canManageComercial('atenciones', 'read') || canManageComercial('atenciones', 'create'),
         caja: () => canManageComercial('atenciones', 'read') || canManageComercial('atenciones', 'create'),
+        registro_atenciones: () => canManageComercial('atenciones', 'read') || canManageComercial('atenciones', 'create'),
         mes: () => hasRolePermission('menu_comercial'),
         comisiones: () => hasAnyComercialPermission('comisiones'),
         inicio: () => hasRolePermission('menu_comercial'),
@@ -1234,6 +1235,18 @@ async function switchComercialSection(sectionName = 'inicio', options = {}) {
 
     if (normalizedSection === 'caja') {
         cargarOpcionesCaja();
+        return;
+    }
+
+    if (normalizedSection === 'registro_atenciones') {
+        try {
+            await config.load();
+        } catch (error) {
+            console.error('Error cargando seccion registro de atenciones:', error);
+        }
+        if (focus && config.focusId) {
+            window.setTimeout(() => focusModuleSection(config.focusId), 120);
+        }
         return;
     }
 
@@ -4000,6 +4013,13 @@ function closeSeguimientoAtencionModal() {
     document.getElementById('seguimientoAtencionModal')?.classList.remove('active');
     clienteSeguimientoContext.draftDetalles = [];
     renderSeguimientoDraftDetalles();
+    if (window._registroAtencionesRecargarAlCerrar) {
+        window._registroAtencionesRecargarAlCerrar = false;
+        const state = window._registroAtencionesState;
+        if (state && state.clienteId) {
+            cargarRegistroAtenciones();
+        }
+    }
 }
 
 function agregarDetalleAtencionSeleccionado() {
@@ -4310,6 +4330,11 @@ const COMERCIAL_SECTION_CONFIG = {
         panels: ['comercialCajaSection'],
         focusId: null,
         load: async () => {}
+    },
+    registro_atenciones: {
+        panels: ['comercialRegistroAtencionesSection'],
+        focusId: 'comercialRegistroAtencionesSection',
+        load: async () => { await inicializarRegistroAtenciones(); }
     },
     vendedores: {
         panels: ['comercialVendedoresSection'],
@@ -5368,6 +5393,12 @@ function setupEstructuraLaboralForms() {
         vendedorForm.dataset.bound = 'true';
     }
 
+    const recaudoForm = document.getElementById('recaudoForm');
+    if (recaudoForm && !recaudoForm.dataset.bound) {
+        recaudoForm.addEventListener('submit', guardarRecaudo);
+        recaudoForm.dataset.bound = 'true';
+    }
+
     const clienteFactura = document.getElementById('clienteComercialRequiereFactura');
     if (clienteFactura && !clienteFactura.dataset.bound) {
         clienteFactura.addEventListener('change', actualizarEstadoFacturaClienteComercial);
@@ -5895,6 +5926,460 @@ async function asegurarClientesComerciales() {
     const clientes = await response.json();
     clientesComercialesData = Array.isArray(clientes) ? clientes : [];
     return clientesComercialesData;
+}
+
+// ==========================================================================
+// Registro de Atenciones / Recaudos (seccion comercial)
+// ==========================================================================
+
+function getRegistroAtencionesState() {
+    if (!window._registroAtencionesState) {
+        window._registroAtencionesState = {
+            clienteId: null,
+            atenciones: [],
+            recaudos: [],
+            seleccionadas: new Set()
+        };
+    }
+    return window._registroAtencionesState;
+}
+
+async function inicializarRegistroAtenciones() {
+    const state = getRegistroAtencionesState();
+    const select = document.getElementById('registroAtencionesClienteSelect');
+    if (!select) return;
+
+    try {
+        await asegurarClientesComerciales();
+    } catch (error) {
+        console.error('Error cargando clientes para registro de atenciones:', error);
+        showError(error.message || 'No se pudieron cargar las empresas.');
+        return;
+    }
+
+    const clientes = Array.isArray(clientesComercialesData) ? clientesComercialesData : [];
+    const seleccionActual = select.value || (state.clienteId ? String(state.clienteId) : '');
+    const opciones = ['<option value="">Seleccione una empresa...</option>'];
+    clientes.forEach(cliente => {
+        const label = cliente.razon_social || cliente.nombre_comercial || `Cliente ${cliente.id}`;
+        opciones.push(`<option value="${escapeHtml(String(cliente.id))}">${escapeHtml(label)}</option>`);
+    });
+    select.innerHTML = opciones.join('');
+
+    // Si es un vendedor con un solo cliente, preselecciona.
+    let preseleccion = seleccionActual;
+    if (!preseleccion && clientes.length === 1) {
+        preseleccion = String(clientes[0].id);
+    }
+    if (preseleccion && clientes.some(cliente => String(cliente.id) === String(preseleccion))) {
+        select.value = preseleccion;
+        await cargarRegistroAtenciones();
+    } else {
+        select.value = '';
+        state.clienteId = null;
+        state.atenciones = [];
+        state.recaudos = [];
+        state.seleccionadas = new Set();
+        renderRegistroAtencionesListas();
+    }
+}
+
+async function cargarRegistroAtenciones() {
+    const state = getRegistroAtencionesState();
+    const select = document.getElementById('registroAtencionesClienteSelect');
+    const clienteId = select ? select.value : '';
+
+    if (!clienteId) {
+        state.clienteId = null;
+        state.atenciones = [];
+        state.recaudos = [];
+        state.seleccionadas = new Set();
+        renderRegistroAtencionesListas();
+        return;
+    }
+
+    state.clienteId = clienteId;
+    state.seleccionadas = new Set();
+
+    try {
+        const [atencionesResp, recaudosResp] = await Promise.all([
+            fetch(`/api/comercial/clientes/${clienteId}/atenciones-pendientes`, { credentials: 'include' }),
+            fetch(`/api/comercial/clientes/${clienteId}/recaudos`, { credentials: 'include' })
+        ]);
+        const atencionesData = await atencionesResp.json().catch(() => ([]));
+        const recaudosData = await recaudosResp.json().catch(() => ([]));
+
+        if (!atencionesResp.ok) {
+            throw new Error(atencionesData.error || 'No se pudieron cargar las atenciones.');
+        }
+        if (!recaudosResp.ok) {
+            throw new Error(recaudosData.error || 'No se pudieron cargar los recaudos.');
+        }
+
+        state.atenciones = Array.isArray(atencionesData) ? atencionesData : [];
+        state.recaudos = Array.isArray(recaudosData) ? recaudosData : [];
+    } catch (error) {
+        console.error('Error cargando registro de atenciones:', error);
+        showError(error.message || 'No se pudo cargar la informacion de la empresa.');
+        state.atenciones = [];
+        state.recaudos = [];
+    }
+
+    renderRegistroAtencionesListas();
+}
+
+function toggleAtencionRegistro(atencionId, checked) {
+    const state = getRegistroAtencionesState();
+    const id = Number(atencionId);
+    if (checked) {
+        state.seleccionadas.add(id);
+    } else {
+        state.seleccionadas.delete(id);
+    }
+    actualizarResumenSeleccionRegistro();
+}
+
+function toggleTodasAtencionesRegistro(checked) {
+    const state = getRegistroAtencionesState();
+    state.seleccionadas = new Set();
+    if (checked) {
+        (state.atenciones || []).forEach(atencion => state.seleccionadas.add(Number(atencion.id)));
+    }
+    renderRegistroAtencionesListas();
+}
+
+function actualizarResumenSeleccionRegistro() {
+    const state = getRegistroAtencionesState();
+    const resumen = document.getElementById('registroAtencionesSeleccionResumen');
+    if (!resumen) return;
+    const cantidad = state.seleccionadas.size;
+    if (!cantidad) {
+        resumen.textContent = 'No hay atenciones seleccionadas.';
+        return;
+    }
+    const total = (state.atenciones || [])
+        .filter(atencion => state.seleccionadas.has(Number(atencion.id)))
+        .reduce((acc, atencion) => acc + Number(atencion.valor_total || 0), 0);
+    resumen.textContent = `${cantidad} atención(es) seleccionada(s) · Total ${formatCurrency(total)}`;
+}
+
+function renderRegistroAtencionesListas() {
+    const state = getRegistroAtencionesState();
+    const tbodyAtenciones = document.getElementById('registroAtencionesListaAtenciones');
+    const tbodyRecaudos = document.getElementById('registroAtencionesListaRecaudos');
+
+    if (tbodyAtenciones) {
+        if (!state.clienteId) {
+            tbodyAtenciones.innerHTML = '<tr><td colspan="7" class="loading">Selecciona una empresa para ver sus atenciones.</td></tr>';
+        } else if (!state.atenciones.length) {
+            tbodyAtenciones.innerHTML = '<tr><td colspan="7" class="loading">Esta empresa no tiene atenciones registradas.</td></tr>';
+        } else {
+            tbodyAtenciones.innerHTML = state.atenciones.map(atencion => {
+                const id = Number(atencion.id);
+                const checked = state.seleccionadas.has(id) ? 'checked' : '';
+                const recaudoInfo = atencion.tiene_recaudo
+                    ? '<span class="badge badge-success">Sí</span>'
+                    : '<span class="badge badge-secondary">No</span>';
+                const paciente = [atencion.paciente_nombre, atencion.paciente_documento].filter(Boolean).join(' · ');
+                return `<tr>
+                    <td><input type="checkbox" ${checked} onchange="toggleAtencionRegistro(${id}, this.checked)"></td>
+                    <td>${escapeHtml(atencion.nro_atencion || '-')}</td>
+                    <td>${escapeHtml(atencion.fecha_atencion || '-')}</td>
+                    <td>${escapeHtml(paciente || '-')}</td>
+                    <td>${formatCurrency(atencion.valor_total || 0)}</td>
+                    <td>${escapeHtml(atencion.estado_cobro || '-')}</td>
+                    <td>${recaudoInfo}</td>
+                </tr>`;
+            }).join('');
+        }
+    }
+
+    const checkAll = document.getElementById('registroAtencionesCheckAll');
+    if (checkAll) {
+        const total = state.atenciones.length;
+        checkAll.checked = total > 0 && state.seleccionadas.size === total;
+    }
+
+    if (tbodyRecaudos) {
+        if (!state.clienteId) {
+            tbodyRecaudos.innerHTML = '<tr><td colspan="9" class="loading">Selecciona una empresa para ver sus recaudos.</td></tr>';
+        } else if (!state.recaudos.length) {
+            tbodyRecaudos.innerHTML = '<tr><td colspan="9" class="loading">Esta empresa no tiene recaudos registrados.</td></tr>';
+        } else {
+            tbodyRecaudos.innerHTML = state.recaudos.map(recaudo => {
+                const id = Number(recaudo.id);
+                const soporte = recaudo.comprobante_url || recaudo.nombre_comprobante
+                    ? `<a href="/api/comercial/recaudos/${id}/comprobante" target="_blank" rel="noopener">Ver</a>`
+                    : '<span style="color:#999;">Sin soporte</span>';
+                const medio = [recaudo.medio_pago, recaudo.canal_transferencia].filter(Boolean).join(' · ');
+                return `<tr>
+                    <td>${escapeHtml(recaudo.fecha_pago || '-')}</td>
+                    <td>${formatCurrency(recaudo.valor_comprobante || 0)}</td>
+                    <td>${escapeHtml(medio || '-')}</td>
+                    <td>${Number(recaudo.porcentaje_aplicado || 0).toFixed(2)}%</td>
+                    <td>${formatCurrency(recaudo.comision_calculada || 0)}</td>
+                    <td>${Number(recaudo.cantidad_atenciones || 0)}</td>
+                    <td>${escapeHtml(recaudo.estado || '-')}</td>
+                    <td>${soporte}</td>
+                    <td>
+                        <div class="button-group" style="gap:6px; flex-wrap:wrap;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="abrirRecaudoModal(${id})">Editar</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="asociarAtencionesARecaudo(${id})">Asociar atenciones</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="subirSoporteRecaudo(${id})">Subir soporte</button>
+                            <button type="button" class="btn btn-danger btn-sm" onclick="eliminarRecaudo(${id})">Eliminar</button>
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+    }
+
+    actualizarResumenSeleccionRegistro();
+}
+
+function actualizarCanalRecaudo() {
+    const medio = document.getElementById('recaudoMedioPago')?.value || '';
+    const grupo = document.getElementById('recaudoCanalGroup');
+    if (!grupo) return;
+    grupo.style.display = medio === 'TRANSFERENCIA' ? '' : 'none';
+}
+
+function abrirRecaudoModal(recaudoId = null) {
+    const state = getRegistroAtencionesState();
+    if (!state.clienteId) {
+        showError('Selecciona primero una empresa.');
+        return;
+    }
+
+    const form = document.getElementById('recaudoForm');
+    const titulo = document.getElementById('recaudoModalTitulo');
+    const resumen = document.getElementById('recaudoAtencionesResumen');
+    if (!form) return;
+
+    form.reset();
+    document.getElementById('recaudoId').value = recaudoId ? String(recaudoId) : '';
+
+    if (recaudoId) {
+        const recaudo = (state.recaudos || []).find(item => Number(item.id) === Number(recaudoId));
+        if (!recaudo) {
+            showError('No se pudo localizar el recaudo.');
+            return;
+        }
+        if (titulo) titulo.textContent = 'Editar recaudo';
+        document.getElementById('recaudoFechaPago').value = recaudo.fecha_pago || '';
+        document.getElementById('recaudoValorComprobante').value = recaudo.valor_comprobante || '';
+        document.getElementById('recaudoMedioPago').value = recaudo.medio_pago || 'EFECTIVO';
+        document.getElementById('recaudoCanalTransferencia').value = recaudo.canal_transferencia || '';
+        document.getElementById('recaudoObservaciones').value = recaudo.observaciones || '';
+        const atenciones = Array.isArray(recaudo.atenciones) ? recaudo.atenciones : [];
+        if (resumen) {
+            resumen.innerHTML = atenciones.length
+                ? atenciones.map(a => `<div>${escapeHtml(a.nro_atencion || 'Atención')} · ${escapeHtml(a.paciente_nombre || '')} · ${formatCurrency(a.valor_aplicado || a.valor_atencion || 0)}</div>`).join('')
+                : 'Este recaudo no tiene atenciones asociadas.';
+        }
+    } else {
+        if (titulo) titulo.textContent = 'Registrar pago (recaudo)';
+        document.getElementById('recaudoFechaPago').value = getTodayIsoDate();
+        document.getElementById('recaudoMedioPago').value = 'EFECTIVO';
+        const seleccionadas = Array.from(state.seleccionadas || []);
+        const atenciones = (state.atenciones || []).filter(a => seleccionadas.includes(Number(a.id)));
+        if (resumen) {
+            resumen.innerHTML = atenciones.length
+                ? atenciones.map(a => `<div>${escapeHtml(a.nro_atencion || 'Atención')} · ${escapeHtml(a.paciente_nombre || '')} · ${formatCurrency(a.valor_total || 0)}</div>`).join('')
+                : 'No hay atenciones seleccionadas.';
+        }
+    }
+
+    actualizarCanalRecaudo();
+    document.getElementById('recaudoModal')?.classList.add('active');
+}
+
+function cerrarRecaudoModal() {
+    document.getElementById('recaudoModal')?.classList.remove('active');
+}
+
+async function guardarRecaudo(event) {
+    if (event) event.preventDefault();
+    const state = getRegistroAtencionesState();
+    if (!state.clienteId) {
+        showError('Selecciona primero una empresa.');
+        return;
+    }
+
+    const recaudoId = document.getElementById('recaudoId').value || '';
+    const fechaPago = document.getElementById('recaudoFechaPago').value || '';
+    const valor = document.getElementById('recaudoValorComprobante').value || '';
+    const medioPago = document.getElementById('recaudoMedioPago').value || '';
+    const canal = document.getElementById('recaudoCanalTransferencia').value || '';
+    const observaciones = document.getElementById('recaudoObservaciones').value || '';
+    const archivoInput = document.getElementById('recaudoComprobante');
+    const archivo = archivoInput && archivoInput.files.length ? archivoInput.files[0] : null;
+
+    if (!fechaPago) {
+        showError('La fecha de pago es obligatoria.');
+        return;
+    }
+    if (!(Number(valor) > 0)) {
+        showError('El valor del comprobante debe ser mayor a cero.');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('fecha_pago', fechaPago);
+    formData.append('valor_comprobante', valor);
+    formData.append('medio_pago', medioPago);
+    if (medioPago === 'TRANSFERENCIA' && canal) {
+        formData.append('canal_transferencia', canal);
+    }
+    if (observaciones) {
+        formData.append('observaciones', observaciones);
+    }
+    if (archivo) {
+        formData.append('comprobante_pago', archivo);
+    }
+
+    // En creacion se agrupan las atenciones marcadas.
+    if (!recaudoId) {
+        const seleccionadas = Array.from(state.seleccionadas || []);
+        formData.append('atencion_ids', JSON.stringify(seleccionadas));
+    }
+
+    try {
+        const url = recaudoId
+            ? `/api/comercial/recaudos/${recaudoId}`
+            : `/api/comercial/clientes/${state.clienteId}/recaudos`;
+        const method = recaudoId ? 'PUT' : 'POST';
+        const response = await fetch(url, { method, credentials: 'include', body: formData });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || 'No se pudo guardar el recaudo.');
+        }
+
+        cerrarRecaudoModal();
+        const comision = data.comision_calculada;
+        if (comision !== undefined && comision !== null) {
+            showSuccess(`Recaudo guardado. Comisión calculada: ${formatCurrency(comision)}`);
+        } else {
+            showSuccess('Recaudo guardado correctamente.');
+        }
+        await cargarRegistroAtenciones();
+    } catch (error) {
+        console.error('Error guardando recaudo:', error);
+        showError(error.message || 'No se pudo guardar el recaudo.');
+    }
+}
+
+async function asociarAtencionesARecaudo(recaudoId) {
+    const state = getRegistroAtencionesState();
+    const seleccionadas = Array.from(state.seleccionadas || []);
+    if (!seleccionadas.length) {
+        showError('Marca primero las atenciones que quieres asociar.');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('atencion_ids', JSON.stringify(seleccionadas));
+
+    try {
+        const response = await fetch(`/api/comercial/recaudos/${recaudoId}`, {
+            method: 'PUT',
+            credentials: 'include',
+            body: formData
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || 'No se pudieron asociar las atenciones.');
+        }
+        const comision = data.comision_calculada;
+        showSuccess(comision !== undefined && comision !== null
+            ? `Atenciones asociadas. Comisión: ${formatCurrency(comision)}`
+            : 'Atenciones asociadas correctamente.');
+        await cargarRegistroAtenciones();
+    } catch (error) {
+        console.error('Error asociando atenciones:', error);
+        showError(error.message || 'No se pudieron asociar las atenciones.');
+    }
+}
+
+function subirSoporteRecaudo(recaudoId) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.addEventListener('change', async () => {
+        if (!input.files.length) return;
+        const formData = new FormData();
+        formData.append('comprobante_pago', input.files[0]);
+        try {
+            const response = await fetch(`/api/comercial/recaudos/${recaudoId}`, {
+                method: 'PUT',
+                credentials: 'include',
+                body: formData
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data.error || 'No se pudo subir el soporte.');
+            }
+            showSuccess('Soporte subido correctamente.');
+            await cargarRegistroAtenciones();
+        } catch (error) {
+            console.error('Error subiendo soporte:', error);
+            showError(error.message || 'No se pudo subir el soporte.');
+        }
+    });
+    input.click();
+}
+
+async function eliminarRecaudo(recaudoId) {
+    if (!window.confirm('¿Eliminar este recaudo? Esta acción no se puede deshacer.')) {
+        return;
+    }
+    try {
+        const response = await fetch(`/api/comercial/recaudos/${recaudoId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || 'No se pudo eliminar el recaudo.');
+        }
+        showSuccess('Recaudo eliminado.');
+        await cargarRegistroAtenciones();
+    } catch (error) {
+        console.error('Error eliminando recaudo:', error);
+        showError(error.message || 'No se pudo eliminar el recaudo.');
+    }
+}
+
+async function registrarAtencionRegistro() {
+    const state = getRegistroAtencionesState();
+    if (!state.clienteId) {
+        showError('Selecciona primero una empresa.');
+        return;
+    }
+
+    try {
+        await ensureClientesComercialesLoaded();
+        const cliente = (clientesComercialesData || []).find(item => String(item.id) === String(state.clienteId));
+        if (!cliente) {
+            throw new Error('No se pudo localizar la empresa seleccionada.');
+        }
+
+        // Reutiliza el flujo de atenciones del seguimiento del cliente.
+        clienteSeguimientoContext = {
+            clienteId: String(state.clienteId),
+            cliente,
+            convenioItems: [],
+            atenciones: [],
+            documentos: [],
+            pagos: [],
+            draftDetalles: []
+        };
+        // Marca para recargar el registro cuando se cierre el modal de atención.
+        window._registroAtencionesRecargarAlCerrar = true;
+        await mostrarAgregarAtencionCliente();
+    } catch (error) {
+        console.error('Error abriendo registro de atención:', error);
+        showError(error.message || 'No se pudo abrir el registro de atención.');
+    }
 }
 
 function actualizarOpcionesSubtipoCatalogo(preferredValue = '') {
