@@ -880,9 +880,6 @@
                             </div>
                             <div class="form-group" style="display:flex; align-items:flex-end;">
                                 <div class="button-group module-actions">
-                                    <button type="button" class="btn btn-secondary" onclick="registrarAtencionRegistro()">
-                                        <span class="btn-icon">＋</span><span class="btn-label">Registrar atención</span>
-                                    </button>
                                     <button type="button" class="btn btn-primary" onclick="abrirRecaudoModal()">
                                         <span class="btn-icon">💲</span><span class="btn-label">Registrar pago (recaudo)</span>
                                     </button>
@@ -890,6 +887,62 @@
                             </div>
                         </div>
                         <div id="registroAtencionesSeleccionResumen" style="margin-top:8px; color:#555;"></div>
+
+                        <!-- Formulario inline de registro de atencion -->
+                        <div id="registroAtencionInlineForm" style="display:none; margin-top:16px; border-top:1px solid #e2e8f0; padding-top:16px;">
+                            <h4 style="margin-top:0;">Registrar atención de pacientes</h4>
+                            <p id="registroAtencionInlineHint" style="margin-top:0; color:#555;">Agrega uno o más pacientes con sus exámenes o paquetes convenidos.</p>
+                            <div class="form-row" style="gap:12px; align-items:flex-end; flex-wrap:wrap;">
+                                <div class="form-group" style="max-width:190px;">
+                                    <label for="registroAtencionFecha">Fecha atención *</label>
+                                    <input type="date" id="registroAtencionFecha" onchange="cargarConvenioItemsAtencionInline()">
+                                </div>
+                                <div class="form-group" style="min-width:150px;">
+                                    <label for="registroAtencionPacienteDocumento">Documento paciente *</label>
+                                    <input type="text" id="registroAtencionPacienteDocumento" maxlength="50" placeholder="Cédula / documento">
+                                </div>
+                                <div class="form-group" style="min-width:180px; flex:1;">
+                                    <label for="registroAtencionPacienteNombre">Nombre paciente *</label>
+                                    <input type="text" id="registroAtencionPacienteNombre" maxlength="200" placeholder="Nombre completo">
+                                </div>
+                                <div class="form-group" style="min-width:240px; flex:2;">
+                                    <label for="registroAtencionItemSelect">Examen y/o paquete convenido *</label>
+                                    <select id="registroAtencionItemSelect">
+                                        <option value="">Seleccione un item convenido...</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="max-width:170px;">
+                                    <label>&nbsp;</label>
+                                    <button type="button" class="btn btn-secondary" style="width:100%;" onclick="agregarItemAtencionInline()">＋ Agregar ítem</button>
+                                </div>
+                            </div>
+                            <small id="registroAtencionItemHint" class="form-help"></small>
+                            <div class="table-container" style="overflow-x:auto; margin-top:10px;">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Paciente</th>
+                                            <th>Ítem</th>
+                                            <th>Tipo</th>
+                                            <th>Valor</th>
+                                            <th>Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="registroAtencionDetalleTable">
+                                        <tr><td colspan="5" class="loading">Aún no has agregado ítems a esta atención.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div id="registroAtencionTotal" style="margin-top:8px; font-weight:600;">Total atención: $0</div>
+                            <div class="form-group" style="margin-top:10px;">
+                                <label for="registroAtencionObservaciones">Observaciones</label>
+                                <textarea id="registroAtencionObservaciones" rows="2" placeholder="Notas de la atención (opcional)"></textarea>
+                            </div>
+                            <div class="button-group module-actions" style="justify-content:flex-end;">
+                                <button type="button" class="btn btn-secondary" onclick="limpiarAtencionInline()">Limpiar</button>
+                                <button type="button" class="btn btn-primary" onclick="guardarAtencionInline()">Guardar atención</button>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="recent-section" style="margin-bottom:16px;">

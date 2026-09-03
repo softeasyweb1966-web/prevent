@@ -6025,6 +6025,202 @@ async function cargarComisionAcumuladaRecaudos() {
     }
 }
 
+// ===== Registro de atencion INLINE (sin modal) =====
+function getAtencionInlineState() {
+    if (!window._atencionInlineState) {
+        window._atencionInlineState = { convenioItems: [], detalles: [] };
+    }
+    return window._atencionInlineState;
+}
+
+async function prepararAtencionInline(clienteId) {
+    const cont = document.getElementById('registroAtencionInlineForm');
+    if (!cont) return;
+    const state = getAtencionInlineState();
+
+    if (!clienteId) {
+        cont.style.display = 'none';
+        state.convenioItems = [];
+        state.detalles = [];
+        return;
+    }
+
+    cont.style.display = 'block';
+    state.detalles = [];
+    const fechaInput = document.getElementById('registroAtencionFecha');
+    if (fechaInput && !fechaInput.value) {
+        fechaInput.value = getTodayIsoDate();
+    }
+    document.getElementById('registroAtencionPacienteDocumento').value = '';
+    document.getElementById('registroAtencionPacienteNombre').value = '';
+    document.getElementById('registroAtencionObservaciones').value = '';
+    renderDetallesAtencionInline();
+    await cargarConvenioItemsAtencionInline();
+}
+
+async function cargarConvenioItemsAtencionInline() {
+    const state = getAtencionInlineState();
+    const regState = getRegistroAtencionesState();
+    const clienteId = regState.clienteId;
+    const select = document.getElementById('registroAtencionItemSelect');
+    const hint = document.getElementById('registroAtencionItemHint');
+    if (!clienteId || !select) return;
+
+    const fecha = document.getElementById('registroAtencionFecha')?.value || '';
+    const params = new URLSearchParams();
+    if (fecha) params.set('fecha_atencion', fecha);
+    const query = params.toString();
+
+    try {
+        const resp = await fetch(`/api/comercial/clientes/${clienteId}/convenio-items${query ? `?${query}` : ''}`, { credentials: 'include' });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'No se pudieron cargar los items convenidos.');
+        state.convenioItems = Array.isArray(data) ? data : [];
+    } catch (error) {
+        console.error('Error cargando convenio (inline):', error);
+        state.convenioItems = [];
+        showError(error.message || 'No se pudieron cargar los items convenidos.');
+    }
+
+    select.innerHTML = '<option value="">Seleccione un item convenido...</option>';
+    state.convenioItems.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = String(item.id);
+        opt.textContent = `${item.nombre} · ${item.tipo_item} · ${formatCurrency(item.valor_unitario || 0)}`;
+        select.appendChild(opt);
+    });
+    if (hint) {
+        hint.textContent = state.convenioItems.length
+            ? 'Solo se muestran los items convenidos para este cliente; se usa la tarifa del convenio.'
+            : 'Este cliente no tiene exámenes o paquetes convenidos vigentes para la fecha seleccionada.';
+    }
+}
+
+function agregarItemAtencionInline() {
+    const state = getAtencionInlineState();
+    const itemId = document.getElementById('registroAtencionItemSelect')?.value || '';
+    const doc = (document.getElementById('registroAtencionPacienteDocumento')?.value || '').trim();
+    const nombre = (document.getElementById('registroAtencionPacienteNombre')?.value || '').trim();
+
+    if (!doc || !nombre) {
+        showError('Registra documento y nombre del paciente antes de agregar el ítem.');
+        return;
+    }
+    if (!itemId) {
+        showError('Selecciona un examen o paquete convenido.');
+        return;
+    }
+    const item = state.convenioItems.find(i => String(i.id) === String(itemId));
+    if (!item) {
+        showError('El ítem seleccionado ya no está disponible.');
+        return;
+    }
+
+    state.detalles.push({
+        catalogo_item_id: Number(item.id),
+        paciente_documento: doc,
+        paciente_nombre: nombre,
+        nombre: item.nombre,
+        tipo_item: item.tipo_item,
+        valor_unitario: Number(item.valor_unitario || 0)
+    });
+    renderDetallesAtencionInline();
+    // Deja documento/nombre para agregar varios ítems al mismo paciente; limpia el item.
+    document.getElementById('registroAtencionItemSelect').value = '';
+}
+
+function quitarItemAtencionInline(index) {
+    const state = getAtencionInlineState();
+    state.detalles.splice(index, 1);
+    renderDetallesAtencionInline();
+}
+
+function renderDetallesAtencionInline() {
+    const tbody = document.getElementById('registroAtencionDetalleTable');
+    const totalEl = document.getElementById('registroAtencionTotal');
+    if (!tbody || !totalEl) return;
+    const state = getAtencionInlineState();
+    const detalles = state.detalles || [];
+
+    if (!detalles.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="loading">Aún no has agregado ítems a esta atención.</td></tr>';
+        totalEl.textContent = 'Total atención: $0';
+        return;
+    }
+
+    let total = 0;
+    tbody.innerHTML = detalles.map((d, index) => {
+        total += Number(d.valor_unitario || 0);
+        return `
+            <tr>
+                <td>${escapeHtml([d.paciente_nombre, d.paciente_documento].filter(Boolean).join(' · '))}</td>
+                <td>${escapeHtml(d.nombre || 'N/A')}</td>
+                <td>${escapeHtml(d.tipo_item || 'N/A')}</td>
+                <td>${formatCurrency(d.valor_unitario || 0)}</td>
+                <td><button type="button" class="action-btn action-btn-delete" onclick="quitarItemAtencionInline(${index})">Quitar</button></td>
+            </tr>`;
+    }).join('');
+    totalEl.textContent = `Total atención: ${formatCurrency(total)}`;
+}
+
+function limpiarAtencionInline() {
+    const state = getAtencionInlineState();
+    state.detalles = [];
+    document.getElementById('registroAtencionPacienteDocumento').value = '';
+    document.getElementById('registroAtencionPacienteNombre').value = '';
+    document.getElementById('registroAtencionObservaciones').value = '';
+    const sel = document.getElementById('registroAtencionItemSelect');
+    if (sel) sel.value = '';
+    renderDetallesAtencionInline();
+}
+
+async function guardarAtencionInline() {
+    const regState = getRegistroAtencionesState();
+    const state = getAtencionInlineState();
+    const clienteId = regState.clienteId;
+    if (!clienteId) {
+        showError('Selecciona primero una empresa.');
+        return;
+    }
+    const fecha = document.getElementById('registroAtencionFecha')?.value || '';
+    if (!fecha) {
+        showError('La fecha de atención es obligatoria.');
+        return;
+    }
+    if (!(state.detalles || []).length) {
+        showError('Agrega al menos un examen o paquete antes de guardar la atención.');
+        return;
+    }
+
+    try {
+        const resp = await fetch(`/api/comercial/clientes/${clienteId}/atenciones`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                fecha_atencion: fecha,
+                observaciones: (document.getElementById('registroAtencionObservaciones')?.value || '').trim(),
+                detalles: state.detalles.map(d => ({
+                    catalogo_item_id: d.catalogo_item_id,
+                    paciente_documento: d.paciente_documento,
+                    paciente_nombre: d.paciente_nombre
+                }))
+            })
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            showError(data.error || 'No fue posible guardar la atención.');
+            return;
+        }
+        showSuccess(`Atención registrada (${data.nro_atencion || 'OK'}).`);
+        limpiarAtencionInline();
+        await cargarRegistroAtenciones();
+    } catch (error) {
+        console.error('Error guardando atención inline:', error);
+        showError('Error de conexión al guardar la atención.');
+    }
+}
+
 async function cargarRegistroAtenciones() {
     const state = getRegistroAtencionesState();
     const select = document.getElementById('registroAtencionesClienteSelect');
@@ -6036,11 +6232,13 @@ async function cargarRegistroAtenciones() {
         state.recaudos = [];
         state.seleccionadas = new Set();
         renderRegistroAtencionesListas();
+        prepararAtencionInline(null);
         return;
     }
 
     state.clienteId = clienteId;
     state.seleccionadas = new Set();
+    prepararAtencionInline(clienteId);
 
     try {
         const [atencionesResp, recaudosResp] = await Promise.all([
