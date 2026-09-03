@@ -5496,3 +5496,34 @@ body.body-siigo-cartera-focus .main-content {
     padding: 2px 0;
     border-bottom: 1px dashed #e2e2e2;
 }
+
+/* Tarjetas de comision acumulada (Registro Atenciones) */
+.comision-recaudo-card {
+    flex: 1;
+    min-width: 180px;
+    background: #f7f9fc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.comision-recaudo-card-destacada {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+}
+.comision-recaudo-card-label {
+    font-size: 0.82rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.comision-recaudo-card-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+.comision-recaudo-card-destacada .comision-recaudo-card-value {
+    color: #047857;
+}

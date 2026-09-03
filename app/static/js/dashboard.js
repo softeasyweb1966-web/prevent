@@ -5982,6 +5982,47 @@ async function inicializarRegistroAtenciones() {
         state.seleccionadas = new Set();
         renderRegistroAtencionesListas();
     }
+
+    // Prepara el filtro de comision con el anio actual y consulta el acumulado del vendedor.
+    const anioInput = document.getElementById('comisionRecaudoAnio');
+    if (anioInput && !anioInput.value) {
+        anioInput.value = new Date().getFullYear();
+    }
+    cargarComisionAcumuladaRecaudos();
+}
+
+async function cargarComisionAcumuladaRecaudos() {
+    const totalRecaudadoEl = document.getElementById('comisionRecaudoTotalRecaudado');
+    const totalComisionEl = document.getElementById('comisionRecaudoTotalComision');
+    const cantidadEl = document.getElementById('comisionRecaudoCantidad');
+    if (!totalRecaudadoEl || !totalComisionEl || !cantidadEl) return;
+
+    const mes = document.getElementById('comisionRecaudoMes')?.value || '';
+    const anio = document.getElementById('comisionRecaudoAnio')?.value || '';
+    const params = new URLSearchParams();
+    if (mes && anio) {
+        params.set('mes', mes);
+        params.set('anio', anio);
+    }
+    const query = params.toString();
+    const url = `/api/comercial/recaudos/comision-acumulada${query ? `?${query}` : ''}`;
+
+    try {
+        const resp = await fetch(url, { credentials: 'include' });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || 'No se pudo obtener la comision acumulada.');
+        }
+        const data = await resp.json();
+        totalRecaudadoEl.textContent = formatCurrency(data.total_recaudado || 0);
+        totalComisionEl.textContent = formatCurrency(data.total_comision || 0);
+        cantidadEl.textContent = String(data.cantidad_recaudos || 0);
+    } catch (error) {
+        console.error('Error cargando comision acumulada de recaudos:', error);
+        totalRecaudadoEl.textContent = '$0';
+        totalComisionEl.textContent = '$0';
+        cantidadEl.textContent = '0';
+    }
 }
 
 async function cargarRegistroAtenciones() {
@@ -6026,6 +6067,7 @@ async function cargarRegistroAtenciones() {
     }
 
     renderRegistroAtencionesListas();
+    cargarComisionAcumuladaRecaudos();
 }
 
 function toggleAtencionRegistro(atencionId, checked) {

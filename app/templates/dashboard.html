@@ -893,6 +893,56 @@
                     </div>
 
                     <div class="recent-section" style="margin-bottom:16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px;">
+                            <div>
+                                <h4 style="margin-top:0; margin-bottom:4px;">Comisión acumulada</h4>
+                                <p style="margin:0; color:#555;">Total recaudado y comisión preliquidada según el porcentaje de recaudo del vendedor.</p>
+                            </div>
+                            <div class="form-row" style="gap:8px; align-items:flex-end; flex-wrap:wrap; margin:0;">
+                                <div class="form-group" style="margin:0;">
+                                    <label for="comisionRecaudoMes">Mes</label>
+                                    <select id="comisionRecaudoMes">
+                                        <option value="">Todos</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="margin:0;">
+                                    <label for="comisionRecaudoAnio">Año</label>
+                                    <input type="number" id="comisionRecaudoAnio" min="2020" max="2100" step="1" style="width:110px;">
+                                </div>
+                                <div class="form-group" style="margin:0; display:flex; align-items:flex-end;">
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="cargarComisionAcumuladaRecaudos()">Consultar</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="comision-recaudo-cards" style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;">
+                            <div class="comision-recaudo-card">
+                                <span class="comision-recaudo-card-label">Total recaudado</span>
+                                <span class="comision-recaudo-card-value" id="comisionRecaudoTotalRecaudado">$0</span>
+                            </div>
+                            <div class="comision-recaudo-card comision-recaudo-card-destacada">
+                                <span class="comision-recaudo-card-label">Comisión acumulada</span>
+                                <span class="comision-recaudo-card-value" id="comisionRecaudoTotalComision">$0</span>
+                            </div>
+                            <div class="comision-recaudo-card">
+                                <span class="comision-recaudo-card-label">Recaudos</span>
+                                <span class="comision-recaudo-card-value" id="comisionRecaudoCantidad">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="recent-section" style="margin-bottom:16px;">
                         <h4 style="margin-top:0;">Atenciones de la empresa</h4>
                         <div class="table-container registro-atenciones-tabla" style="overflow-x:auto;">
                             <table class="data-table" style="min-width:820px;">
