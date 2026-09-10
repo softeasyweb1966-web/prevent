@@ -378,7 +378,16 @@ def cargar_comprobantes():
     try:
         _requiere_ventas()
         nombre_archivo, contenido, filas = _leer_excel()
-        header_row, columns = _indice_encabezados(filas, ['Secuencia', 'Fecha elaboración', 'Código contable', 'Débito', 'Crédito'])
+        try:
+            header_row, columns = _indice_encabezados(filas, ['Secuencia', 'Fecha elaboración', 'Código contable', 'Débito', 'Crédito'])
+        except ValueError as exc:
+            raise ValueError(
+                'No se reconoce el formato del archivo. Para cargar comprobantes, '
+                'en el menú principal de SIIGO busque Comprobantes detallados, '
+                'seleccione el período que desea actualizar y exporte el informe a Excel (.xlsx). '
+                'El informe Consecutivo de comprobantes no contiene el detalle requerido. '
+                f'Detalle de validación: {exc}'
+            ) from exc
         carga = _crear_carga('COMPROBANTES', nombre_archivo, contenido)
         return _guardar_comprobantes_en_lote(carga, filas, header_row, columns)
 
