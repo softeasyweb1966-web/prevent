@@ -608,6 +608,25 @@ class SiigoCliente(db.Model):
     )
 
 
+class SiigoSeguimientoCartera(db.Model):
+    """Historial de gestiones de cobro por identificación del cliente SIIGO."""
+    __tablename__ = 'siigo_seguimientos_cartera'
+
+    id = db.Column(db.Integer, primary_key=True)
+    identificacion = db.Column(db.String(50), nullable=False, index=True)
+    cliente_nombre = db.Column(db.String(255), nullable=False)
+    fecha_gestion = db.Column(db.Date, nullable=False)
+    medio = db.Column(db.String(20), nullable=False)
+    contacto = db.Column(db.String(200))
+    observaciones = db.Column(db.Text, nullable=False)
+    fecha_compromiso = db.Column(db.Date)
+    valor_compromiso = db.Column(Numeric(18, 2))
+    proximo_seguimiento = db.Column(db.Date)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    usuario_nombre = db.Column(db.String(200), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class SiigoCuentaContable(db.Model):
     """Catálogo de consulta de cuentas contables proveniente de SIIGO."""
     __tablename__ = 'siigo_cuentas_contables'

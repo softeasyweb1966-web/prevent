@@ -453,6 +453,55 @@ body.body-siigo-cartera-focus .main-content {
     max-height: 280px;
 }
 
+#siigoFacturasVencidasPanel .data-table th,
+#siigoFacturasVencidasPanel .data-table td {
+    white-space: nowrap;
+}
+
+#siigoFacturasVencidasPanel .data-table td:nth-child(2) {
+    min-width: 240px;
+}
+
+.siigo-seguimiento-dialogo {
+    width: min(900px, calc(100vw - 32px));
+    max-height: 90vh;
+    box-sizing: border-box;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+    color: #1f2937;
+}
+
+.siigo-seguimiento-dialogo::backdrop {
+    background: rgba(0, 0, 0, .45);
+}
+
+.siigo-seguimiento-cabecera {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.siigo-seguimiento-registro {
+    border-top: 1px solid var(--border-color);
+    padding: 12px 0;
+    overflow-wrap: anywhere;
+}
+
+.siigo-seguimiento-registro h4 {
+    margin: 0 0 8px;
+}
+
+.siigo-seguimiento-nota {
+    white-space: pre-wrap;
+}
+
+.siigo-seguimiento-dialogo [hidden] {
+    display: none !important;
+}
+
 .siigo-detalle-cartera {
     margin-top: 20px;
     padding: 18px;

@@ -8,17 +8,20 @@ import re
 import unicodedata
 from zoneinfo import ZoneInfo
 
-from flask import jsonify, request
+from flask import jsonify, request, send_file
 from flask_login import current_user, login_required
 from sqlalchemy import func, or_
 
 from app.models import (
+    ClienteComercial,
     SiigoCarga,
     SiigoCliente,
     SiigoComprobante,
     SiigoCuentaContable,
     SiigoCuentaReporte,
     SiigoMovimiento,
+    SiigoSeguimientoCartera,
+    Vendedor,
     db,
 )
 from app.routes import contable_bp
@@ -672,6 +675,163 @@ def ventas_mensuales():
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
 
 
+def _nit_cartera(value):
+    return re.sub(r'[.\s]', '', _texto(value).split('-', 1)[0]).upper()
+
+
+def _serializar_seguimiento_cartera(registro):
+    return {
+        'id': registro.id,
+        'fecha_gestion': registro.fecha_gestion.isoformat(),
+        'medio': registro.medio,
+        'contacto': registro.contacto,
+        'observaciones': registro.observaciones,
+        'fecha_compromiso': registro.fecha_compromiso.isoformat() if registro.fecha_compromiso else None,
+        'valor_compromiso': float(registro.valor_compromiso) if registro.valor_compromiso is not None else None,
+        'proximo_seguimiento': registro.proximo_seguimiento.isoformat() if registro.proximo_seguimiento else None,
+        'registrado_por': registro.usuario_nombre,
+        'created_at': registro.created_at.isoformat() + 'Z',
+    }
+
+
+@contable_bp.route('/seguimiento-cartera', methods=['GET', 'POST'])
+@login_required
+def seguimiento_cartera():
+    try:
+        _requiere_ventas()
+        datos = request.get_json(silent=True) if request.method == 'POST' else request.args
+        if datos is None or not hasattr(datos, 'get'):
+            raise ValueError('Debe enviar los datos del seguimiento.')
+        identificacion = _texto(datos.get('identificacion'))
+        clave = _nit_cartera(identificacion)
+        if not clave or len(identificacion) > 50:
+            raise ValueError('El cliente debe tener una identificación válida para registrar su seguimiento.')
+        cliente = db.session.query(SiigoMovimiento.nombre_tercero).join(SiigoComprobante).filter(
+            SiigoMovimiento.identificacion == identificacion,
+            SiigoComprobante.tipo_documento == 'FV',
+            SiigoMovimiento.codigo_contable == '13050501',
+        ).order_by(SiigoComprobante.fecha_elaboracion.desc(), SiigoMovimiento.id.desc()).first()
+        if cliente is None:
+            return jsonify({'error': 'No se encontró el cliente en la cartera SIIGO.'}), 404
+        if request.method == 'GET':
+            registros = SiigoSeguimientoCartera.query.filter_by(identificacion=clave).order_by(
+                SiigoSeguimientoCartera.fecha_gestion.desc(),
+                SiigoSeguimientoCartera.created_at.desc(), SiigoSeguimientoCartera.id.desc(),
+            ).all()
+            return jsonify({'seguimientos': [_serializar_seguimiento_cartera(item) for item in registros]})
+
+        hoy = datetime.now(ZoneInfo('America/Bogota')).date()
+        fecha_gestion = _fecha(datos.get('fecha_gestion') or hoy)
+        if fecha_gestion > hoy:
+            raise ValueError('La fecha de gestión no puede ser futura.')
+        medio = _texto(datos.get('medio')).upper()
+        if medio not in {'LLAMADA', 'WHATSAPP', 'CORREO', 'VISITA', 'OTRO'}:
+            raise ValueError('Seleccione el medio de contacto.')
+        observaciones = _texto(datos.get('observaciones'))
+        if not observaciones or len(observaciones) > 5000:
+            raise ValueError('Describa la gestión realizada, con un máximo de 5000 caracteres.')
+        contacto = _texto(datos.get('contacto'))
+        if len(contacto) > 200:
+            raise ValueError('El contacto no puede superar 200 caracteres.')
+        fechas = {}
+        for campo in ('fecha_compromiso', 'proximo_seguimiento'):
+            fechas[campo] = _fecha(datos[campo]) if datos.get(campo) else None
+            if fechas[campo] and fechas[campo] < fecha_gestion:
+                raise ValueError('El compromiso y el próximo seguimiento no pueden ser anteriores a la gestión.')
+        valor = None
+        if datos.get('valor_compromiso') not in (None, ''):
+            valor = _decimal(datos['valor_compromiso'])
+            if not valor.is_finite() or valor <= 0 or valor >= Decimal('10000000000000000'):
+                raise ValueError('El valor del compromiso debe ser positivo y menor a 10.000.000.000.000.000.')
+            if valor != valor.quantize(Decimal('0.01')):
+                raise ValueError('El valor del compromiso admite hasta dos decimales.')
+            if not fechas['fecha_compromiso']:
+                raise ValueError('Indique la fecha del compromiso de pago.')
+        registro = SiigoSeguimientoCartera(
+            identificacion=clave, cliente_nombre=cliente.nombre_tercero or 'Sin nombre',
+            fecha_gestion=fecha_gestion, medio=medio, contacto=contacto or None,
+            observaciones=observaciones, valor_compromiso=valor,
+            usuario_id=current_user.id, usuario_nombre=current_user.nombre_completo,
+            **fechas,
+        )
+        db.session.add(registro)
+        db.session.commit()
+        return jsonify({'seguimiento': _serializar_seguimiento_cartera(registro)}), 201
+    except (ValueError, PermissionError) as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
+
+
+def _clientes_facturas_vencidas(cartera_clientes, vendedores):
+    resultado = []
+    for cliente in cartera_clientes:
+        facturas = sorted(
+            (factura for factura in cliente['facturas']
+             if factura['saldo'] > 0 and factura['dias_vencido'] > 0),
+            key=lambda factura: (-factura['dias_vencido'], factura['referencia']),
+        )
+        if not facturas:
+            continue
+        resultado.append({
+            'vendedor': vendedores.get(_nit_cartera(cliente['identificacion']), 'Sin vendedor asignado'),
+            'identificacion': cliente['identificacion'],
+            'cliente': cliente['cliente'],
+            'cantidad_facturas': len(facturas),
+            'total_vencido': sum((factura['saldo'] for factura in facturas), Decimal('0')),
+            'facturas': facturas,
+        })
+    resultado.sort(key=lambda cliente: (
+        -cliente['cantidad_facturas'], -cliente['total_vencido'],
+        _normalizar(cliente['cliente']), cliente['identificacion'],
+    ))
+    return resultado
+
+
+def _excel_facturas_vencidas(clientes, fecha_corte):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    cantidad = max((cliente['cantidad_facturas'] for cliente in clientes), default=0)
+    if 3 + cantidad * 3 > 16384:
+        raise ValueError('El detalle supera el límite de columnas de Excel; filtre por cliente.')
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = 'Facturas vencidas'
+    hoja.append([f'Facturas vencidas al {fecha_corte.isoformat()}'])
+    hoja.append(['Valor = saldo pendiente. Orden: cantidad vencida, luego total vencido. '
+                 'Sin vencimiento SIIGO se usa la fecha de factura. Vendedor actual de la ficha comercial.'])
+    encabezados = ['Vendedor', 'Cliente', 'Cantidad facturas']
+    for indice in range(1, cantidad + 1):
+        encabezados.extend([f'N.º factura {indice}', f'Días vencida {indice}', f'Valor {indice}'])
+    hoja.append(encabezados)
+    for cliente in clientes:
+        fila = [cliente['vendedor'], cliente['cliente'], cliente['cantidad_facturas']]
+        for factura in cliente['facturas']:
+            fila.extend([factura['referencia'], factura['dias_vencido'], factura['saldo']])
+        hoja.append(fila)
+        for celda in hoja[hoja.max_row]:
+            if isinstance(celda.value, str):
+                celda.data_type = 's'
+            if celda.column >= 6 and celda.column % 3 == 0:
+                celda.number_format = '#,##0.00'
+    for celda in hoja[3]:
+        celda.font = Font(bold=True, color='FFFFFF')
+        celda.fill = PatternFill('solid', fgColor='245B45')
+        hoja.column_dimensions[get_column_letter(celda.column)].width = 20
+    hoja.column_dimensions['A'].width = 30
+    hoja.column_dimensions['B'].width = 45
+    hoja.freeze_panes = 'D4'
+    hoja.auto_filter.ref = f'A3:{get_column_letter(len(encabezados))}{hoja.max_row}'
+    archivo = BytesIO()
+    libro.save(archivo)
+    libro.close()
+    archivo.seek(0)
+    return send_file(archivo, as_attachment=True,
+                     download_name=f'facturas_vencidas_{fecha_corte.isoformat()}.xlsx',
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
 @contable_bp.route('/cartera-dinamica', methods=['GET'])
 @login_required
 def cartera_dinamica():
@@ -862,6 +1022,33 @@ def cartera_dinamica():
                 ))
                 resultado.append(registro)
             return resultado
+
+        if request.args.get('informe') == 'vencidas':
+            vendedores_por_nit = {}
+            for nit, vendedor in db.session.query(ClienteComercial.nit, Vendedor.nombre).join(
+                Vendedor, ClienteComercial.vendedor_id == Vendedor.id,
+            ).all():
+                clave = _nit_cartera(nit)
+                if clave:
+                    vendedores_por_nit.setdefault(clave, set()).add(vendedor)
+            vendedores = {
+                nit: next(iter(nombres)) if len(nombres) == 1 else 'Asignación por revisar'
+                for nit, nombres in vendedores_por_nit.items()
+            }
+            clientes = _clientes_facturas_vencidas(cartera_por_cliente.values(), vendedores)
+            if request.args.get('formato') == 'xlsx':
+                return _excel_facturas_vencidas(clientes, fecha_corte)
+            return jsonify({
+                'fecha_corte': fecha_corte.isoformat(),
+                'clientes': [dict(cliente, total_vencido=float(cliente['total_vencido']),
+                                  facturas=serializar(cliente['facturas'])) for cliente in clientes],
+                'cantidad_clientes': len(clientes),
+                'cantidad_facturas': sum(cliente['cantidad_facturas'] for cliente in clientes),
+                'total_vencido': float(sum((cliente['total_vencido'] for cliente in clientes), Decimal('0'))),
+                'notas_credito_sin_asignar': float(notas_credito_sin_asignar or 0),
+                'pagos_sin_factura': pagos_sin_factura,
+                'ajustes_ac_sin_factura': ajustes_ac_sin_factura,
+            })
 
         return jsonify({
             'fecha_corte': fecha_corte.isoformat(),

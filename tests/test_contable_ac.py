@@ -12,11 +12,13 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from flask import Flask
-from openpyxl import Workbook
+from flask import Flask, g
+from flask_login import LoginManager
+from openpyxl import Workbook, load_workbook
 from sqlalchemy.engine import make_url
 
-from app.models import db, SiigoCarga, SiigoComprobante, SiigoMovimiento
+from app.models import (db, ClienteComercial, Vendedor, SiigoCarga, SiigoComprobante,
+                        SiigoMovimiento, SiigoSeguimientoCartera, Usuario, Role)
 from app.routes import contable
 
 
@@ -30,8 +32,12 @@ class CarteraACTest(unittest.TestCase):
         if not parsed.drivername.startswith('postgresql') or not parsed.database.startswith('prevent_test_ac_'):
             raise RuntimeError('Use una base PostgreSQL exclusiva prevent_test_ac_*')
         cls.app = Flask(__name__)
-        cls.app.config.update(TESTING=True, SQLALCHEMY_DATABASE_URI=url)
+        cls.app.config.update(TESTING=True, SECRET_KEY='solo-pruebas', SQLALCHEMY_DATABASE_URI=url)
         db.init_app(cls.app)
+        login = LoginManager(cls.app)
+        login.user_loader(lambda user_id: db.session.get(Usuario, int(user_id)))
+        login.unauthorized_handler(lambda: ({'error': 'Sesión requerida'}, 401))
+        cls.app.register_blueprint(contable.contable_bp)
         with cls.app.app_context():
             db.create_all()
 
@@ -40,7 +46,7 @@ class CarteraACTest(unittest.TestCase):
         self.context.push()
         self.addCleanup(self.context.pop)
         self.addCleanup(db.session.remove)
-        for model in (SiigoMovimiento, SiigoComprobante, SiigoCarga):
+        for model in (SiigoSeguimientoCartera, SiigoMovimiento, SiigoComprobante, SiigoCarga):
             db.session.query(model).delete()
         db.session.commit()
         self.permission = patch.object(contable, '_requiere_ventas')
@@ -139,6 +145,150 @@ class CarteraACTest(unittest.TestCase):
                 data = contable.comparativo_clientes.__wrapped__().get_json()
             self.assertEqual(data['totales_nuevos']['cartera'], saldo)
             self.assertEqual(data['totales_nuevos']['facturacion'], 1000)
+
+    def test_informe_vencidas_cuenta_facturas_y_respeta_saldo_corte_y_vendedor(self):
+        vendedor = Vendedor(nombre='Vendedora de prueba')
+        cliente = ClienteComercial(nit='9.001-2', razon_social='Cliente prueba', vendedor=vendedor)
+        db.session.add(cliente)
+        db.session.commit()
+        try:
+            for numero, nit, valor, vencimiento in [
+                (1, '9001', '1000', '31/01/2026'),
+                (2, '9001', '50', '15/01/2026'),
+                (3, '9001', '500', '28/02/2026'),  # Vence hoy: no vencida.
+                (4, '9001', '500', '01/03/2026'),  # Por vencer.
+                (5, '9001', '500', '31/01/2026'),  # Pagada.
+                (6, '9002', '9000', '31/01/2026'),  # Mayor valor, menor cantidad.
+            ]:
+                self.documento('FV', numero, '2026-01-01', [{
+                    'identificacion': nit, 'debito': Decimal(valor),
+                    'detalle': f'FV-2-{numero} Cuota: 1 Fecha: {vencimiento}',
+                }])
+            # Dos líneas de una misma factura no deben aumentar la cantidad.
+            self.documento('FV', 7, '2026-01-01', [
+                {'debito': Decimal('100'), 'detalle': 'FV-2-7 Fecha: 31/01/2026'},
+                {'debito': Decimal('50'), 'detalle': 'FV-2-7 Fecha: 31/01/2026'},
+            ])
+            self.documento('RC', 1, '2026-02-01', [
+                {'credito': Decimal('900'), 'descripcion': 'Abono FV-2-1'},
+                {'credito': Decimal('500'), 'descripcion': 'Abono FV-2-5'},
+            ])
+            self.documento('AC', 1, '2026-02-10', [{'credito': Decimal('30')}])
+            self.documento('RC', 2, '2026-03-01', [{'credito': Decimal('70'), 'descripcion': 'Abono FV-2-1'}])
+            with self.app.test_request_context(query_string={'informe': 'vencidas', 'fecha_corte': '2026-02-28'}):
+                data = contable.cartera_dinamica.__wrapped__().get_json()
+            self.assertEqual([c['identificacion'] for c in data['clientes']], ['9001', '9002'])
+            primero = data['clientes'][0]
+            self.assertEqual(primero['vendedor'], 'Vendedora de prueba')
+            self.assertEqual(primero['cantidad_facturas'], 3)
+            self.assertEqual(primero['total_vencido'], 270)
+            self.assertEqual([f['referencia'] for f in primero['facturas']], ['FV-2-2', 'FV-2-1', 'FV-2-7'])
+            self.assertEqual(primero['facturas'][1]['saldo'], 70)
+            self.assertEqual(primero['facturas'][1]['dias_vencido'], 28)
+            self.assertEqual(data['cantidad_facturas'], 4)
+            self.assertEqual(data['clientes'][1]['vendedor'], 'Sin vendedor asignado')
+            with self.app.test_request_context(query_string={
+                'informe': 'vencidas', 'fecha_corte': '2026-02-28', 'cliente': '9002',
+            }):
+                filtrado = contable.cartera_dinamica.__wrapped__().get_json()
+            self.assertEqual(filtrado['cantidad_clientes'], 1)
+            self.assertEqual(filtrado['clientes'][0]['identificacion'], '9002')
+        finally:
+            db.session.delete(cliente)
+            db.session.delete(vendedor)
+            db.session.commit()
+
+    def test_informe_vencidas_excel_y_cliente_sin_vencidas(self):
+        self.factura_y_recibo()
+        with self.app.test_request_context(query_string={
+            'informe': 'vencidas', 'fecha_corte': '2026-02-28', 'formato': 'xlsx',
+        }):
+            response = contable.cartera_dinamica.__wrapped__()
+            response.direct_passthrough = False
+            libro = load_workbook(BytesIO(response.get_data()))
+            self.assertEqual(list(libro.active.values)[3],
+                             ('Sin vendedor asignado', 'Cliente prueba', 1, 'FV-2-1', 28, 100))
+            self.assertEqual(libro.active.freeze_panes, 'D4')
+            libro.close()
+            response.close()
+        with self.app.test_request_context(query_string={'informe': 'vencidas', 'fecha_corte': '2026-01-31'}):
+            data = contable.cartera_dinamica.__wrapped__().get_json()
+        self.assertEqual(data['clientes'], [])
+        self.assertEqual(data['total_vencido'], 0)
+
+    def usuario_seguimiento(self):
+        usuario = Usuario.query.filter_by(usuario='gestor_test').first()
+        if not usuario:
+            role = Role(nombre='Gestor prueba sin permisos')
+            usuario = Usuario(usuario='gestor_test', nombre_completo='Gestora cartera',
+                              email='gestor_test@example.test', password_hash='no-login', role=role)
+            db.session.add(usuario)
+            db.session.commit()
+        return usuario
+
+    def test_seguimiento_persiste_historial_por_cliente_y_autor_real(self):
+        self.factura_y_recibo()
+        self.documento('FV', 2, '2026-01-01', [{'identificacion': '9002', 'detalle': 'FV-2-2', 'debito': Decimal('10')}])
+        usuario = self.usuario_seguimiento()
+        http = self.app.test_client()
+        with http.session_transaction() as sesion:
+            sesion['_user_id'] = str(usuario.id)
+            sesion['_fresh'] = True
+        datos = {'identificacion': '9001', 'fecha_gestion': '2026-01-15', 'medio': 'LLAMADA',
+                 'contacto': 'Tesorería', 'observaciones': 'Promete abono.\nEnviar estado de cuenta.',
+                 'fecha_compromiso': '2026-01-20', 'valor_compromiso': '50.25',
+                 'proximo_seguimiento': '2026-01-21', 'usuario_nombre': 'Autor falso'}
+        primero = http.post('/api/contable/seguimiento-cartera', json=datos)
+        self.assertEqual(primero.status_code, 201)
+        self.assertEqual(primero.json['seguimiento']['registrado_por'], 'Gestora cartera')
+        segundo = http.post('/api/contable/seguimiento-cartera', json=dict(
+            datos, fecha_gestion='2026-01-16', observaciones='Confirma el compromiso.'))
+        self.assertEqual(segundo.status_code, 201)
+        db.session.remove()
+        historial = http.get('/api/contable/seguimiento-cartera?identificacion=9001').json['seguimientos']
+        self.assertEqual([item['fecha_gestion'] for item in historial], ['2026-01-16', '2026-01-15'])
+        self.assertEqual(historial[1]['valor_compromiso'], 50.25)
+        self.assertEqual(historial[1]['observaciones'], datos['observaciones'])
+        self.assertEqual(http.get('/api/contable/seguimiento-cartera?identificacion=9002').json['seguimientos'], [])
+        # Una variante del NIT con puntos y DV conserva el mismo historial.
+        self.documento('FV', 3, '2026-01-01', [{'identificacion': '9.001-2', 'detalle': 'FV-2-3', 'debito': Decimal('10')}])
+        self.assertEqual(len(http.get('/api/contable/seguimiento-cartera?identificacion=9.001-2').json['seguimientos']), 2)
+
+    def test_seguimiento_valida_entradas_sin_guardar_registros_invalidos(self):
+        self.factura_y_recibo()
+        usuario = self.usuario_seguimiento()
+        http = self.app.test_client()
+        with http.session_transaction() as sesion:
+            sesion['_user_id'] = str(usuario.id)
+        datos = {'identificacion': '9001', 'fecha_gestion': '2026-01-15',
+                 'medio': 'CORREO', 'observaciones': 'Solicita estado de cuenta.'}
+        for cambios in [
+            {'observaciones': '  '}, {'observaciones': 'x' * 5001}, {'medio': 'INVALIDO'},
+            {'fecha_gestion': '2099-01-01'}, {'fecha_gestion': 'no-fecha'},
+            {'fecha_compromiso': '2026-01-14'}, {'proximo_seguimiento': '2026-01-14'},
+            {'valor_compromiso': '-1'}, {'valor_compromiso': 'NaN'}, {'valor_compromiso': 'Infinity'},
+            {'valor_compromiso': '10'}, {'valor_compromiso': '1.123', 'fecha_compromiso': '2026-01-20'},
+            {'identificacion': ''}, {'contacto': 'x' * 201},
+        ]:
+            with self.subTest(cambios=cambios):
+                response = http.post('/api/contable/seguimiento-cartera', json=dict(datos, **cambios))
+                self.assertEqual(response.status_code, 400)
+        self.assertEqual(http.post('/api/contable/seguimiento-cartera', json=[]).status_code, 400)
+        self.assertEqual(http.get('/api/contable/seguimiento-cartera?identificacion=INEXISTENTE').status_code, 404)
+        self.assertEqual(SiigoSeguimientoCartera.query.count(), 0)
+
+    def test_seguimiento_exige_sesion_y_permiso_de_ventas(self):
+        self.permission.stop()
+        http = self.app.test_client()
+        self.assertEqual(http.get('/api/contable/seguimiento-cartera?identificacion=9001').status_code, 401)
+        self.assertEqual(http.post('/api/contable/seguimiento-cartera', json={}).status_code, 401)
+        usuario = self.usuario_seguimiento()
+        with http.session_transaction() as sesion:
+            sesion['_user_id'] = str(usuario.id)
+        # setUp conserva un app_context; descartar el usuario anónimo de la consulta previa.
+        g.pop('_login_user', None)
+        self.assertEqual(http.get('/api/contable/seguimiento-cartera?identificacion=9001').status_code, 403)
+        self.assertEqual(http.post('/api/contable/seguimiento-cartera', json={}).status_code, 403)
 
     def excel(self, ac_cuadrado=True):
         workbook = Workbook()

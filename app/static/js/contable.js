@@ -280,18 +280,174 @@ function crearPanelCarteraDinamicaSiigo(tipo) {
     return panel;
 }
 
+function crearPanelFacturasVencidasSiigo() {
+    let panel = document.getElementById('siigoFacturasVencidasPanel');
+    if (panel) return panel;
+    panel = document.createElement('section');
+    panel.id = 'siigoFacturasVencidasPanel';
+    panel.className = 'recent-section';
+    const hoy = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
+    panel.innerHTML = `<h3 style="margin-top:0;">Facturas vencidas por cliente</h3><p class="form-help">Clientes ordenados de mayor a menor cantidad de facturas vencidas con saldo pendiente. En caso de empate, primero el mayor valor vencido. Cada valor corresponde al saldo después de recibos RC y ajustes AC. Las facturas más antiguas aparecen primero. El vendedor corresponde a la ficha comercial actual; si SIIGO no indica vencimiento, se utiliza la fecha de la factura.</p><form><div class="form-row"><div class="form-group"><label for="siigoVencidasCorte">Fecha de corte</label><input id="siigoVencidasCorte" type="date" required value="${hoy}"></div><div class="form-group"><label for="siigoVencidasCliente">Cliente o identificación (opcional)</label><input id="siigoVencidasCliente" name="cliente" type="text"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar informe</button></div><div class="form-group" style="align-self:end;"><button class="btn btn-secondary" type="button" data-siigo-exportar-vencidas>Descargar Excel</button></div></div></form><div class="table-container" aria-live="polite" style="margin-top:16px;"></div>`;
+    crearPanelCarteraDinamicaSiigo('recaudo').insertAdjacentElement('afterend', panel);
+    const form = panel.querySelector('form');
+    form.addEventListener('submit', event => {
+        event.preventDefault();
+        consultarCarteraDinamicaSiigo(form, 'vencidas');
+    });
+    form.querySelector('[data-siigo-exportar-vencidas]').addEventListener('click', async event => {
+        if (!form.reportValidity()) return;
+        const boton = event.currentTarget;
+        boton.disabled = true;
+        const params = new URLSearchParams({ informe: 'vencidas', formato: 'xlsx',
+            fecha_corte: form.querySelector('input[type="date"]').value,
+            cliente: form.elements.cliente.value.trim() });
+        try {
+            const response = await fetch(`/api/contable/cartera-dinamica?${params}`, { credentials: 'include' });
+            if (!response.ok || !response.headers.get('content-type')?.includes('spreadsheetml')) {
+                const data = await leerRespuestaSiigo(response);
+                throw new Error(data.error || 'No fue posible descargar el informe.');
+            }
+            const url = URL.createObjectURL(await response.blob());
+            const enlace = document.createElement('a');
+            enlace.href = url;
+            enlace.download = `facturas_vencidas_${params.get('fecha_corte')}.xlsx`;
+            document.body.appendChild(enlace);
+            enlace.click();
+            enlace.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (error) {
+            panel.querySelector('.table-container').textContent = error.message;
+        } finally {
+            boton.disabled = false;
+        }
+    });
+    return panel;
+}
+
+function historialSeguimientoCarteraSiigo(registros) {
+    if (!registros.length) return '<p>Este cliente aún no tiene seguimientos registrados.</p>';
+    return registros.map(item => `<article class="siigo-seguimiento-registro"><h4>${escapeSiigo(formatoSiigoFecha(item.fecha_gestion))} · ${escapeSiigo(item.medio)}</h4><p>Registrado por: <strong>${escapeSiigo(item.registrado_por)}</strong>${item.contacto ? ` · Contacto: ${escapeSiigo(item.contacto)}` : ''}</p><p class="siigo-seguimiento-nota">${escapeSiigo(item.observaciones)}</p>${item.fecha_compromiso ? `<p>Compromiso de pago: ${escapeSiigo(formatoSiigoFecha(item.fecha_compromiso))}${item.valor_compromiso != null ? ` · ${formatoSiigoNumero(item.valor_compromiso)}` : ''}</p>` : ''}${item.proximo_seguimiento ? `<p>Próximo seguimiento: ${escapeSiigo(formatoSiigoFecha(item.proximo_seguimiento))}</p>` : ''}</article>`).join('');
+}
+
+async function abrirSeguimientoCarteraSiigo(cliente) {
+    const dialogo = document.createElement('dialog');
+    dialogo.className = 'siigo-seguimiento-dialogo';
+    dialogo.setAttribute('aria-labelledby', 'siigoSeguimientoTitulo');
+    const hoy = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
+    dialogo.innerHTML = `<div class="siigo-seguimiento-cabecera"><h2 id="siigoSeguimientoTitulo">Seguimiento de cartera</h2><button type="button" class="btn btn-secondary" data-cerrar>Cerrar</button></div><p><strong>${escapeSiigo(cliente.cliente)}</strong> · ${escapeSiigo(cliente.identificacion)}<br>Vendedor: ${escapeSiigo(cliente.vendedor)}</p><p class="form-help">Historial completo del cliente, independiente de la fecha de corte del informe.</p><div class="button-group"><button type="button" class="btn btn-primary" data-nuevo disabled>Nuevo seguimiento</button><button type="button" class="btn btn-secondary" data-reintentar hidden>Reintentar consulta</button></div><p data-estado role="status" aria-live="polite"></p><form hidden><h3>Nuevo seguimiento</h3><div class="form-row"><div class="form-group"><label for="siigoGestionFecha">Fecha de gestión *</label><input id="siigoGestionFecha" name="fecha_gestion" type="date" required value="${hoy}" max="${hoy}"></div><div class="form-group"><label for="siigoGestionMedio">Medio de contacto *</label><select id="siigoGestionMedio" name="medio" required><option value="">Seleccione</option><option value="LLAMADA">Llamada</option><option value="WHATSAPP">WhatsApp</option><option value="CORREO">Correo</option><option value="VISITA">Visita</option><option value="OTRO">Otro</option></select></div></div><div class="form-group"><label for="siigoGestionContacto">Persona contactada</label><input id="siigoGestionContacto" name="contacto" maxlength="200"></div><div class="form-group"><label for="siigoGestionNota">Gestión realizada y acuerdos *</label><textarea id="siigoGestionNota" name="observaciones" rows="4" maxlength="5000" required></textarea></div><div class="form-row"><div class="form-group"><label for="siigoGestionCompromiso">Fecha compromiso de pago</label><input id="siigoGestionCompromiso" name="fecha_compromiso" type="date"></div><div class="form-group"><label for="siigoGestionValor">Valor compromiso (COP)</label><input id="siigoGestionValor" name="valor_compromiso" type="number" min="0.01" step="0.01"></div><div class="form-group"><label for="siigoGestionProximo">Próximo seguimiento</label><input id="siigoGestionProximo" name="proximo_seguimiento" type="date"></div></div><div class="button-group"><button type="submit" class="btn btn-primary">Guardar seguimiento</button><button type="button" class="btn btn-secondary" data-cancelar>Cancelar</button></div></form><h3>Historial de seguimientos</h3><div data-historial></div>`;
+    document.body.appendChild(dialogo);
+    const form = dialogo.querySelector('form');
+    const estado = dialogo.querySelector('[data-estado]');
+    const historial = dialogo.querySelector('[data-historial]');
+    const nuevo = dialogo.querySelector('[data-nuevo]');
+    const reintentar = dialogo.querySelector('[data-reintentar]');
+    let registros = [];
+    let guardando = false;
+    const cancelarNuevo = () => {
+        if (guardando) return;
+        form.reset();
+        form.hidden = true;
+        nuevo.hidden = false;
+        nuevo.focus();
+    };
+    dialogo.querySelector('[data-cerrar]').addEventListener('click', () => dialogo.close());
+    dialogo.addEventListener('close', () => dialogo.remove(), { once: true });
+    nuevo.addEventListener('click', () => {
+        form.hidden = false;
+        nuevo.hidden = true;
+        estado.textContent = '';
+        form.elements.fecha_gestion.focus();
+    });
+    dialogo.querySelector('[data-cancelar]').addEventListener('click', cancelarNuevo);
+    const cargarHistorial = async () => {
+        estado.textContent = 'Consultando seguimientos...';
+        reintentar.hidden = true;
+        try {
+            const params = new URLSearchParams({ identificacion: cliente.identificacion });
+            const response = await fetch(`/api/contable/seguimiento-cartera?${params}`, { credentials: 'include' });
+            const data = await leerRespuestaSiigo(response);
+            if (!response.ok) throw new Error(data.error || 'No fue posible consultar el seguimiento.');
+            registros = data.seguimientos;
+            historial.innerHTML = historialSeguimientoCarteraSiigo(registros);
+            estado.textContent = '';
+            nuevo.disabled = false;
+        } catch (error) {
+            estado.textContent = error.message;
+            reintentar.hidden = false;
+        }
+    };
+    reintentar.addEventListener('click', cargarHistorial);
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (guardando || !form.reportValidity()) return;
+        guardando = true;
+        const guardar = form.querySelector('[type="submit"]');
+        guardar.disabled = true;
+        estado.textContent = 'Guardando seguimiento...';
+        try {
+            const datos = Object.fromEntries(new FormData(form));
+            datos.identificacion = cliente.identificacion;
+            const response = await fetch('/api/contable/seguimiento-cartera', {
+                method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const data = await leerRespuestaSiigo(response);
+            if (!response.ok) throw new Error(data.error || 'No fue posible guardar el seguimiento.');
+            registros.push(data.seguimiento);
+            registros.sort((a, b) => b.fecha_gestion.localeCompare(a.fecha_gestion) || b.created_at.localeCompare(a.created_at) || b.id - a.id);
+            historial.innerHTML = historialSeguimientoCarteraSiigo(registros);
+            guardando = false;
+            cancelarNuevo();
+            estado.textContent = 'Seguimiento guardado correctamente.';
+        } catch (error) {
+            estado.textContent = error.message;
+        } finally {
+            guardando = false;
+            guardar.disabled = false;
+        }
+    });
+    dialogo.showModal();
+    await cargarHistorial();
+}
+
+function tablaFacturasVencidasSiigo(data) {
+    const clientes = data.clientes || [];
+    const resumen = `<p class="form-help">Fecha de corte: ${escapeSiigo(formatoSiigoFecha(data.fecha_corte))}. Clientes: ${data.cantidad_clientes}. Facturas vencidas: ${data.cantidad_facturas}. Total pendiente vencido: <strong>${formatoSiigoNumero(data.total_vencido)}</strong>.</p><p class="form-help">Pendiente de conciliar: ${data.pagos_sin_factura || 0} recibos sin factura, ${data.ajustes_ac_sin_factura || 0} movimientos AC sin factura y ${formatoSiigoNumero(data.notas_credito_sin_asignar)} en notas crédito sin asignar.</p>`;
+    if (!clientes.length) return `${resumen}<p>No hay facturas vencidas con saldo pendiente para la consulta seleccionada.</p>`;
+    const cantidad = clientes.reduce((maximo, cliente) => Math.max(maximo, cliente.cantidad_facturas), 0);
+    const encabezados = Array.from({ length: cantidad }, (_, indice) => `<th>N.º factura ${indice + 1}</th><th>Días vencida</th><th>Valor</th>`).join('');
+    const filas = clientes.map((cliente, indice) => {
+        const detalle = cliente.facturas.map(factura => `<td>${escapeSiigo(factura.referencia)}</td><td>${factura.dias_vencido}</td><td>${formatoSiigoNumero(factura.saldo)}</td>`).join('');
+        const vacias = '<td></td><td></td><td></td>'.repeat(cantidad - cliente.facturas.length);
+        const seguimiento = cliente.identificacion
+            ? `<button type="button" class="btn btn-secondary" data-siigo-seguimiento="${indice}">Seguimiento de cartera</button>`
+            : '<span class="form-help">Sin identificación para seguimiento</span>';
+        return `<tr><td>${escapeSiigo(cliente.vendedor)}</td><td>${escapeSiigo(cliente.cliente)}</td><td>${cliente.cantidad_facturas}</td><td>${seguimiento}</td>${detalle}${vacias}</tr>`;
+    }).join('');
+    return `${resumen}<p class="form-help">Desplace la tabla hacia la derecha para ver todas las facturas.</p><div class="siigo-tabla-con-encabezado-fijo" tabindex="0" role="region" aria-label="Facturas vencidas por cliente"><table class="data-table"><thead><tr><th>Vendedor</th><th>Cliente</th><th>Cantidad facturas</th><th>Seguimiento</th>${encabezados}</tr></thead><tbody>${filas}</tbody></table></div>`;
+}
+
 async function consultarCarteraDinamicaSiigo(form, tipo) {
     const panel = form.closest('.recent-section');
     const result = panel.querySelector('.table-container');
     const fechaCorte = form.querySelector('input[type="date"]').value;
     const params = new URLSearchParams({ fecha_corte: fechaCorte });
+    if (tipo === 'vencidas') {
+        params.set('informe', 'vencidas');
+        params.set('cliente', form.elements.cliente.value.trim());
+    }
     if (tipo !== 'recaudo') actualizarModoCarteraSiigo(false);
     result.textContent = 'Calculando desde los comprobantes cargados...';
     try {
         const response = await fetch(`/api/contable/cartera-dinamica?${params.toString()}`, { credentials: 'include' });
         const data = await leerRespuestaSiigo(response);
         if (!response.ok) throw new Error(data.error || 'No fue posible calcular la cartera.');
-        if (tipo === 'pagos') {
+        if (tipo === 'vencidas') {
+            result.innerHTML = tablaFacturasVencidasSiigo(data);
+            result.querySelectorAll('[data-siigo-seguimiento]').forEach(boton => {
+                boton.addEventListener('click', () => abrirSeguimientoCarteraSiigo(data.clientes[Number(boton.dataset.siigoSeguimiento)]));
+            });
+        } else if (tipo === 'pagos') {
             const rows = data.pagos_clientes || [];
             result.innerHTML = rows.length ? `<table class="data-table"><thead><tr><th>Cliente</th><th>Facturas pagadas</th><th>Promedio dias</th><th>Mas rapida</th><th>Dias</th><th>Mas lenta</th><th>Dias</th></tr></thead><tbody>${rows.map(item => `<tr><td>${escapeSiigo(item.cliente)}</td><td>${item.facturas_pagadas}</td><td>${item.promedio_dias}</td><td>${escapeSiigo(item.mas_rapida)}</td><td>${item.dias_mas_rapida}</td><td>${escapeSiigo(item.mas_lenta)}</td><td>${item.dias_mas_lenta}</td></tr>`).join('')}</tbody></table>` : 'No hay facturas totalmente pagadas para la fecha seleccionada.';
         } else {
@@ -373,6 +529,7 @@ function configurarNavegacionVentasSiigo() {
     const analisis = crearPanelVentasMensualesSiigo();
     const pagos = crearPanelCarteraDinamicaSiigo('pagos');
     const cartera = crearPanelCarteraDinamicaSiigo('recaudo');
+    const vencidas = crearPanelFacturasVencidasSiigo();
     if (!cargas || !historial || !consulta || document.getElementById('siigoVentasNavegacion')) return;
 
     cargas.id = 'siigoCarguePanel';
@@ -394,10 +551,11 @@ function configurarNavegacionVentasSiigo() {
     reportNavigation.style.cssText = 'margin-bottom:16px; display:none;';
     reportNavigation.innerHTML = `<button type="button" class="btn btn-secondary" data-siigo-report="comparativo">Comparativo</button><button type="button" class="btn btn-secondary" data-siigo-report="consulta">Consulta por cliente</button><button type="button" class="btn btn-secondary" data-siigo-report="analisis">Analisis de ventas</button><button type="button" class="btn btn-secondary" data-siigo-report="pagos">Analisis de pagos</button><button type="button" class="btn btn-secondary" data-siigo-report="cartera">Cartera y recaudo</button>`;
     consulta.insertAdjacentElement('beforebegin', reportNavigation);
+    reportNavigation.insertAdjacentHTML('beforeend', '<button type="button" class="btn btn-secondary" data-siigo-report="vencidas">Facturas vencidas</button>');
 
     navigation.querySelectorAll('button').forEach(button => button.addEventListener('click', () => mostrarSeccionVentasSiigo(button.dataset.siigoSection)));
     reportNavigation.querySelectorAll('button').forEach(button => button.addEventListener('click', () => mostrarInformeSiigo(button.dataset.siigoReport)));
-    window._siigoPanels = { cargas, historial, consulta, comparativo, analisis, pagos, cartera, navigation, reportNavigation };
+    window._siigoPanels = { cargas, historial, consulta, comparativo, analisis, pagos, cartera, vencidas, navigation, reportNavigation };
     mostrarSeccionVentasSiigo(window._siigoSeccionActual || 'cargue');
 }
 
@@ -415,6 +573,7 @@ function mostrarSeccionVentasSiigo(section) {
     panels.analisis.style.display = 'none';
     panels.pagos.style.display = 'none';
     panels.cartera.style.display = 'none';
+    panels.vencidas.style.display = 'none';
     panels.navigation.querySelectorAll('button').forEach(button => {
         button.className = button.dataset.siigoSection === section ? 'btn btn-primary' : 'btn btn-secondary';
     });
@@ -435,6 +594,7 @@ function mostrarInformeSiigo(informe) {
     panels.analisis.style.display = informe === 'analisis' ? '' : 'none';
     panels.pagos.style.display = informe === 'pagos' ? '' : 'none';
     panels.cartera.style.display = informe === 'cartera' ? '' : 'none';
+    panels.vencidas.style.display = informe === 'vencidas' ? '' : 'none';
     panels.navigation.querySelectorAll('button').forEach(button => {
         button.className = button.dataset.siigoSection === 'informes' ? 'btn btn-primary' : 'btn btn-secondary';
     });
