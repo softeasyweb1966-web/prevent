@@ -32,6 +32,7 @@ from app.models import (
     Vendedor,
     db,
 )
+from app.clientes_maestro import (validar_cliente, validar_paquete, sincronizar_contacto_legacy)
 from app.routes import comercial_bp
 from app.security import get_permission_names_for_role
 
@@ -424,16 +425,12 @@ def _build_cliente_payload(data):
         raise ValueError('El nombre / razón social es obligatorio')
 
     contacto_principal = (data.get('contacto_principal') or '').strip()
-    if not contacto_principal:
-        raise ValueError('La persona de contacto es obligatoria')
 
     telefono_empresa = (data.get('telefono_empresa') or '').strip()
     if not telefono_empresa:
         raise ValueError('El teléfono es obligatorio')
 
     email_empresa = (data.get('email_empresa') or '').strip()
-    if not email_empresa:
-        raise ValueError('El correo es obligatorio')
 
     # Campos que dejaron de ser obligatorios al simplificar el formulario.
     direccion = (data.get('direccion') or '').strip()
@@ -1291,9 +1288,7 @@ def _serialize_cliente(cliente):
     ]
     nit = (cliente.nit or '').strip()
     nit_sin_digito = nit.split('-', 1)[0].strip()
-    confirmado_contable = bool(nit and SiigoCliente.query.filter(
-        SiigoCliente.identificacion.in_([nit, nit_sin_digito])
-    ).first())
+    confirmado_contable = cliente.importado_siigo
     estado_integracion = (
         'LISTO' if cliente.confirmado_administrativo and confirmado_contable
         else 'PENDIENTE_AMBOS' if not cliente.confirmado_administrativo and not confirmado_contable
@@ -1305,6 +1300,9 @@ def _serialize_cliente(cliente):
         'id': cliente.id,
         'vendedor_id': cliente.vendedor_id,
         'vendedor_nombre': cliente.vendedor.nombre if cliente.vendedor else None,
+        'importado_siigo': cliente.importado_siigo,
+        'revision_importacion': cliente.revision_importacion,
+        'contactos_ids': [c.id for c in cliente.contactos],
         'razon_social': cliente.razon_social,
         'nombre_comercial': cliente.nombre_comercial,
         'nit': cliente.nit,
@@ -1352,7 +1350,7 @@ def _serialize_cliente(cliente):
 def _cliente_ya_existe_en_interfaces(nit, razon_social):
     nit = (nit or '').strip()
     nit_base = nit.split('-', 1)[0].strip()
-    if nit and SiigoCliente.query.filter(SiigoCliente.identificacion.in_([nit, nit_base])).first():
+    if nit and SiigoCliente.query.filter(SiigoCliente.identificacion.in_([nit, nit_base]), SiigoCliente.importado_siigo.is_(True)).first():
         return 'Contable (SIIGO)'
     if razon_social and AtencionDiaDetalle.query.filter(
         AtencionDiaDetalle.acuerdo_comercial.ilike(razon_social.strip())
@@ -1364,9 +1362,7 @@ def _cliente_ya_existe_en_interfaces(nit, razon_social):
 def _cliente_habilitado_para_atenciones(cliente):
     nit = (cliente.nit or '').strip()
     nit_sin_digito = nit.split('-', 1)[0].strip()
-    confirmado_contable = bool(nit and SiigoCliente.query.filter(
-        SiigoCliente.identificacion.in_([nit, nit_sin_digito])
-    ).first())
+    confirmado_contable = cliente.importado_siigo
     return bool(cliente.confirmado_administrativo and confirmado_contable)
 
 
@@ -1724,6 +1720,8 @@ def crear_catalogo_comercial():
     try:
         payload = _build_catalogo_item_payload(data)
         _require_commercial_permission(_get_catalog_permission_entity(payload.get('tipo_item')), 'create')
+        if payload['tipo_item'] == 'PAQUETE':
+            validar_paquete(payload['nombre'])
         componentes_ids = _build_paquete_componentes_payload(data, tipo_item=payload['tipo_item'])
         codigo = payload['codigo']
         if codigo and ComercialCatalogoItem.query.filter_by(codigo=codigo).first():
@@ -1755,6 +1753,8 @@ def actualizar_catalogo_comercial(item_id):
         _require_commercial_permission(_get_catalog_permission_entity(item.tipo_item), 'update')
         payload = _build_catalogo_item_payload(data)
         _require_commercial_permission(_get_catalog_permission_entity(payload.get('tipo_item')), 'update')
+        if payload['tipo_item'] == 'PAQUETE':
+            validar_paquete(payload['nombre'], item.id)
         componentes_ids = _build_paquete_componentes_payload(
             data,
             item_id=item_id,
@@ -1978,6 +1978,9 @@ def crear_cliente():
             if vendedor_scope is None:
                 raise PermissionError('No tienes un vendedor asociado')
             payload['vendedor_id'] = vendedor_scope.id
+        if not payload['nit']:
+            raise ValueError('La identificaci?n es obligatoria para crear un cliente sin duplicados.')
+        payload['nit'] = validar_cliente(payload['nit'], payload['razon_social'])
         nit = payload['nit']
         if nit and ClienteComercial.query.filter_by(nit=nit).first():
             return jsonify({'error': 'Ya existe un cliente con ese NIT'}), 409
@@ -1998,6 +2001,7 @@ def crear_cliente():
         _guardar_adjuntos(cliente, request.files.getlist('documentos_legales_adjuntos'), 'DOCUMENTO_LEGAL')
         _guardar_adjuntos(cliente, request.files.getlist('pagare_adjuntos'), 'PAGARE')
         _guardar_documentos_cliente_por_tipo(cliente, data)
+        sincronizar_contacto_legacy(cliente)
 
         db.session.commit()
         respuesta = {'mensaje': 'Cliente comercial creado', 'id': cliente.id}
@@ -2030,6 +2034,9 @@ def actualizar_cliente(cliente_id):
             if vendedor_scope is None:
                 raise PermissionError('No tienes un vendedor asociado')
             payload['vendedor_id'] = vendedor_scope.id
+        payload['nit'] = validar_cliente(payload['nit'], payload['razon_social'], cliente.id)
+        if any(c.vendedor_id != payload['vendedor_id'] for c in cliente.contactos):
+            raise ValueError('Desvincule los contactos antes de cambiar el vendedor del cliente.')
         nit = payload['nit']
         if nit:
             existente = ClienteComercial.query.filter(
@@ -2054,6 +2061,7 @@ def actualizar_cliente(cliente_id):
         _guardar_adjuntos(cliente, request.files.getlist('documentos_legales_adjuntos'), 'DOCUMENTO_LEGAL')
         _guardar_adjuntos(cliente, request.files.getlist('pagare_adjuntos'), 'PAGARE')
         _guardar_documentos_cliente_por_tipo(cliente, data)
+        sincronizar_contacto_legacy(cliente)
 
         db.session.commit()
         return jsonify({'mensaje': 'Cliente comercial actualizado'}), 200
@@ -2075,6 +2083,10 @@ def eliminar_cliente(cliente_id):
     try:
         _require_commercial_permission('clientes', 'delete')
         cliente = _obtener_cliente_comercial_en_scope(cliente_id)
+        from app.routes.maestros import referencias_cliente
+        referencias = referencias_cliente(cliente.id)
+        if referencias:
+            return jsonify({'error': 'El cliente tiene relaciones; puede inactivarlo conservando su historial.', 'details': referencias}), 409
         atenciones_count = cliente.atenciones.count()
         documentos_count = cliente.seguimiento_documentos.count()
         pagos_count = cliente.seguimiento_pagos.count()

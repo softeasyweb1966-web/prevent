@@ -366,40 +366,13 @@ def cargar_clientes():
     try:
         _requiere_ventas()
         nombre_archivo, contenido, filas = _leer_excel()
-        header_row, columns = _indice_encabezados(filas, ['Nombre tercero', 'Identificación', 'Sucursal'])
-        carga = _crear_carga('CLIENTES', nombre_archivo, contenido)
-        creados = actualizados = 0
-
-        for fila in filas[header_row + 1:]:
-            identificacion = _texto(_valor(fila, columns, 'Identificación'))
-            nombre = _texto(_valor(fila, columns, 'Nombre tercero'))
-            if not identificacion or not nombre:
-                continue
-            sucursal = _texto(_valor(fila, columns, 'Sucursal')) or '0'
-            cliente = SiigoCliente.query.filter_by(identificacion=identificacion, sucursal=sucursal).first()
-            fields = {
-                'tipo_identificacion': _texto(_valor(fila, columns, 'Tipo de identificación')) or None,
-                'digito_verificacion': _texto(_valor(fila, columns, 'Digito verificación')) or None,
-                'nombre': nombre,
-                'direccion': _texto(_valor(fila, columns, 'Dirección')) or None,
-                'ciudad': _texto(_valor(fila, columns, 'Ciudad')) or None,
-                'telefono': _texto(_valor(fila, columns, 'Teléfono.')) or None,
-                'estado': _texto(_valor(fila, columns, 'Estado')) or None,
-                'carga_id': carga.id,
-            }
-            if cliente is None:
-                cliente = SiigoCliente(identificacion=identificacion, sucursal=sucursal, **fields)
-                db.session.add(cliente)
-                creados += 1
-            else:
-                for field, value in fields.items():
-                    setattr(cliente, field, value)
-                actualizados += 1
-
-        carga.registros_leidos = len(filas) - header_row - 1
-        carga.registros_importados = creados + actualizados
+        from app.clientes_maestro import importar_clientes
+        from app.routes.comercial import _is_admin_user
+        if not _is_admin_user():
+            raise PermissionError('La importaci?n global del maestro requiere un administrador.')
+        resumen = importar_clientes(filas, contenido, nombre_archivo, current_user.id)
         db.session.commit()
-        return jsonify({'mensaje': 'Clientes cargados correctamente.', 'creados': creados, 'actualizados': actualizados})
+        return jsonify({'mensaje': 'Maestro de clientes actualizado sin duplicados.', **resumen})
     except (ValueError, PermissionError) as exc:
         db.session.rollback()
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403

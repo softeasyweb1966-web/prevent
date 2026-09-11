@@ -2,6 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime
 from sqlalchemy import Numeric, Float
+from sqlalchemy.orm import synonym
 
 db = SQLAlchemy()
 
@@ -123,14 +124,29 @@ class ClienteComercial(db.Model):
     __tablename__ = 'clientes_comerciales'
 
     id = db.Column(db.Integer, primary_key=True)
-    vendedor_id = db.Column(db.Integer, db.ForeignKey('vendedores.id'), nullable=False, index=True)
+    vendedor_id = db.Column(db.Integer, db.ForeignKey('vendedores.id'), nullable=True, index=True)
     razon_social = db.Column(db.String(200), nullable=False, index=True)
     nombre_comercial = db.Column(db.String(200))
     nit = db.Column(db.String(50), unique=True, index=True)
     ciudad = db.Column(db.String(120))
     direccion = db.Column(db.String(255))
-    telefono_empresa = db.Column(db.String(50))
+    telefono_empresa = db.Column(db.String(80))
     email_empresa = db.Column(db.String(120))
+    tipo_identificacion = db.Column(db.String(30))
+    digito_verificacion = db.Column(db.String(10))
+    sucursal = db.Column(db.String(30), nullable=False, default='0')
+    regimen_iva = db.Column(db.String(80))
+    importado_siigo = db.Column(db.Boolean, nullable=False, default=False)
+    carga_id = db.Column(db.Integer, db.ForeignKey('siigo_cargas.id'), index=True)
+    vendedor_nombre_origen = db.Column(db.String(200))
+    nombres_alternativos = db.Column(db.JSON)
+    revision_importacion = db.Column(db.Text)
+    contactos = db.relationship('ContactoCliente', secondary='clientes_contactos', back_populates='clientes')
+    # Compatibilidad de consultas contables: un solo registro fisico por cliente.
+    identificacion = synonym('nit')
+    nombre = synonym('razon_social')
+    telefono = synonym('telefono_empresa')
+    estado = synonym('estado_cliente')
     contacto_principal = db.Column(db.String(150))
     cargo_contacto_principal = db.Column(db.String(150))
     celular_contacto_principal = db.Column(db.String(50))
@@ -585,27 +601,40 @@ class SiigoCarga(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
-class SiigoCliente(db.Model):
-    """Terceros importados desde SIIGO, independientes de la ficha comercial manual."""
-    __tablename__ = 'siigo_clientes'
+# Ambos m?dulos usan el mismo mapper y la misma tabla maestra.
+SiigoCliente = ClienteComercial
 
+
+class ContactoCliente(db.Model):
+    __tablename__ = 'contactos_clientes'
     id = db.Column(db.Integer, primary_key=True)
-    identificacion = db.Column(db.String(50), nullable=False, index=True)
-    sucursal = db.Column(db.String(30), nullable=False, default='0')
-    tipo_identificacion = db.Column(db.String(30))
-    digito_verificacion = db.Column(db.String(10))
-    nombre = db.Column(db.String(255), nullable=False, index=True)
-    direccion = db.Column(db.String(255))
-    ciudad = db.Column(db.String(120))
+    vendedor_id = db.Column(db.Integer, db.ForeignKey('vendedores.id'), index=True)
+    nombre = db.Column(db.String(150), nullable=False)
     telefono = db.Column(db.String(80))
-    estado = db.Column(db.String(30))
-    carga_id = db.Column(db.Integer, db.ForeignKey('siigo_cargas.id'), nullable=False, index=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    email = db.Column(db.String(120))
+    cargo = db.Column(db.String(150))
+    clave = db.Column(db.String(400), unique=True, nullable=False)
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    clientes = db.relationship('ClienteComercial', secondary='clientes_contactos', back_populates='contactos')
+    vendedor = db.relationship('Vendedor')
 
-    __table_args__ = (
-        db.UniqueConstraint('identificacion', 'sucursal', name='uq_siigo_cliente_identificacion_sucursal'),
-    )
+
+clientes_contactos = db.Table(
+    'clientes_contactos',
+    db.Column('cliente_id', db.Integer, db.ForeignKey('clientes_comerciales.id'), primary_key=True),
+    db.Column('contacto_id', db.Integer, db.ForeignKey('contactos_clientes.id'), primary_key=True),
+)
+
+
+class ClienteImportacionFila(db.Model):
+    """Fuente ?ntegra para auditar la consolidaci?n y revisar coincidencias."""
+    __tablename__ = 'clientes_importacion_filas'
+    id = db.Column(db.Integer, primary_key=True)
+    carga_id = db.Column(db.Integer, db.ForeignKey('siigo_cargas.id'), nullable=False)
+    numero_fila = db.Column(db.Integer, nullable=False)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes_comerciales.id'), nullable=False, index=True)
+    datos = db.Column(db.JSON, nullable=False)
+    __table_args__ = (db.UniqueConstraint('carga_id', 'numero_fila', name='uq_cliente_fila_origen'),)
 
 
 class SiigoSeguimientoCartera(db.Model):
