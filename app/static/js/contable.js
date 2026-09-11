@@ -16,8 +16,10 @@ function formatoSiigoFecha(value) {
 
 function actualizarModoCarteraSiigo(ocultarMenu) {
     document.body.classList.toggle('body-siigo-cartera-focus', ocultarMenu);
-    const boton = document.getElementById('siigoAlternarMenuCartera');
-    if (boton) boton.textContent = ocultarMenu ? 'Mostrar menu lateral' : 'Ocultar menu lateral';
+    document.querySelectorAll('#siigoAlternarMenuCartera, #siigoAlternarMenuVencidas').forEach(boton => {
+        boton.textContent = ocultarMenu ? 'Mostrar menú lateral' : 'Ocultar menú lateral';
+        boton.setAttribute('aria-expanded', String(!ocultarMenu));
+    });
 }
 
 function mostrarVigenciaComprobantes(vigencia) {
@@ -94,16 +96,16 @@ async function cargarResumenSiigo() {
     document.getElementById('siigoCargasRecientes').innerHTML = cargas.length ? cargas.map(carga => `<div><strong>${escapeSiigo(carga.tipo)}</strong> - ${escapeSiigo(carga.archivo)} (${escapeSiigo(carga.fecha)}): ${carga.importados} importados, ${carga.omitidos} omitidos.</div>`).join('') : 'Aun no hay cargues registrados.';
 }
 
-function seleccionarArchivoSiigo(tipo) {
+function seleccionarArchivoSiigo(tipo, resultadoId = 'siigoCargaResultado', alCompletar = null) {
     const input = document.getElementById('siigoArchivoInput');
     input.value = '';
-    input.onchange = () => importarArchivoSiigo(tipo, input.files[0]);
+    input.onchange = () => importarArchivoSiigo(tipo, input.files[0], resultadoId, alCompletar);
     input.click();
 }
 
-async function importarArchivoSiigo(tipo, archivo) {
+async function importarArchivoSiigo(tipo, archivo, resultadoId = 'siigoCargaResultado', alCompletar = null) {
     if (!archivo) return;
-    const result = document.getElementById('siigoCargaResultado');
+    const result = document.getElementById(resultadoId);
     result.textContent = `Cargando ${archivo.name}...`;
     const formData = new FormData();
     formData.append('archivo', archivo);
@@ -113,6 +115,7 @@ async function importarArchivoSiigo(tipo, archivo) {
         if (!response.ok) throw new Error(data.error || 'No fue posible procesar el archivo.');
         result.textContent = `${data.mensaje} ${data.creados != null ? `Creados: ${data.creados}. Actualizados: ${data.actualizados}.` : `Comprobantes: ${data.comprobantes}. Movimientos: ${data.movimientos}. Omitidos: ${data.omitidos}.`}`;
         await cargarResumenSiigo();
+        if (alCompletar) await alCompletar();
     } catch (error) {
         result.textContent = error.message;
     }
@@ -290,6 +293,24 @@ function crearPanelFacturasVencidasSiigo() {
     panel.innerHTML = `<h3 style="margin-top:0;">Facturas vencidas por cliente</h3><p class="form-help">Clientes ordenados de mayor a menor cantidad de facturas vencidas con saldo pendiente. En caso de empate, primero el mayor valor vencido. Cada valor incluye todos los movimientos de cartera vinculados a la factura hasta la fecha de corte, sin importar el tipo de documento. Pulse el valor para consultar los cruces. Solo se incluyen facturas vencidas con saldo mayor que cero. Las facturas más antiguas aparecen primero. El vendedor corresponde a la ficha comercial actual; si SIIGO no indica vencimiento, se utiliza la fecha de la factura.</p><form><div class="form-row"><div class="form-group"><label for="siigoVencidasCorte">Fecha de corte</label><input id="siigoVencidasCorte" type="date" required value="${hoy}"></div><div class="form-group"><label for="siigoVencidasCliente">Cliente o identificación (opcional)</label><input id="siigoVencidasCliente" name="cliente" type="text"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar informe</button></div><div class="form-group" style="align-self:end;"><button class="btn btn-secondary" type="button" data-siigo-exportar-vencidas>Descargar Excel</button></div></div></form><div class="table-container" aria-live="polite" style="margin-top:16px;"></div>`;
     crearPanelCarteraDinamicaSiigo('recaudo').insertAdjacentElement('afterend', panel);
     const form = panel.querySelector('form');
+    const alternarMenu = document.createElement('button');
+    alternarMenu.id = 'siigoAlternarMenuVencidas';
+    alternarMenu.type = 'button';
+    alternarMenu.className = 'btn btn-secondary';
+    alternarMenu.textContent = 'Mostrar menú lateral';
+    alternarMenu.addEventListener('click', () => {
+        actualizarModoCarteraSiigo(!document.body.classList.contains('body-siigo-cartera-focus'));
+    });
+    form.querySelector('.form-row').appendChild(alternarMenu);
+    const actualizar = document.createElement('button');
+    actualizar.type = 'button';
+    actualizar.className = 'btn btn-secondary';
+    actualizar.textContent = 'Actualizar comprobantes';
+    actualizar.addEventListener('click', () => seleccionarArchivoSiigo(
+        'comprobantes', 'siigoVencidasCargaResultado', () => consultarCarteraDinamicaSiigo(form, 'vencidas'),
+    ));
+    form.querySelector('.form-row').appendChild(actualizar);
+    form.insertAdjacentHTML('afterend', '<p class="form-help">Si faltan cruces, puede volver a cargar los comprobantes del período con «Actualizar comprobantes». Se incorporan los omitidos sin duplicar los existentes.</p><p id="siigoVencidasCargaResultado" role="status" aria-live="polite"></p>');
     form.addEventListener('submit', event => {
         event.preventDefault();
         consultarCarteraDinamicaSiigo(form, 'vencidas');
@@ -448,7 +469,7 @@ async function consultarCarteraDinamicaSiigo(form, tipo) {
         params.set('informe', 'vencidas');
         params.set('cliente', form.elements.cliente.value.trim());
     }
-    if (tipo !== 'recaudo') actualizarModoCarteraSiigo(false);
+    if (!['recaudo', 'vencidas'].includes(tipo)) actualizarModoCarteraSiigo(false);
     result.textContent = 'Calculando desde los comprobantes cargados...';
     try {
         const response = await fetch(`/api/contable/cartera-dinamica?${params.toString()}`, { credentials: 'include' });
@@ -595,7 +616,7 @@ function mostrarSeccionVentasSiigo(section) {
 function mostrarInformeSiigo(informe) {
     const panels = window._siigoPanels;
     if (!panels) return;
-    actualizarModoCarteraSiigo(informe === 'cartera');
+    actualizarModoCarteraSiigo(['cartera', 'vencidas'].includes(informe));
     window._siigoSeccionActual = 'informes';
     window._siigoInformeActual = informe;
     panels.cargas.style.display = 'none';
