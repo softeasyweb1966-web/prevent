@@ -100,15 +100,42 @@ def _tipo_cartera(tipo, codigo):
     return 'AC' if tipo == 'CC' and codigo == 'AC' else tipo
 
 
+def _referencia_movimiento(comprobante, movimiento):
+    campos = (
+        (movimiento.descripcion, movimiento.detalle) if comprobante.tipo_documento == 'RC'
+        else (movimiento.detalle, movimiento.descripcion)
+    )
+    for campo in campos:
+        if REFERENCIA_FACTURA_RE.search(_texto(campo)):
+            return _referencia_factura(campo)
+    return None
+
+
+def _es_base_factura(comprobante, referencia):
+    return comprobante.tipo_documento == 'FV' and (
+        not referencia or referencia == f'FV-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}'
+    )
+
+
+def _movimiento_cartera(comprobante, movimiento):
+    return {
+        'comprobante': f'{comprobante.tipo_documento}-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}',
+        'secuencia': movimiento.secuencia,
+        'fecha': comprobante.fecha_elaboracion.isoformat(),
+        'debito': float(movimiento.debito),
+        'credito': float(movimiento.credito),
+    }
+
+
 def _cancelaciones_cartera(fecha_corte, identificaciones=None):
-    """Aplica el movimiento neto de cartera de RC, AC, NC y ND, incluidos reversos."""
+    """Cruza toda línea de cartera con su factura, sin restringir el tipo de documento.
+
+    Solo se toma la cuenta por cobrar: sumar también bancos, ingresos o retenciones
+    duplicaría las contrapartidas del mismo asiento. La FV base se suma por separado.
+    """
     query = db.session.query(SiigoComprobante, SiigoMovimiento).join(SiigoMovimiento).filter(
         SiigoMovimiento.codigo_contable == '13050501',
         SiigoComprobante.fecha_elaboracion <= fecha_corte,
-        or_(
-            SiigoComprobante.tipo_documento.in_(APLICACIONES_CARTERA),
-            (SiigoComprobante.tipo_documento == 'CC') & (SiigoComprobante.codigo_comprobante == 'AC'),
-        ),
         SiigoMovimiento.credito != SiigoMovimiento.debito,
     )
     if identificaciones is not None:
@@ -118,15 +145,9 @@ def _cancelaciones_cartera(fecha_corte, identificaciones=None):
         ))
         query = query.filter(identificacion_normalizada.in_({_nit_cartera(valor) for valor in identificaciones}))
     for comprobante, movimiento in query.all():
-        # SIIGO coloca la factura en Descripción para RC y en Detalle para AC/NC/ND.
-        campos = (
-            (movimiento.descripcion, movimiento.detalle) if comprobante.tipo_documento == 'RC'
-            else (movimiento.detalle, movimiento.descripcion)
-        )
-        referencia = (
-            _referencia_factura(campos[0])
-            if REFERENCIA_FACTURA_RE.search(_texto(campos[0])) else _referencia_factura(campos[1])
-        )
+        referencia = _referencia_movimiento(comprobante, movimiento)
+        if _es_base_factura(comprobante, referencia):
+            continue
         valor = movimiento.credito - movimiento.debito
         yield comprobante, movimiento, referencia, valor
 
@@ -243,11 +264,18 @@ def _extraer_comprobantes(filas, inicio):
         yield actual
 
 
+def _comprobante_relevante(documento, columns):
+    return (
+        _tipo_cartera(documento['tipo'], documento['codigo']) in TIPOS_COMPROBANTE_PERMITIDOS
+        or any(_texto(_valor(linea, columns, 'Codigo contable')) == '13050501'
+               for linea in documento['lineas'])
+    )
+
+
 def _guardar_comprobantes_en_lote(carga, filas, header_row, columns):
     """Evita miles de consultas individuales que pueden agotar el tiempo web."""
     documentos = list(_extraer_comprobantes(filas, header_row + 1))
-    permitidos = [documento for documento in documentos
-                  if _tipo_cartera(documento['tipo'], documento['codigo']) in TIPOS_COMPROBANTE_PERMITIDOS]
+    permitidos = [documento for documento in documentos if _comprobante_relevante(documento, columns)]
     existentes = {
         (tipo, codigo, numero)
         for tipo, codigo, numero in db.session.query(
@@ -296,7 +324,7 @@ def _guardar_comprobantes_en_lote(carga, filas, header_row, columns):
         total_credito += document_credito
 
     if not imported:
-        raise ValueError('El archivo no contiene comprobantes nuevos de los tipos FV, RC, NC, ND, AC o CC-AC. No se duplicaron registros.')
+        raise ValueError('El archivo no contiene comprobantes nuevos de ventas o con movimientos de cartera. No se duplicaron registros.')
     carga.registros_leidos = len(documentos)
     carga.registros_importados += imported
     carga.registros_omitidos = len(documentos) - carga.registros_importados
@@ -571,7 +599,10 @@ def comparativo_clientes():
                 SiigoMovimiento.debito != SiigoMovimiento.credito,
             ).all()
             for comprobante, movimiento in filas_factura:
-                referencia = _referencia_factura(movimiento.detalle) or f'FV-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}'
+                referencia = _referencia_movimiento(comprobante, movimiento)
+                if not _es_base_factura(comprobante, referencia):
+                    continue
+                referencia = referencia or f'FV-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}'
                 factura = facturas_cartera.setdefault(referencia, {
                     'identificacion': movimiento.identificacion,
                     'valor': Decimal('0'),
@@ -820,7 +851,7 @@ def _excel_facturas_vencidas(clientes, fecha_corte, movimientos_sin_asignar=None
     hoja = libro.active
     hoja.title = 'Facturas vencidas'
     hoja.append([f'Facturas vencidas al {fecha_corte.isoformat()}'])
-    hoja.append(['Valor = facturado - recibos RC - ajustes AC - notas crédito + notas débito, a la fecha de corte. '
+    hoja.append(['Valor = débitos menos créditos de cartera vinculados a cada factura, de cualquier tipo de comprobante, a la fecha de corte. '
                  'Solo facturas vencidas con saldo mayor que cero. Orden: cantidad vencida, luego total vencido. '
                  'Sin vencimiento SIIGO se usa la fecha de factura. Vendedor actual de la ficha comercial.'])
     encabezados = ['Vendedor', 'Cliente', 'Cantidad facturas']
@@ -845,6 +876,22 @@ def _excel_facturas_vencidas(clientes, fecha_corte, movimientos_sin_asignar=None
     hoja.column_dimensions['B'].width = 45
     hoja.freeze_panes = 'D4'
     hoja.auto_filter.ref = f'A3:{get_column_letter(len(encabezados))}{hoja.max_row}'
+    cruces = libro.create_sheet('Cruces por factura')
+    cruces.append(['Cliente', 'Factura', 'Comprobante', 'Secuencia', 'Fecha', 'Débito', 'Crédito'])
+    for cliente in clientes:
+        for factura in cliente['facturas']:
+            for movimiento in factura.get('movimientos', []):
+                cruces.append([cliente['cliente'], factura['referencia'], movimiento['comprobante'],
+                               movimiento['secuencia'], movimiento['fecha'], movimiento['debito'], movimiento['credito']])
+                for celda in cruces[cruces.max_row]:
+                    if isinstance(celda.value, str):
+                        celda.data_type = 's'
+                for columna in (6, 7):
+                    cruces.cell(cruces.max_row, columna).number_format = '#,##0.00'
+    cruces.freeze_panes = 'C2'
+    cruces.auto_filter.ref = cruces.dimensions
+    for columna in 'ABCDEFG':
+        cruces.column_dimensions[columna].width = 35 if columna == 'A' else 22
     if movimientos_sin_asignar:
         pendientes = libro.create_sheet('Por conciliar')
         pendientes.append(['Comprobante', 'Fecha', 'Identificación', 'Factura', 'Valor sin aplicar', 'Motivo'])
@@ -901,7 +948,10 @@ def cartera_dinamica():
             ))
         lineas_factura = consulta_facturas.all()
         for comprobante, movimiento in lineas_factura:
-            referencia = _referencia_factura(movimiento.detalle) or f'FV-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}'
+            referencia = _referencia_movimiento(comprobante, movimiento)
+            if not _es_base_factura(comprobante, referencia):
+                continue
+            referencia = referencia or f'FV-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}'
             item = facturas.setdefault(referencia, {
                 'referencia': referencia,
                 'cliente': movimiento.nombre_tercero or '',
@@ -913,10 +963,13 @@ def cartera_dinamica():
                 'ajustes_ac': Decimal('0'),
                 'notas_credito': Decimal('0'),
                 'notas_debito': Decimal('0'),
+                'otros_movimientos': Decimal('0'),
                 'pagos': [],
                 'cancelaciones': [],
+                'movimientos': [],
             })
             item['valor_factura'] += movimiento.debito - movimiento.credito
+            item['movimientos'].append(_movimiento_cartera(comprobante, movimiento))
             item['fecha_vencimiento'] = item['fecha_vencimiento'] or _fecha_vencimiento(movimiento.detalle)
 
         pagos_sin_factura = 0
@@ -924,6 +977,7 @@ def cartera_dinamica():
         valor_ac_sin_factura = Decimal('0')
         notas_credito_sin_asignar = Decimal('0')
         notas_debito_sin_asignar = Decimal('0')
+        otros_sin_asignar = Decimal('0')
         movimientos_sin_asignar = []
         for comprobante, movimiento, referencia, valor in _cancelaciones_cartera(fecha_corte):
             tipo = _tipo_cartera(comprobante.tipo_documento, comprobante.codigo_comprobante)
@@ -936,8 +990,10 @@ def cartera_dinamica():
                     notas_credito_sin_asignar += valor
                 elif tipo == 'ND':
                     notas_debito_sin_asignar -= valor
-                else:
+                elif tipo == 'RC':
                     pagos_sin_factura += 1
+                else:
+                    otros_sin_asignar += valor
                 movimientos_sin_asignar.append({
                     'comprobante': f'{comprobante.tipo_documento}-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}',
                     'fecha': comprobante.fecha_elaboracion.isoformat(),
@@ -948,7 +1004,8 @@ def cartera_dinamica():
                         'Factura no incluida en la consulta' if item is None else 'El tercero no coincide'),
                 })
                 continue
-            item[APLICACIONES_CARTERA[tipo]] += -valor if tipo == 'ND' else valor
+            item[APLICACIONES_CARTERA.get(tipo, 'otros_movimientos')] += -valor if tipo == 'ND' else valor
+            item['movimientos'].append(_movimiento_cartera(comprobante, movimiento))
             cancelacion = {'fecha': comprobante.fecha_elaboracion, 'valor': valor}
             item['cancelaciones'].append(cancelacion)
             if tipo == 'RC':
@@ -958,12 +1015,15 @@ def cartera_dinamica():
         cartera_por_cliente = {}
         pagos_completos = []
         for item in facturas.values():
-            saldo = max(item['valor_factura'] - item['recaudado'] - item['ajustes_ac'] - item['notas_credito'] + item['notas_debito'], Decimal('0'))
+            saldo = max(item['valor_factura'] - sum(
+                (movimiento['valor'] for movimiento in item['cancelaciones']), Decimal('0'),
+            ), Decimal('0'))
             vencimiento = item['fecha_vencimiento'] or item['fecha_factura']
             dias_vencido = (fecha_corte - vencimiento).days
             periodo = item['fecha_factura'].strftime('%Y-%m')
             resumen = periodos.setdefault(periodo, {
                 'periodo': periodo, 'facturado': Decimal('0'), 'recaudado': Decimal('0'), 'ajustes_ac': Decimal('0'), 'notas_credito': Decimal('0'), 'notas_debito': Decimal('0'), 'saldo': Decimal('0'),
+                'otros_movimientos': Decimal('0'),
                 'por_vencer': Decimal('0'), 'vencido_1_30': Decimal('0'), 'vencido_31_60': Decimal('0'),
                 'vencido_61_90': Decimal('0'), 'vencido_91_mas': Decimal('0'), 'documentos': 0,
             })
@@ -972,6 +1032,7 @@ def cartera_dinamica():
             resumen['ajustes_ac'] += item['ajustes_ac']
             resumen['notas_credito'] += item['notas_credito']
             resumen['notas_debito'] += item['notas_debito']
+            resumen['otros_movimientos'] += item['otros_movimientos']
             resumen['saldo'] += saldo
             resumen['documentos'] += 1
             if dias_vencido <= 0:
@@ -995,6 +1056,7 @@ def cartera_dinamica():
                 'ajustes_ac': Decimal('0'),
                 'notas_credito': Decimal('0'),
                 'notas_debito': Decimal('0'),
+                'otros_movimientos': Decimal('0'),
                 'saldo': Decimal('0'),
                 'por_vencer': Decimal('0'),
                 'vencido_1_30': Decimal('0'),
@@ -1008,6 +1070,7 @@ def cartera_dinamica():
             resumen_cliente['ajustes_ac'] += item['ajustes_ac']
             resumen_cliente['notas_credito'] += item['notas_credito']
             resumen_cliente['notas_debito'] += item['notas_debito']
+            resumen_cliente['otros_movimientos'] += item['otros_movimientos']
             resumen_cliente['saldo'] += saldo
             if dias_vencido <= 0:
                 resumen_cliente['por_vencer'] += saldo
@@ -1028,8 +1091,10 @@ def cartera_dinamica():
                 'ajustes_ac': item['ajustes_ac'],
                 'notas_credito': item['notas_credito'],
                 'notas_debito': item['notas_debito'],
+                'otros_movimientos': item['otros_movimientos'],
                 'saldo': saldo,
                 'dias_vencido': dias_vencido,
+                'movimientos': sorted(item['movimientos'], key=lambda mov: (mov['fecha'], mov['comprobante'], mov['secuencia'])),
             })
 
             if saldo == 0 and item['pagos']:
@@ -1102,6 +1167,7 @@ def cartera_dinamica():
                 'total_vencido': float(sum((cliente['total_vencido'] for cliente in clientes), Decimal('0'))),
                 'notas_credito_sin_asignar': float(notas_credito_sin_asignar or 0),
                 'notas_debito_sin_asignar': float(notas_debito_sin_asignar),
+                'otros_sin_asignar': float(otros_sin_asignar),
                 'movimientos_sin_asignar': movimientos_sin_asignar,
                 'pagos_sin_factura': pagos_sin_factura,
                 'ajustes_ac_sin_factura': ajustes_ac_sin_factura,
@@ -1120,6 +1186,7 @@ def cartera_dinamica():
             'valor_ac_sin_factura': float(valor_ac_sin_factura),
             'notas_credito_sin_asignar': float(notas_credito_sin_asignar or 0),
             'notas_debito_sin_asignar': float(notas_debito_sin_asignar),
+            'otros_sin_asignar': float(otros_sin_asignar),
             'movimientos_sin_asignar': movimientos_sin_asignar,
             'facturas': len(facturas),
         })

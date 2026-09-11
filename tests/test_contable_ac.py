@@ -144,12 +144,13 @@ class CarteraACTest(unittest.TestCase):
             dict(tercero, credito=Decimal('52281')),
             dict(tercero, codigo_contable='13551805', debito=Decimal('52281')),
         ], codigo='AC')
-        # Un CC de otro código no debe confundirse con los ajustes CC-AC.
+        # Un CC de otro código también cruza, pero se desglosa separado de los AC.
         self.documento('CC', 1, '2025-03-19', [dict(tercero, credito=Decimal('999'))])
         antes = self.cartera('2025-03-18')['cartera_clientes'][0]
         self.assertEqual((antes['saldo'], antes['ajustes_ac']), (5408000, 0))
         despues = self.cartera('2025-03-19')['cartera_clientes'][0]
         self.assertEqual((despues['recaudado'], despues['ajustes_ac'], despues['saldo']), (5247559, 160441, 0))
+        self.assertEqual(despues['otros_movimientos'], 999)
         with self.app.test_request_context(query_string={'informe': 'vencidas', 'fecha_corte': '2025-03-19'}):
             informe = contable.cartera_dinamica.__wrapped__().get_json()
         self.assertEqual(informe['clientes'], [])
@@ -166,7 +167,7 @@ class CarteraACTest(unittest.TestCase):
         libro.save(archivo)
         libro.close()
         contenido = archivo.getvalue()
-        with patch.object(contable, '_tipo_cartera', side_effect=lambda tipo, codigo: tipo):
+        with patch.object(contable, '_comprobante_relevante', side_effect=lambda doc, cols: doc['tipo'] in {'FV', 'RC', 'NC', 'ND', 'AC'}):
             data, status = self.cargar(contenido)
         self.assertEqual((status, data['comprobantes']), (200, 2))
         self.assertEqual(self.cartera()['cartera_clientes'][0]['saldo'], 100)
@@ -445,7 +446,7 @@ class CarteraACTest(unittest.TestCase):
 
     def test_reimportar_archivo_antiguo_completa_ac_sin_duplicados(self):
         content = self.excel()
-        with patch.object(contable, 'TIPOS_COMPROBANTE_PERMITIDOS', {'FV', 'RC', 'NC', 'ND'}):
+        with patch.object(contable, '_comprobante_relevante', side_effect=lambda doc, cols: doc['tipo'] in {'FV', 'RC', 'NC', 'ND'}):
             data, status = self.cargar(content)
         self.assertEqual((status, data['comprobantes']), (200, 2))
         data, status = self.cargar(content)
@@ -469,6 +470,70 @@ class CarteraACTest(unittest.TestCase):
         self.assertEqual(SiigoCarga.query.count(), 0)
         self.assertEqual(SiigoComprobante.query.count(), 0)
         self.assertEqual(SiigoMovimiento.query.count(), 0)
+
+    def test_todos_los_tipos_cruzan_con_la_factura_sin_duplicar_contrapartidas(self):
+        self.documento('FV', 1, '2026-01-01', [{'debito': Decimal('1000')}])
+        self.documento('CC', 1, '2026-02-01', [
+            {'credito': Decimal('100')}, {'debito': Decimal('30')},
+            {'codigo_contable': '13990501', 'debito': Decimal('70')},
+        ])
+        self.documento('DF', 1, '2026-02-02', [{'credito': Decimal('200')}])
+        self.documento('XYZ', 1, '2026-02-03', [{'credito': Decimal('730')}])
+        self.documento('EG', 1, '2026-02-04', [{'debito': Decimal('20')}])
+        for corte, saldo in [('2026-02-01', 930), ('2026-02-02', 730),
+                             ('2026-02-03', 0), ('2026-02-04', 20)]:
+            with self.subTest(corte=corte):
+                cartera = self.cartera(corte)
+                factura = cartera['cartera_clientes'][0]['facturas'][0]
+                self.assertEqual(factura['saldo'], saldo)
+                self.assertEqual(factura['otros_movimientos'], 1000 - saldo)
+                self.assertEqual(sum(m['debito'] - m['credito'] for m in factura['movimientos']), saldo)
+                self.assertEqual(cartera['pagos_clientes'], [])
+                with self.app.test_request_context(query_string={'informe': 'vencidas', 'fecha_corte': corte}):
+                    vencidas = contable.cartera_dinamica.__wrapped__().get_json()
+                self.assertEqual(vencidas['cantidad_facturas'], int(saldo > 0))
+
+    def test_una_fv_que_cruza_otra_no_se_suma_dos_veces(self):
+        self.documento('FV', 1, '2026-01-01', [{'debito': Decimal('1000')}])
+        self.documento('FV', 2, '2026-02-01', [
+            {'debito': Decimal('500'), 'detalle': 'FV-2-2 Fecha: 15/02/2026'},
+            {'credito': Decimal('200'), 'detalle': 'FV-2-1'},
+        ])
+        data = self.cartera()
+        facturas = {f['referencia']: f for c in data['cartera_clientes'] for f in c['facturas']}
+        self.assertEqual(facturas['FV-2-1']['saldo'], 800)
+        self.assertEqual(facturas['FV-2-1']['facturado'], 1000)
+        self.assertEqual(facturas['FV-2-1']['otros_movimientos'], 200)
+        self.assertEqual(facturas['FV-2-2']['saldo'], 500)
+        self.assertEqual(data['cartera_clientes'][0]['saldo'], 1300)
+
+    def test_cargue_recupera_cualquier_tipo_con_cartera_y_exporta_trazabilidad(self):
+        libro = load_workbook(BytesIO(self.excel()))
+        for fila in libro.active:
+            if fila[0].value == 'Comprobante: AC-1-1':
+                fila[0].value = 'Comprobante: NUEVO-9-1'
+        archivo = BytesIO()
+        libro.save(archivo)
+        libro.close()
+        with patch.object(contable, '_comprobante_relevante', side_effect=lambda doc, cols: doc['tipo'] in {'FV', 'RC'}):
+            data, status = self.cargar(archivo.getvalue())
+        self.assertEqual((status, data['comprobantes']), (200, 2))
+        data, status = self.cargar(archivo.getvalue())
+        self.assertEqual((status, data['comprobantes']), (200, 1))
+        self.assertEqual(self.cartera()['cartera_clientes'][0]['saldo'], 0)
+        self.assertEqual(SiigoComprobante.query.filter_by(tipo_documento='NUEVO').count(), 1)
+        self.assertEqual(self.cargar(archivo.getvalue())[1], 400)
+        self.documento('REV', 2, '2026-02-02', [{'debito': Decimal('25')}])
+        with self.app.test_request_context(query_string={'informe': 'vencidas', 'formato': 'xlsx', 'fecha_corte': '2026-02-28'}):
+            response = contable.cartera_dinamica.__wrapped__()
+            response.direct_passthrough = False
+            libro = load_workbook(BytesIO(response.get_data()))
+            self.assertEqual(libro['Facturas vencidas']['F4'].value, 25)
+            filas = list(libro['Cruces por factura'].values)[1:]
+            self.assertEqual(sum(f[5] - f[6] for f in filas), 25)
+            self.assertEqual({f[2] for f in filas}, {'FV-2-1', 'RC-1-1', 'NUEVO-9-1', 'REV-1-2'})
+            libro.close()
+            response.close()
 
 
 if __name__ == '__main__':
