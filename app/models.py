@@ -139,6 +139,8 @@ class ClienteComercial(db.Model):
     importado_siigo = db.Column(db.Boolean, nullable=False, default=False)
     carga_id = db.Column(db.Integer, db.ForeignKey('siigo_cargas.id'), index=True)
     vendedor_nombre_origen = db.Column(db.String(200))
+    responsable = db.Column(db.String(200))
+    telefono_responsable = db.Column(db.String(80))
     nombres_alternativos = db.Column(db.JSON)
     revision_importacion = db.Column(db.Text)
     contactos = db.relationship('ContactoCliente', secondary='clientes_contactos', back_populates='clientes')

@@ -116,16 +116,82 @@ def preparar_filas(filas):
     return grupos
 
 
-def importar_clientes(filas, contenido, archivo, usuario_id=None):
+def _tablas_que_referencian(inspector, objetivo):
+    """Devuelve {tabla: [columnas_fk]} de todas las tablas con FK hacia 'objetivo'."""
+    refs = {}
+    for tabla in inspector.get_table_names():
+        columnas = []
+        for fk in inspector.get_foreign_keys(tabla):
+            if fk.get('referred_table') == objetivo:
+                columnas.extend(fk.get('constrained_columns') or [])
+        if columnas:
+            refs[tabla] = columnas
+    return refs
+
+
+def _borrar_maestro_clientes():
+    """Elimina clientes y TODAS sus relaciones para una carga de reemplazo total.
+
+    Descubre dinamicamente las tablas con FK hacia clientes_comerciales para no
+    dejar por fuera ninguna dependencia. NO toca el catalogo de examenes/paquetes
+    ni los vendedores. Las columnas FK que permiten NULL se desvinculan; el resto
+    se borra (hijos antes que el padre)."""
+    inspector = db.inspect(db.engine)
+    refs = _tablas_que_referencian(inspector, 'clientes_comerciales')
+
+    # Nombres de columnas FK que solo deben desvincularse (no borrar la fila),
+    # porque el registro pertenece a otro modulo (p. ej. cargue de atenciones).
+    solo_desvincular = {'atenciones_dia_detalle'}
+
+    # 1) Desvincula referencias opcionales (incluye tablas de otros modulos).
+    pendientes_borrar = []
+    for tabla, columnas in refs.items():
+        col_info = {c['name']: c for c in inspector.get_columns(tabla)}
+        obligatoria = any(not col_info.get(col, {}).get('nullable', True) for col in columnas)
+        if tabla in solo_desvincular or not obligatoria:
+            for col in columnas:
+                if col_info.get(col, {}).get('nullable', True):
+                    db.session.execute(text(f'UPDATE {tabla} SET {col} = NULL WHERE {col} IS NOT NULL'))
+        else:
+            pendientes_borrar.append(tabla)
+
+    # 2) Borra las tablas con FK obligatoria, reintentando para resolver cadenas
+    #    de dependencias multinivel (p. ej. atenciones -> atenciones_detalle).
+    pendientes = list(pendientes_borrar) + ['clientes_contactos', 'contactos_clientes']
+    pendientes = [t for t in pendientes if t in inspector.get_table_names()]
+    intentos = 0
+    while pendientes and intentos <= len(pendientes) + 3:
+        intentos += 1
+        restantes = []
+        for tabla in pendientes:
+            sp = db.session.begin_nested()
+            try:
+                db.session.execute(text(f'DELETE FROM {tabla}'))
+                sp.commit()
+            except Exception:
+                sp.rollback()
+                restantes.append(tabla)
+        if len(restantes) == len(pendientes):
+            # No se pudo avanzar: deja que el DELETE final falle con mensaje claro.
+            break
+        pendientes = restantes
+
+    db.session.execute(text('DELETE FROM clientes_comerciales'))
+    db.session.flush()
+
+
+def importar_clientes(filas, contenido, archivo, usuario_id=None, reemplazar=False):
     grupos = preparar_filas(filas)
     bloquear_maestros()
     digest = sha256(contenido).hexdigest()
     previa = SiigoCarga.query.filter_by(hash_archivo=digest).first()
-    if previa:
+    if previa and not reemplazar:
         return {'sin_cambios': True, 'mensaje': 'El archivo ya está importado; no se duplicaron registros.', 'carga_id': previa.id}
     carga = SiigoCarga(tipo_archivo='CLIENTES', nombre_archivo=archivo, hash_archivo=digest, usuario_id=usuario_id)
     db.session.add(carga)
     db.session.flush()
+    if reemplazar:
+        _borrar_maestro_clientes()
     actuales = ClienteComercial.query.all()
     por_nit = {identificacion(c.nit): c for c in actuales if c.nit}
     por_nombre = defaultdict(list)
@@ -153,7 +219,7 @@ def importar_clientes(filas, contenido, archivo, usuario_id=None):
                 revision.append('Más de una ficha anterior coincide por nombre; revisar vínculos.')
         nuevo = c is None
         if nuevo:
-            c = ClienteComercial(nit=nit, razon_social=row['NOMBRETERCERO'])
+            c = ClienteComercial(nit=nit, razon_social=row['NOMBRETERCERO'], medio_autorizacion='WHATSAPP')
             db.session.add(c)
             resumen['creados'] += 1
         else:
@@ -211,6 +277,10 @@ def importar_clientes(filas, contenido, archivo, usuario_id=None):
                 if r.get('CONTACTO') or not c.contacto_principal:
                     c.contacto_principal = nombre
                     c.celular_contacto_principal = telefono or None
+                # Campos adicionales del maestro: responsable y su telefono.
+                if r.get('CONTACTO') or not c.responsable:
+                    c.responsable = nombre
+                    c.telefono_responsable = telefono or None
         c.revision_importacion = '\n'.join(revision) or None
         if revision:
             resumen['revision'] += 1

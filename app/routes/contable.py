@@ -370,9 +370,12 @@ def cargar_clientes():
         from app.routes.comercial import _is_admin_user
         if not _is_admin_user():
             raise PermissionError('La importaci?n global del maestro requiere un administrador.')
-        resumen = importar_clientes(filas, contenido, nombre_archivo, current_user.id)
+        # reemplazar=1 borra el maestro actual e inserta desde cero (sin duplicados).
+        reemplazar = str(request.form.get('reemplazar', '')).strip().lower() in {'1', 'true', 'si', 'yes'}
+        resumen = importar_clientes(filas, contenido, nombre_archivo, current_user.id, reemplazar=reemplazar)
         db.session.commit()
-        return jsonify({'mensaje': 'Maestro de clientes actualizado sin duplicados.', **resumen})
+        mensaje = 'Maestro de clientes reemplazado desde el Excel sin duplicados.' if reemplazar else 'Maestro de clientes actualizado sin duplicados.'
+        return jsonify({'mensaje': mensaje, **resumen})
     except (ValueError, PermissionError) as exc:
         db.session.rollback()
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
