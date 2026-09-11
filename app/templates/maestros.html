@@ -1,0 +1,402 @@
+{% extends "base.html" %}
+{% block title %}Maestros - PREVENT{% endblock %}
+
+{% block extra_css %}
+<style>
+  .maestros-wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
+  .maestros-tabs { display: flex; gap: 8px; border-bottom: 2px solid #e2e8f0; margin-bottom: 16px; flex-wrap: wrap; }
+  .maestros-tab { padding: 10px 18px; cursor: pointer; border: none; background: transparent; font-size: 0.95rem; color: #64748b; border-bottom: 3px solid transparent; }
+  .maestros-tab.active { color: #1d4ed8; border-bottom-color: #1d4ed8; font-weight: 600; }
+  .maestros-panel { display: none; }
+  .maestros-panel.active { display: block; }
+  .maestros-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .maestros-toolbar input[type=search] { flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 8px; }
+  .maestros-table { width: 100%; border-collapse: collapse; background: #fff; }
+  .maestros-table th, .maestros-table td { padding: 8px 10px; border-bottom: 1px solid #eef2f7; text-align: left; font-size: 0.9rem; }
+  .maestros-table th { background: #f8fafc; color: #475569; position: sticky; top: 0; }
+  .maestros-table tr:hover { background: #f9fbff; }
+  .maestros-scroll { max-height: 62vh; overflow: auto; border: 1px solid #e2e8f0; border-radius: 10px; }
+  .mtag { display:inline-block; padding:2px 8px; border-radius:999px; font-size:0.75rem; background:#eef2ff; color:#3730a3; margin:1px; }
+  .mtag-warn { background:#fef3c7; color:#92400e; }
+  .mtag-off { background:#fee2e2; color:#991b1b; }
+  .m-btn { padding: 7px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.88rem; }
+  .m-btn-primary { background: #1d4ed8; color: #fff; }
+  .m-btn-secondary { background: #e2e8f0; color: #1e293b; }
+  .m-btn-danger { background: #dc2626; color: #fff; }
+  .m-btn-sm { padding: 4px 10px; font-size: 0.8rem; }
+  .m-modal { position: fixed; inset: 0; background: rgba(15,23,42,.5); display: none; align-items: flex-start; justify-content: center; z-index: 1000; overflow:auto; padding: 30px 12px; }
+  .m-modal.active { display: flex; }
+  .m-modal-card { background: #fff; border-radius: 12px; width: 100%; max-width: 620px; padding: 20px; }
+  .m-field { margin-bottom: 12px; }
+  .m-field label { display: block; font-size: 0.82rem; color: #475569; margin-bottom: 4px; }
+  .m-field input, .m-field select, .m-field textarea { width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box; }
+  .m-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .m-row > .m-field { flex: 1; min-width: 180px; }
+  .m-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+  .m-multi { border: 1px solid #cbd5e1; border-radius: 8px; max-height: 180px; overflow: auto; padding: 6px; }
+  .m-multi label { display: flex; gap: 8px; align-items: center; padding: 3px 4px; font-size: 0.86rem; cursor: pointer; }
+  .m-hint { color: #64748b; font-size: 0.8rem; }
+  .m-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px; }
+  .m-empty { padding: 24px; text-align: center; color: #94a3b8; }
+  .m-toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 18px; border-radius: 8px; color:#fff; z-index: 2000; display:none; max-width: 380px; }
+  .m-toast.ok { background:#059669; } .m-toast.err { background:#dc2626; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="maestros-wrap">
+  <div class="m-head">
+    <h1 style="margin:0;">Maestros comerciales</h1>
+    <a href="/dashboard" class="m-btn m-btn-secondary">← Volver al panel</a>
+  </div>
+
+  <div class="maestros-tabs">
+    <button class="maestros-tab active" data-tab="clientes" onclick="maestrosTab('clientes')">Clientes</button>
+    <button class="maestros-tab" data-tab="contactos" onclick="maestrosTab('contactos')">Contactos</button>
+    <button class="maestros-tab" data-tab="paquetes" onclick="maestrosTab('paquetes')">Paquetes</button>
+  </div>
+
+  <!-- CLIENTES -->
+  <section class="maestros-panel active" id="panel-clientes">
+    <div class="maestros-toolbar">
+      <input type="search" id="buscarCliente" placeholder="Buscar por nombre, NIT o vendedor..." oninput="renderClientes()">
+      <button class="m-btn m-btn-primary" id="btnNuevoCliente" onclick="abrirModalCliente()">+ Nuevo cliente</button>
+    </div>
+    <div class="maestros-scroll">
+      <table class="maestros-table">
+        <thead><tr><th>NIT</th><th>Razón social</th><th>Vendedor</th><th>Responsable</th><th>Teléfono</th><th>Contactos</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="tbodyClientes"><tr><td colspan="8" class="m-empty">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- CONTACTOS -->
+  <section class="maestros-panel" id="panel-contactos">
+    <div class="maestros-toolbar">
+      <input type="search" id="buscarContacto" placeholder="Buscar contacto por nombre, teléfono o email..." oninput="renderContactos()">
+      <button class="m-btn m-btn-primary" id="btnNuevoContacto" onclick="abrirModalContacto()">+ Nuevo contacto</button>
+    </div>
+    <div class="maestros-scroll">
+      <table class="maestros-table">
+        <thead><tr><th>Nombre</th><th>Teléfono</th><th>Email</th><th>Vendedor</th><th>Empresas</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="tbodyContactos"><tr><td colspan="7" class="m-empty">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- PAQUETES -->
+  <section class="maestros-panel" id="panel-paquetes">
+    <div class="maestros-toolbar">
+      <input type="search" id="buscarPaquete" placeholder="Buscar paquete por nombre o código..." oninput="renderPaquetes()">
+      <button class="m-btn m-btn-primary" id="btnNuevoPaquete" onclick="abrirModalPaquete()">+ Nuevo paquete</button>
+    </div>
+    <div class="maestros-scroll">
+      <table class="maestros-table">
+        <thead><tr><th>Nombre</th><th>Código</th><th>Tarifa base</th><th>Componentes</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="tbodyPaquetes"><tr><td colspan="6" class="m-empty">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<!-- MODAL CLIENTE -->
+<div class="m-modal" id="modalCliente"><div class="m-modal-card">
+  <h2 id="tituloModalCliente">Nuevo cliente</h2>
+  <input type="hidden" id="clienteId">
+  <div class="m-row">
+    <div class="m-field"><label>NIT / Identificación *</label><input id="clienteNit" maxlength="50"></div>
+    <div class="m-field"><label>Razón social *</label><input id="clienteRazon" maxlength="200"></div>
+  </div>
+  <div class="m-row">
+    <div class="m-field"><label>Vendedor</label><select id="clienteVendedor"></select></div>
+    <div class="m-field"><label>Estado</label><select id="clienteEstado">
+      <option value="ACTIVO">ACTIVO</option><option value="INACTIVO">INACTIVO</option><option value="BLOQUEO_TEMPORAL">BLOQUEO TEMPORAL</option>
+    </select></div>
+  </div>
+  <div class="m-row">
+    <div class="m-field"><label>Teléfono empresa</label><input id="clienteTelefono" maxlength="80"></div>
+    <div class="m-field"><label>Ciudad</label><input id="clienteCiudad" maxlength="120"></div>
+  </div>
+  <div class="m-field"><label>Dirección</label><input id="clienteDireccion" maxlength="255"></div>
+  <div class="m-field"><label>Email empresa</label><input id="clienteEmail" maxlength="120"></div>
+  <div class="m-field"><label>Contactos vinculados</label>
+    <div class="m-multi" id="clienteContactos"></div>
+    <div class="m-hint">Un contacto solo puede compartir empresas si tiene el mismo vendedor.</div>
+  </div>
+  <div class="m-modal-actions">
+    <button class="m-btn m-btn-secondary" onclick="cerrarModal('modalCliente')">Cancelar</button>
+    <button class="m-btn m-btn-primary" onclick="guardarCliente()">Guardar</button>
+  </div>
+</div></div>
+
+<!-- MODAL CONTACTO -->
+<div class="m-modal" id="modalContacto"><div class="m-modal-card">
+  <h2 id="tituloModalContacto">Nuevo contacto</h2>
+  <input type="hidden" id="contactoId">
+  <div class="m-row">
+    <div class="m-field"><label>Nombre *</label><input id="contactoNombre" maxlength="150"></div>
+    <div class="m-field"><label>Cargo</label><input id="contactoCargo" maxlength="150"></div>
+  </div>
+  <div class="m-row">
+    <div class="m-field"><label>Teléfono</label><input id="contactoTelefono" maxlength="80"></div>
+    <div class="m-field"><label>Email</label><input id="contactoEmail" maxlength="120"></div>
+  </div>
+  <div class="m-field"><label>Vendedor</label><select id="contactoVendedor"></select></div>
+  <div class="m-field"><label>Empresas del contacto</label>
+    <div class="m-multi" id="contactoClientes"></div>
+    <div class="m-hint">Puede vincular varias empresas al mismo contacto (deben tener el mismo vendedor).</div>
+  </div>
+  <div class="m-modal-actions">
+    <button class="m-btn m-btn-secondary" onclick="cerrarModal('modalContacto')">Cancelar</button>
+    <button class="m-btn m-btn-primary" onclick="guardarContacto()">Guardar</button>
+  </div>
+</div></div>
+
+<!-- MODAL PAQUETE -->
+<div class="m-modal" id="modalPaquete"><div class="m-modal-card">
+  <h2 id="tituloModalPaquete">Nuevo paquete</h2>
+  <input type="hidden" id="paqueteId">
+  <div class="m-row">
+    <div class="m-field"><label>Nombre *</label><input id="paqueteNombre" maxlength="200"></div>
+    <div class="m-field"><label>Código</label><input id="paqueteCodigo" maxlength="50"></div>
+  </div>
+  <div class="m-row">
+    <div class="m-field"><label>Tarifa base</label><input id="paqueteTarifa" type="number" min="0" step="0.01"></div>
+    <div class="m-field"><label>Activo</label><select id="paqueteActivo"><option value="true">Sí</option><option value="false">No</option></select></div>
+  </div>
+  <div class="m-field"><label>Descripción</label><textarea id="paqueteDescripcion" rows="2"></textarea></div>
+  <div class="m-field"><label>Exámenes que componen el paquete *</label>
+    <div class="m-multi" id="paqueteComponentes"></div>
+    <div class="m-hint">Selecciona los exámenes incluidos en este paquete.</div>
+  </div>
+  <div class="m-modal-actions">
+    <button class="m-btn m-btn-secondary" onclick="cerrarModal('modalPaquete')">Cancelar</button>
+    <button class="m-btn m-btn-primary" onclick="guardarPaquete()">Guardar</button>
+  </div>
+</div></div>
+
+<div class="m-toast" id="mToast"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const M = { clientes: [], contactos: [], catalogo: [], vendedores: [], permisos: {} };
+
+function mToast(msg, ok=true){ const t=document.getElementById('mToast'); t.textContent=msg; t.className='m-toast '+(ok?'ok':'err'); t.style.display='block'; setTimeout(()=>{t.style.display='none';},4000); }
+function esc(v){ return (v==null?'':String(v)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function money(v){ return new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(Number(v||0)); }
+function cerrarModal(id){ document.getElementById(id).classList.remove('active'); }
+function maestrosTab(name){
+  document.querySelectorAll('.maestros-tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+  document.querySelectorAll('.maestros-panel').forEach(p=>p.classList.toggle('active', p.id==='panel-'+name));
+}
+
+async function api(url, opts){
+  const r = await fetch(url, Object.assign({credentials:'include', headers:{'Content-Type':'application/json'}}, opts||{}));
+  const data = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(data.error || 'Error en la operación');
+  return data;
+}
+
+async function cargarTodo(){
+  try {
+    const op = await api('/api/comercial/maestro/opciones');
+    M.vendedores = op.vendedores || [];
+    M.permisos = op.permisos || {};
+    aplicarPermisos();
+  } catch(e){ mToast(e.message, false); }
+  await Promise.all([cargarClientes(), cargarContactos(), cargarPaquetes()]);
+}
+
+function aplicarPermisos(){
+  const p = M.permisos;
+  const set = (id, ok)=>{ const el=document.getElementById(id); if(el) el.style.display = ok?'':'none'; };
+  set('btnNuevoCliente', p.clientes && p.clientes.create);
+  set('btnNuevoContacto', p.clientes && p.clientes.create);
+  set('btnNuevoPaquete', p.paquetes && p.paquetes.create);
+}
+
+function opcionesVendedor(sel){
+  return '<option value="">Sin asignar</option>' + M.vendedores.map(v=>`<option value="${v.id}" ${String(sel)===String(v.id)?'selected':''}>${esc(v.nombre)}</option>`).join('');
+}
+
+/* ===== CLIENTES ===== */
+async function cargarClientes(){ try { M.clientes = await api('/api/comercial/maestro/clientes'); renderClientes(); } catch(e){ document.getElementById('tbodyClientes').innerHTML=`<tr><td colspan="8" class="m-empty">${esc(e.message)}</td></tr>`; } }
+function renderClientes(){
+  const q=(document.getElementById('buscarCliente').value||'').toLowerCase();
+  const rows = M.clientes.filter(c=>!q || [c.razon_social,c.nit,c.vendedor_nombre,c.responsable].some(x=>(x||'').toLowerCase().includes(q)));
+  const canU = M.permisos.clientes && M.permisos.clientes.update;
+  const canD = M.permisos.clientes && M.permisos.clientes.delete;
+  document.getElementById('tbodyClientes').innerHTML = rows.length ? rows.map(c=>`
+    <tr>
+      <td>${esc(c.nit)}</td><td>${esc(c.razon_social)}</td><td>${esc(c.vendedor_nombre)}</td>
+      <td>${esc(c.responsable||'')}</td><td>${esc(c.telefono_empresa||'')}</td>
+      <td>${(c.contactos||[]).map(p=>`<span class="mtag">${esc(p.nombre)}</span>`).join('')||'<span class="m-hint">—</span>'}</td>
+      <td>${estadoTag(c.estado_cliente, c.activo)}</td>
+      <td style="white-space:nowrap;">
+        ${canU?`<button class="m-btn m-btn-secondary m-btn-sm" onclick="abrirModalCliente(${c.id})">Editar</button>`:''}
+        ${canD?`<button class="m-btn m-btn-danger m-btn-sm" onclick="borrarCliente(${c.id})">Borrar</button>`:''}
+      </td>
+    </tr>`).join('') : '<tr><td colspan="8" class="m-empty">Sin clientes.</td></tr>';
+}
+function estadoTag(estado, activo){
+  if(estado==='INACTIVO'||activo===false) return '<span class="mtag mtag-off">INACTIVO</span>';
+  if(estado==='BLOQUEO_TEMPORAL') return '<span class="mtag mtag-warn">BLOQUEO</span>';
+  return '<span class="mtag">ACTIVO</span>';
+}
+function abrirModalCliente(id){
+  const c = id ? M.clientes.find(x=>x.id===id) : null;
+  document.getElementById('tituloModalCliente').textContent = c?'Editar cliente':'Nuevo cliente';
+  document.getElementById('clienteId').value = c?c.id:'';
+  document.getElementById('clienteNit').value = c?c.nit||'':'';
+  document.getElementById('clienteRazon').value = c?c.razon_social||'':'';
+  document.getElementById('clienteVendedor').innerHTML = opcionesVendedor(c?c.vendedor_id:'');
+  document.getElementById('clienteEstado').value = c?(c.estado_cliente||'ACTIVO'):'ACTIVO';
+  document.getElementById('clienteTelefono').value = c?c.telefono_empresa||'':'';
+  document.getElementById('clienteCiudad').value = c?c.ciudad||'':'';
+  document.getElementById('clienteDireccion').value = c?c.direccion||'':'';
+  document.getElementById('clienteEmail').value = c?c.email_empresa||'':'';
+  const sel = new Set(c?(c.contactos_ids||[]):[]);
+  document.getElementById('clienteContactos').innerHTML = M.contactos.map(p=>`<label><input type="checkbox" value="${p.id}" ${sel.has(p.id)?'checked':''}> ${esc(p.nombre)} ${p.telefono?'· '+esc(p.telefono):''}</label>`).join('') || '<div class="m-hint">No hay contactos aún.</div>';
+  document.getElementById('modalCliente').classList.add('active');
+}
+async function guardarCliente(){
+  const id = document.getElementById('clienteId').value;
+  const contactos_ids = [...document.querySelectorAll('#clienteContactos input:checked')].map(x=>Number(x.value));
+  const vsel = document.getElementById('clienteVendedor').value;
+  const body = {
+    nit: document.getElementById('clienteNit').value.trim(),
+    razon_social: document.getElementById('clienteRazon').value.trim(),
+    vendedor_id: vsel===''?null:Number(vsel),
+    estado_cliente: document.getElementById('clienteEstado').value,
+    telefono_empresa: document.getElementById('clienteTelefono').value.trim(),
+    ciudad: document.getElementById('clienteCiudad').value.trim(),
+    direccion: document.getElementById('clienteDireccion').value.trim(),
+    email_empresa: document.getElementById('clienteEmail').value.trim(),
+    contactos_ids
+  };
+  try {
+    await api(id?`/api/comercial/maestro/clientes/${id}`:'/api/comercial/maestro/clientes', {method:id?'PUT':'POST', body:JSON.stringify(body)});
+    cerrarModal('modalCliente'); mToast('Cliente guardado.'); await Promise.all([cargarClientes(), cargarContactos()]);
+  } catch(e){ mToast(e.message, false); }
+}
+async function borrarCliente(id){
+  if(!confirm('¿Borrar este cliente? Si tiene relaciones, se sugerirá inactivarlo.')) return;
+  try { const r = await api(`/api/comercial/maestro/clientes/${id}`, {method:'DELETE'}); mToast(r.mensaje||'Cliente eliminado.'); await cargarClientes(); }
+  catch(e){ mToast(e.message, false); }
+}
+
+/* ===== CONTACTOS ===== */
+async function cargarContactos(){ try { M.contactos = await api('/api/comercial/maestro/contactos'); renderContactos(); } catch(e){ document.getElementById('tbodyContactos').innerHTML=`<tr><td colspan="7" class="m-empty">${esc(e.message)}</td></tr>`; } }
+function renderContactos(){
+  const q=(document.getElementById('buscarContacto').value||'').toLowerCase();
+  const rows = M.contactos.filter(c=>!q || [c.nombre,c.telefono,c.email,c.vendedor_nombre].some(x=>(x||'').toLowerCase().includes(q)));
+  const canU = M.permisos.clientes && M.permisos.clientes.update;
+  const canD = M.permisos.clientes && M.permisos.clientes.delete;
+  document.getElementById('tbodyContactos').innerHTML = rows.length ? rows.map(c=>`
+    <tr>
+      <td>${esc(c.nombre)}</td><td>${esc(c.telefono||'')}</td><td>${esc(c.email||'')}</td><td>${esc(c.vendedor_nombre)}</td>
+      <td>${(c.clientes||[]).map(x=>`<span class="mtag">${esc(x.nombre)}</span>`).join('')||'<span class="m-hint">—</span>'}</td>
+      <td>${c.activo===false?'<span class="mtag mtag-off">INACTIVO</span>':'<span class="mtag">ACTIVO</span>'}</td>
+      <td style="white-space:nowrap;">
+        ${canU?`<button class="m-btn m-btn-secondary m-btn-sm" onclick="abrirModalContacto(${c.id})">Editar</button>`:''}
+        ${canD?`<button class="m-btn m-btn-danger m-btn-sm" onclick="borrarContacto(${c.id})">Borrar</button>`:''}
+      </td>
+    </tr>`).join('') : '<tr><td colspan="7" class="m-empty">Sin contactos.</td></tr>';
+}
+function abrirModalContacto(id){
+  const c = id ? M.contactos.find(x=>x.id===id) : null;
+  document.getElementById('tituloModalContacto').textContent = c?'Editar contacto':'Nuevo contacto';
+  document.getElementById('contactoId').value = c?c.id:'';
+  document.getElementById('contactoNombre').value = c?c.nombre||'':'';
+  document.getElementById('contactoCargo').value = c?c.cargo||'':'';
+  document.getElementById('contactoTelefono').value = c?c.telefono||'':'';
+  document.getElementById('contactoEmail').value = c?c.email||'':'';
+  document.getElementById('contactoVendedor').innerHTML = opcionesVendedor(c?c.vendedor_id:'');
+  const sel = new Set(c?(c.clientes_ids||[]):[]);
+  document.getElementById('contactoClientes').innerHTML = M.clientes.map(x=>`<label><input type="checkbox" value="${x.id}" ${sel.has(x.id)?'checked':''}> ${esc(x.razon_social)} ${x.nit?'· '+esc(x.nit):''}</label>`).join('') || '<div class="m-hint">No hay clientes aún.</div>';
+  document.getElementById('modalContacto').classList.add('active');
+}
+async function guardarContacto(){
+  const id = document.getElementById('contactoId').value;
+  const clientes_ids = [...document.querySelectorAll('#contactoClientes input:checked')].map(x=>Number(x.value));
+  const vsel = document.getElementById('contactoVendedor').value;
+  const body = {
+    nombre: document.getElementById('contactoNombre').value.trim(),
+    cargo: document.getElementById('contactoCargo').value.trim(),
+    telefono: document.getElementById('contactoTelefono').value.trim(),
+    email: document.getElementById('contactoEmail').value.trim(),
+    vendedor_id: vsel===''?null:Number(vsel),
+    clientes_ids, activo: true
+  };
+  try {
+    await api(id?`/api/comercial/maestro/contactos/${id}`:'/api/comercial/maestro/contactos', {method:id?'PUT':'POST', body:JSON.stringify(body)});
+    cerrarModal('modalContacto'); mToast('Contacto guardado.'); await Promise.all([cargarContactos(), cargarClientes()]);
+  } catch(e){ mToast(e.message, false); }
+}
+async function borrarContacto(id){
+  if(!confirm('¿Borrar este contacto?')) return;
+  try { const r = await api(`/api/comercial/maestro/contactos/${id}`, {method:'DELETE'}); mToast(r.mensaje||'Contacto eliminado.'); await Promise.all([cargarContactos(), cargarClientes()]); }
+  catch(e){ mToast(e.message, false); }
+}
+
+/* ===== PAQUETES (catalogo tipo_item=PAQUETE) ===== */
+async function cargarPaquetes(){ try { M.catalogo = await api('/api/comercial/catalogo'); renderPaquetes(); } catch(e){ document.getElementById('tbodyPaquetes').innerHTML=`<tr><td colspan="6" class="m-empty">${esc(e.message)}</td></tr>`; } }
+function paquetesLista(){ return M.catalogo.filter(i=>i.tipo_item==='PAQUETE'); }
+function examenesLista(){ return M.catalogo.filter(i=>i.tipo_item==='EXAMEN'); }
+function renderPaquetes(){
+  const q=(document.getElementById('buscarPaquete').value||'').toLowerCase();
+  const rows = paquetesLista().filter(p=>!q || [p.nombre,p.codigo].some(x=>(x||'').toLowerCase().includes(q)));
+  const canU = M.permisos.paquetes && M.permisos.paquetes.update;
+  const canD = M.permisos.paquetes && M.permisos.paquetes.delete;
+  document.getElementById('tbodyPaquetes').innerHTML = rows.length ? rows.map(p=>`
+    <tr>
+      <td>${esc(p.nombre)}</td><td>${esc(p.codigo||'')}</td><td>${money(p.tarifa_base)}</td>
+      <td>${(p.componentes||[]).map(x=>`<span class="mtag">${esc(x.nombre)}</span>`).join('')||'<span class="m-hint">—</span>'}</td>
+      <td>${p.activo===false?'<span class="mtag mtag-off">INACTIVO</span>':'<span class="mtag">ACTIVO</span>'}</td>
+      <td style="white-space:nowrap;">
+        ${canU?`<button class="m-btn m-btn-secondary m-btn-sm" onclick="abrirModalPaquete(${p.id})">Editar</button>`:''}
+        ${canD?`<button class="m-btn m-btn-danger m-btn-sm" onclick="borrarPaquete(${p.id})">Borrar</button>`:''}
+      </td>
+    </tr>`).join('') : '<tr><td colspan="6" class="m-empty">Sin paquetes.</td></tr>';
+}
+function abrirModalPaquete(id){
+  const p = id ? paquetesLista().find(x=>x.id===id) : null;
+  document.getElementById('tituloModalPaquete').textContent = p?'Editar paquete':'Nuevo paquete';
+  document.getElementById('paqueteId').value = p?p.id:'';
+  document.getElementById('paqueteNombre').value = p?p.nombre||'':'';
+  document.getElementById('paqueteCodigo').value = p?p.codigo||'':'';
+  document.getElementById('paqueteTarifa').value = p?(p.tarifa_base||0):0;
+  document.getElementById('paqueteActivo').value = p?(p.activo===false?'false':'true'):'true';
+  document.getElementById('paqueteDescripcion').value = p?p.descripcion||'':'';
+  const sel = new Set(p?(p.componentes_ids||[]):[]);
+  const exs = examenesLista();
+  document.getElementById('paqueteComponentes').innerHTML = exs.length ? exs.map(e=>`<label><input type="checkbox" value="${e.id}" ${sel.has(e.id)?'checked':''}> ${esc(e.nombre)} ${e.codigo?'· '+esc(e.codigo):''}</label>`).join('') : '<div class="m-hint">No hay exámenes en el catálogo.</div>';
+  document.getElementById('modalPaquete').classList.add('active');
+}
+async function guardarPaquete(){
+  const id = document.getElementById('paqueteId').value;
+  const componentes_ids = [...document.querySelectorAll('#paqueteComponentes input:checked')].map(x=>Number(x.value));
+  const body = {
+    tipo_item: 'PAQUETE',
+    nombre: document.getElementById('paqueteNombre').value.trim(),
+    codigo: document.getElementById('paqueteCodigo').value.trim() || null,
+    tarifa_base: Number(document.getElementById('paqueteTarifa').value||0),
+    activo: document.getElementById('paqueteActivo').value==='true',
+    descripcion: document.getElementById('paqueteDescripcion').value.trim() || null,
+    componentes_ids
+  };
+  try {
+    await api(id?`/api/comercial/catalogo/${id}`:'/api/comercial/catalogo', {method:id?'PUT':'POST', body:JSON.stringify(body)});
+    cerrarModal('modalPaquete'); mToast('Paquete guardado.'); await cargarPaquetes();
+  } catch(e){ mToast(e.message, false); }
+}
+async function borrarPaquete(id){
+  if(!confirm('¿Borrar este paquete?')) return;
+  try { await api(`/api/comercial/catalogo/${id}`, {method:'DELETE'}); mToast('Paquete eliminado.'); await cargarPaquetes(); }
+  catch(e){ mToast(e.message, false); }
+}
+
+document.addEventListener('DOMContentLoaded', cargarTodo);
+</script>
+{% endblock %}
