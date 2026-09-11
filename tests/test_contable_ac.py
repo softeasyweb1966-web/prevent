@@ -53,13 +53,13 @@ class CarteraACTest(unittest.TestCase):
         self.permission.start()
         self.addCleanup(self.permission.stop)
 
-    def documento(self, tipo, numero, fecha, lineas):
+    def documento(self, tipo, numero, fecha, lineas, codigo=None):
         carga = SiigoCarga.query.first()
         if carga is None:
             carga = SiigoCarga(tipo_archivo='COMPROBANTES', nombre_archivo='fixture.xlsx', hash_archivo='fixture')
             db.session.add(carga)
             db.session.flush()
-        doc = SiigoComprobante(tipo_documento=tipo, codigo_comprobante='2' if tipo == 'FV' else '1',
+        doc = SiigoComprobante(tipo_documento=tipo, codigo_comprobante=codigo or ('2' if tipo == 'FV' else '1'),
                                numero_comprobante=str(numero), fecha_elaboracion=date.fromisoformat(fecha), carga_id=carga.id)
         for index, fields in enumerate(lineas, 1):
             values = dict(codigo_contable='13050501', cuenta_contable='Clientes', identificacion='9001',
@@ -132,6 +132,53 @@ class CarteraACTest(unittest.TestCase):
         self.assertEqual(data['cartera_clientes'][0]['saldo'], 0)
         self.assertEqual(data['cartera_clientes'][0]['recaudado'], 0)
         self.assertEqual(data['pagos_clientes'], [])
+
+    def test_cc_ac_cancela_retenciones_consultores_y_respeta_corte(self):
+        tercero = {'identificacion': '900416292', 'nombre_tercero': 'CONSULTORES EN GESTION HUMANA SAS',
+                   'detalle': 'FV-2-3658 Cuota: 1 Fecha: 26/02/2025'}
+        self.documento('FV', 3658, '2025-02-11', [dict(tercero, debito=Decimal('5408000'))])
+        self.documento('RC', 1, '2025-03-19', [dict(tercero, credito=Decimal('5247559'), descripcion='FV-2-3658')])
+        self.documento('CC', 827, '2025-03-19', [
+            dict(tercero, credito=Decimal('108160')),
+            dict(tercero, codigo_contable='13551515', debito=Decimal('108160')),
+            dict(tercero, credito=Decimal('52281')),
+            dict(tercero, codigo_contable='13551805', debito=Decimal('52281')),
+        ], codigo='AC')
+        # Un CC de otro código no debe confundirse con los ajustes CC-AC.
+        self.documento('CC', 1, '2025-03-19', [dict(tercero, credito=Decimal('999'))])
+        antes = self.cartera('2025-03-18')['cartera_clientes'][0]
+        self.assertEqual((antes['saldo'], antes['ajustes_ac']), (5408000, 0))
+        despues = self.cartera('2025-03-19')['cartera_clientes'][0]
+        self.assertEqual((despues['recaudado'], despues['ajustes_ac'], despues['saldo']), (5247559, 160441, 0))
+        with self.app.test_request_context(query_string={'informe': 'vencidas', 'fecha_corte': '2025-03-19'}):
+            informe = contable.cartera_dinamica.__wrapped__().get_json()
+        self.assertEqual(informe['clientes'], [])
+        with self.app.test_request_context(query_string={'tipo': 'AC', 'cliente': '900416292'}):
+            ajustes = contable.consultar_comprobantes.__wrapped__().get_json()['comprobantes']
+        self.assertEqual([(item['tipo'], item['codigo'], item['numero']) for item in ajustes], [('CC', 'AC', '827')])
+
+    def test_reimportar_recupera_cc_ac_omitidos_sin_duplicar(self):
+        libro = load_workbook(BytesIO(self.excel()))
+        for fila in libro.active:
+            if fila[0].value == 'Comprobante: AC-1-1':
+                fila[0].value = 'Comprobante: CC-AC-1'
+        archivo = BytesIO()
+        libro.save(archivo)
+        libro.close()
+        contenido = archivo.getvalue()
+        with patch.object(contable, '_tipo_cartera', side_effect=lambda tipo, codigo: tipo):
+            data, status = self.cargar(contenido)
+        self.assertEqual((status, data['comprobantes']), (200, 2))
+        self.assertEqual(self.cartera()['cartera_clientes'][0]['saldo'], 100)
+        data, status = self.cargar(contenido)
+        self.assertEqual((status, data['comprobantes']), (200, 1))
+        self.assertEqual(SiigoComprobante.query.filter_by(tipo_documento='CC', codigo_comprobante='AC').count(), 1)
+        self.assertEqual(self.cartera()['cartera_clientes'][0]['saldo'], 0)
+        self.assertEqual(SiigoCarga.query.count(), 1)
+        self.assertEqual(SiigoCarga.query.one().registros_omitidos, 0)
+        data, status = self.cargar(contenido)
+        self.assertEqual(status, 400)
+        self.assertEqual(SiigoComprobante.query.count(), 3)
 
     def test_comparativo_coincide_con_cartera_y_corte(self):
         self.factura_y_recibo()

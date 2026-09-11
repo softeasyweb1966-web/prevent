@@ -95,12 +95,20 @@ def _fecha_vencimiento(descripcion):
     return _fecha(match.group(1)) if match else None
 
 
+def _tipo_cartera(tipo, codigo):
+    """SIIGO exporta los ajustes antiguos como CC-AC y los nuevos como AC-1."""
+    return 'AC' if tipo == 'CC' and codigo == 'AC' else tipo
+
+
 def _cancelaciones_cartera(fecha_corte, identificaciones=None):
     """Aplica el movimiento neto de cartera de RC, AC, NC y ND, incluidos reversos."""
     query = db.session.query(SiigoComprobante, SiigoMovimiento).join(SiigoMovimiento).filter(
         SiigoMovimiento.codigo_contable == '13050501',
         SiigoComprobante.fecha_elaboracion <= fecha_corte,
-        SiigoComprobante.tipo_documento.in_(APLICACIONES_CARTERA),
+        or_(
+            SiigoComprobante.tipo_documento.in_(APLICACIONES_CARTERA),
+            (SiigoComprobante.tipo_documento == 'CC') & (SiigoComprobante.codigo_comprobante == 'AC'),
+        ),
         SiigoMovimiento.credito != SiigoMovimiento.debito,
     )
     if identificaciones is not None:
@@ -202,7 +210,7 @@ def _crear_carga(tipo_archivo, nombre_archivo, contenido):
     existente = SiigoCarga.query.filter_by(hash_archivo=digest).first()
     if existente:
         if tipo_archivo == existente.tipo_archivo == 'COMPROBANTES':
-            # Completa tipos antes omitidos (AC); la clave de origen evita duplicados.
+            # Completa tipos antes omitidos (AC y CC-AC); conserva la clave de origen.
             return existente
         raise ValueError(f'Este archivo ya fue cargado el {existente.created_at:%Y-%m-%d %H:%M}.')
     carga = SiigoCarga(
@@ -238,14 +246,15 @@ def _extraer_comprobantes(filas, inicio):
 def _guardar_comprobantes_en_lote(carga, filas, header_row, columns):
     """Evita miles de consultas individuales que pueden agotar el tiempo web."""
     documentos = list(_extraer_comprobantes(filas, header_row + 1))
-    permitidos = [documento for documento in documentos if documento['tipo'] in TIPOS_COMPROBANTE_PERMITIDOS]
+    permitidos = [documento for documento in documentos
+                  if _tipo_cartera(documento['tipo'], documento['codigo']) in TIPOS_COMPROBANTE_PERMITIDOS]
     existentes = {
         (tipo, codigo, numero)
         for tipo, codigo, numero in db.session.query(
             SiigoComprobante.tipo_documento,
             SiigoComprobante.codigo_comprobante,
             SiigoComprobante.numero_comprobante,
-        ).filter(SiigoComprobante.tipo_documento.in_(TIPOS_COMPROBANTE_PERMITIDOS)).all()
+        ).filter(SiigoComprobante.tipo_documento.in_({documento['tipo'] for documento in permitidos})).all()
     }
     imported = movements = 0
     total_debito = total_credito = Decimal('0')
@@ -287,7 +296,7 @@ def _guardar_comprobantes_en_lote(carga, filas, header_row, columns):
         total_credito += document_credito
 
     if not imported:
-        raise ValueError('El archivo no contiene comprobantes nuevos de los tipos FV, RC, NC, ND o AC. No se duplicaron registros.')
+        raise ValueError('El archivo no contiene comprobantes nuevos de los tipos FV, RC, NC, ND, AC o CC-AC. No se duplicaron registros.')
     carga.registros_leidos = len(documentos)
     carga.registros_importados += imported
     carga.registros_omitidos = len(documentos) - carga.registros_importados
@@ -485,7 +494,12 @@ def consultar_comprobantes():
         desde = _texto(request.args.get('desde'))
         hasta = _texto(request.args.get('hasta'))
         cliente = _texto(request.args.get('cliente'))
-        if tipo:
+        if tipo == 'AC':
+            query = query.filter(or_(
+                SiigoComprobante.tipo_documento == 'AC',
+                (SiigoComprobante.tipo_documento == 'CC') & (SiigoComprobante.codigo_comprobante == 'AC'),
+            ))
+        elif tipo:
             query = query.filter_by(tipo_documento=tipo)
         if numero:
             query = query.filter(SiigoComprobante.numero_comprobante.ilike(f'%{numero}%'))
@@ -912,7 +926,7 @@ def cartera_dinamica():
         notas_debito_sin_asignar = Decimal('0')
         movimientos_sin_asignar = []
         for comprobante, movimiento, referencia, valor in _cancelaciones_cartera(fecha_corte):
-            tipo = comprobante.tipo_documento
+            tipo = _tipo_cartera(comprobante.tipo_documento, comprobante.codigo_comprobante)
             item = facturas.get(referencia)
             if not _mismo_tercero_cartera(item, movimiento):
                 if tipo == 'AC':
@@ -925,7 +939,7 @@ def cartera_dinamica():
                 else:
                     pagos_sin_factura += 1
                 movimientos_sin_asignar.append({
-                    'comprobante': f'{tipo}-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}',
+                    'comprobante': f'{comprobante.tipo_documento}-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}',
                     'fecha': comprobante.fecha_elaboracion.isoformat(),
                     'referencia': referencia,
                     'identificacion': movimiento.identificacion,
