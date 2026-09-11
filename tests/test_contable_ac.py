@@ -146,6 +146,83 @@ class CarteraACTest(unittest.TestCase):
             self.assertEqual(data['totales_nuevos']['cartera'], saldo)
             self.assertEqual(data['totales_nuevos']['facturacion'], 1000)
 
+    def test_nc_rc_ac_cancelan_factura_y_reversos_reabren_saldo_al_corte(self):
+        self.factura_y_recibo()
+        self.documento('AC', 1, '2026-02-05', [{'credito': Decimal('30')}])
+        self.documento('NC', 1, '2026-02-06', [
+            {'credito': Decimal('20')},
+            {'codigo_contable': '41350501', 'debito': Decimal('20')},
+        ])
+        self.documento('NC', 2, '2026-02-10', [{'credito': Decimal('50')}])
+        self.documento('NC', 3, '2026-02-20', [{'debito': Decimal('10')}])
+        self.documento('ND', 1, '2026-02-21', [{'debito': Decimal('5')}])
+        self.documento('RC', 2, '2026-02-22', [{'debito': Decimal('5'), 'descripcion': 'Reverso FV-2-1'}])
+        for corte, saldo in [('2026-02-09', 50), ('2026-02-10', 0), ('2026-02-20', 10),
+                             ('2026-02-21', 15), ('2026-02-22', 20)]:
+            with self.subTest(corte=corte):
+                cartera = self.cartera(corte)
+                self.assertEqual(cartera['cartera_clientes'][0]['saldo'], saldo)
+                self.assertEqual(cartera['periodos'][0]['saldo'], saldo)
+                self.assertEqual(cartera['notas_credito_sin_asignar'], 0)
+                with self.app.test_request_context(query_string={'informe': 'vencidas', 'fecha_corte': corte}):
+                    informe = contable.cartera_dinamica.__wrapped__().get_json()
+                self.assertEqual(informe['cantidad_facturas'], int(saldo > 0))
+                self.assertEqual(informe['total_vencido'], saldo)
+                with self.app.test_request_context(query_string={
+                    'periodo_a_desde': '2025-01-01', 'periodo_a_hasta': '2025-12-31',
+                    'periodo_b_desde': '2026-01-01', 'periodo_b_hasta': '2026-01-31',
+                    'fecha_corte_cartera': corte,
+                }):
+                    comparativo = contable.comparativo_clientes.__wrapped__().get_json()
+                self.assertEqual(comparativo['totales_nuevos']['cartera'], saldo)
+        detalle = self.cartera()['cartera_clientes'][0]['facturas'][0]
+        self.assertEqual((detalle['recaudado'], detalle['ajustes_ac'], detalle['notas_credito'], detalle['notas_debito']),
+                         (895, 30, 60, 5))
+
+    def test_movimientos_sin_factura_o_ambiguos_no_se_descuentan(self):
+        self.factura_y_recibo()
+        self.documento('NC', 1, '2026-02-05', [
+            {'credito': Decimal('10'), 'detalle': 'NC-1-1'},
+            {'credito': Decimal('20'), 'identificacion': 'OTRO'},
+            {'credito': Decimal('30'), 'detalle': 'FV-2-999'},
+            {'credito': Decimal('40'), 'detalle': 'FV-2-1 y FV-2-2'},
+        ])
+        data = self.cartera()
+        self.assertEqual(data['cartera_clientes'][0]['saldo'], 100)
+        self.assertEqual(data['notas_credito_sin_asignar'], 100)
+        self.assertEqual(len(data['movimientos_sin_asignar']), 4)
+        with self.app.test_request_context(query_string={
+            'informe': 'vencidas', 'fecha_corte': '2026-02-28', 'formato': 'xlsx',
+        }):
+            response = contable.cartera_dinamica.__wrapped__()
+            response.direct_passthrough = False
+            libro = load_workbook(BytesIO(response.get_data()))
+            self.assertEqual(libro['Por conciliar'].max_row, 5)
+            self.assertEqual(libro['Facturas vencidas']['F4'].value, 100)
+            libro.close()
+            response.close()
+
+    def test_referencia_en_detalle_rc_nit_formateado_y_puntuacion_ac(self):
+        self.documento('FV', 1, '2026-01-01', [{'debito': Decimal('100')}])
+        self.documento('RC', 1, '2026-02-01', [{
+            'debito': Decimal('10'), 'credito': Decimal('80'),
+            'descripcion': 'Clientes nacionales', 'detalle': 'FV-2-1 Cuota: 1',
+        }])
+        self.documento('AC', 1, '2026-02-02', [{
+            'credito': Decimal('30'), 'identificacion': '9.001-2', 'detalle': 'Ajuste (FV-2-1).',
+        }])
+        data = self.cartera()
+        self.assertEqual(data['cartera_clientes'][0]['saldo'], 0)
+        self.assertEqual(data['cartera_clientes'][0]['recaudado'], 70)
+        self.assertEqual(data['ajustes_ac_sin_factura'], 0)
+        with self.app.test_request_context(query_string={
+            'periodo_a_desde': '2025-01-01', 'periodo_a_hasta': '2025-12-31',
+            'periodo_b_desde': '2026-01-01', 'periodo_b_hasta': '2026-01-31',
+            'fecha_corte_cartera': '2026-02-28',
+        }):
+            comparativo = contable.comparativo_clientes.__wrapped__().get_json()
+        self.assertEqual(comparativo['totales_nuevos']['cartera'], 0)
+
     def test_informe_vencidas_cuenta_facturas_y_respeta_saldo_corte_y_vendedor(self):
         vendedor = Vendedor(nombre='Vendedora de prueba')
         cliente = ClienteComercial(nit='9.001-2', razon_social='Cliente prueba', vendedor=vendedor)

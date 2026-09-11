@@ -30,7 +30,8 @@ from app.security import get_permission_names_for_user
 
 TIPOS_COMPROBANTE_PERMITIDOS = {'FV', 'RC', 'NC', 'ND', 'AC'}
 CLASIFICACIONES_REPORTE_VENTAS = {'INGRESO', 'NOTA_CREDITO', 'IVA_GENERADO'}
-REFERENCIA_FACTURA_RE = re.compile(r'\b(FV-\d+-[^\s]+)', re.IGNORECASE)
+REFERENCIA_FACTURA_RE = re.compile(r'\b(FV-\d+-[A-Z0-9]+(?:-[A-Z0-9]+)*)\b', re.IGNORECASE)
+APLICACIONES_CARTERA = {'RC': 'recaudado', 'AC': 'ajustes_ac', 'NC': 'notas_credito', 'ND': 'notas_debito'}
 FECHA_REFERENCIA_RE = re.compile(r'(?:fecha|date):\s*(\d{2}/\d{2}/\d{4})', re.IGNORECASE)
 
 
@@ -85,8 +86,8 @@ def _fecha(value):
 
 
 def _referencia_factura(descripcion):
-    match = REFERENCIA_FACTURA_RE.search(_texto(descripcion))
-    return match.group(1).upper() if match else None
+    referencias = {match.upper() for match in REFERENCIA_FACTURA_RE.findall(_texto(descripcion))}
+    return next(iter(referencias)) if len(referencias) == 1 else None
 
 
 def _fecha_vencimiento(descripcion):
@@ -95,31 +96,37 @@ def _fecha_vencimiento(descripcion):
 
 
 def _cancelaciones_cartera(fecha_corte, identificaciones=None):
-    """Solo aplica la contrapartida de cartera, sin duplicar las retenciones del AC."""
+    """Aplica el movimiento neto de cartera de RC, AC, NC y ND, incluidos reversos."""
     query = db.session.query(SiigoComprobante, SiigoMovimiento).join(SiigoMovimiento).filter(
         SiigoMovimiento.codigo_contable == '13050501',
         SiigoComprobante.fecha_elaboracion <= fecha_corte,
-        or_(
-            (SiigoComprobante.tipo_documento == 'RC') & (SiigoMovimiento.credito > 0),
-            (SiigoComprobante.tipo_documento == 'AC') & (SiigoMovimiento.credito != SiigoMovimiento.debito),
-        ),
+        SiigoComprobante.tipo_documento.in_(APLICACIONES_CARTERA),
+        SiigoMovimiento.credito != SiigoMovimiento.debito,
     )
     if identificaciones is not None:
-        query = query.filter(SiigoMovimiento.identificacion.in_(identificaciones))
+        identificacion_normalizada = func.upper(func.regexp_replace(
+            func.split_part(func.coalesce(SiigoMovimiento.identificacion, ''), '-', 1),
+            r'[.\s]', '', 'g',
+        ))
+        query = query.filter(identificacion_normalizada.in_({_nit_cartera(valor) for valor in identificaciones}))
     for comprobante, movimiento in query.all():
-        es_ajuste = comprobante.tipo_documento == 'AC'
-        referencia = (
-            _referencia_factura(movimiento.detalle) or _referencia_factura(movimiento.descripcion)
-            if es_ajuste else _referencia_factura(movimiento.descripcion)
+        # SIIGO coloca la factura en Descripción para RC y en Detalle para AC/NC/ND.
+        campos = (
+            (movimiento.descripcion, movimiento.detalle) if comprobante.tipo_documento == 'RC'
+            else (movimiento.detalle, movimiento.descripcion)
         )
-        valor = movimiento.credito - movimiento.debito if es_ajuste else movimiento.credito
+        referencia = (
+            _referencia_factura(campos[0])
+            if REFERENCIA_FACTURA_RE.search(_texto(campos[0])) else _referencia_factura(campos[1])
+        )
+        valor = movimiento.credito - movimiento.debito
         yield comprobante, movimiento, referencia, valor
 
 
 def _mismo_tercero_cartera(factura, movimiento):
     return factura is not None and (
         not factura['identificacion'] or not movimiento.identificacion
-        or factura['identificacion'] == movimiento.identificacion
+        or _nit_cartera(factura['identificacion']) == _nit_cartera(movimiento.identificacion)
     )
 
 
@@ -547,7 +554,7 @@ def comparativo_clientes():
                 SiigoMovimiento.codigo_contable == '13050501',
                 SiigoMovimiento.identificacion.in_(identificaciones),
                 SiigoComprobante.fecha_elaboracion <= fecha_corte_cartera,
-                SiigoMovimiento.debito > 0,
+                SiigoMovimiento.debito != SiigoMovimiento.credito,
             ).all()
             for comprobante, movimiento in filas_factura:
                 referencia = _referencia_factura(movimiento.detalle) or f'FV-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}'
@@ -787,7 +794,7 @@ def _clientes_facturas_vencidas(cartera_clientes, vendedores):
     return resultado
 
 
-def _excel_facturas_vencidas(clientes, fecha_corte):
+def _excel_facturas_vencidas(clientes, fecha_corte, movimientos_sin_asignar=None):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
     from openpyxl.utils import get_column_letter
@@ -799,7 +806,8 @@ def _excel_facturas_vencidas(clientes, fecha_corte):
     hoja = libro.active
     hoja.title = 'Facturas vencidas'
     hoja.append([f'Facturas vencidas al {fecha_corte.isoformat()}'])
-    hoja.append(['Valor = saldo pendiente. Orden: cantidad vencida, luego total vencido. '
+    hoja.append(['Valor = facturado - recibos RC - ajustes AC - notas crédito + notas débito, a la fecha de corte. '
+                 'Solo facturas vencidas con saldo mayor que cero. Orden: cantidad vencida, luego total vencido. '
                  'Sin vencimiento SIIGO se usa la fecha de factura. Vendedor actual de la ficha comercial.'])
     encabezados = ['Vendedor', 'Cliente', 'Cantidad facturas']
     for indice in range(1, cantidad + 1):
@@ -823,6 +831,21 @@ def _excel_facturas_vencidas(clientes, fecha_corte):
     hoja.column_dimensions['B'].width = 45
     hoja.freeze_panes = 'D4'
     hoja.auto_filter.ref = f'A3:{get_column_letter(len(encabezados))}{hoja.max_row}'
+    if movimientos_sin_asignar:
+        pendientes = libro.create_sheet('Por conciliar')
+        pendientes.append(['Comprobante', 'Fecha', 'Identificación', 'Factura', 'Valor sin aplicar', 'Motivo'])
+        for movimiento in movimientos_sin_asignar:
+            pendientes.append([movimiento[clave] for clave in (
+                'comprobante', 'fecha', 'identificacion', 'referencia', 'valor', 'motivo',
+            )])
+            for celda in pendientes[pendientes.max_row]:
+                if isinstance(celda.value, str):
+                    celda.data_type = 's'
+            pendientes.cell(pendientes.max_row, 5).number_format = '#,##0.00'
+        pendientes.freeze_panes = 'A2'
+        pendientes.auto_filter.ref = pendientes.dimensions
+        for columna in 'ABCDEF':
+            pendientes.column_dimensions[columna].width = 28 if columna != 'F' else 50
     archivo = BytesIO()
     libro.save(archivo)
     libro.close()
@@ -850,7 +873,7 @@ def cartera_dinamica():
             SiigoComprobante.tipo_documento == 'FV',
             SiigoMovimiento.codigo_contable == '13050501',
             SiigoComprobante.fecha_elaboracion <= fecha_corte,
-            SiigoMovimiento.debito > 0,
+            SiigoMovimiento.debito != SiigoMovimiento.credito,
         )
         if desde:
             consulta_facturas = consulta_facturas.filter(SiigoComprobante.fecha_elaboracion >= desde)
@@ -874,6 +897,8 @@ def cartera_dinamica():
                 'valor_factura': Decimal('0'),
                 'recaudado': Decimal('0'),
                 'ajustes_ac': Decimal('0'),
+                'notas_credito': Decimal('0'),
+                'notas_debito': Decimal('0'),
                 'pagos': [],
                 'cancelaciones': [],
             })
@@ -883,46 +908,56 @@ def cartera_dinamica():
         pagos_sin_factura = 0
         ajustes_ac_sin_factura = 0
         valor_ac_sin_factura = Decimal('0')
+        notas_credito_sin_asignar = Decimal('0')
+        notas_debito_sin_asignar = Decimal('0')
+        movimientos_sin_asignar = []
         for comprobante, movimiento, referencia, valor in _cancelaciones_cartera(fecha_corte):
-            es_ajuste = comprobante.tipo_documento == 'AC'
+            tipo = comprobante.tipo_documento
             item = facturas.get(referencia)
             if not _mismo_tercero_cartera(item, movimiento):
-                if es_ajuste:
+                if tipo == 'AC':
                     ajustes_ac_sin_factura += 1
                     valor_ac_sin_factura += valor
+                elif tipo == 'NC':
+                    notas_credito_sin_asignar += valor
+                elif tipo == 'ND':
+                    notas_debito_sin_asignar -= valor
                 else:
                     pagos_sin_factura += 1
+                movimientos_sin_asignar.append({
+                    'comprobante': f'{tipo}-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}',
+                    'fecha': comprobante.fecha_elaboracion.isoformat(),
+                    'referencia': referencia,
+                    'identificacion': movimiento.identificacion,
+                    'valor': float(valor),
+                    'motivo': 'Sin referencia única a factura' if not referencia else (
+                        'Factura no incluida en la consulta' if item is None else 'El tercero no coincide'),
+                })
                 continue
-            item['ajustes_ac' if es_ajuste else 'recaudado'] += valor
+            item[APLICACIONES_CARTERA[tipo]] += -valor if tipo == 'ND' else valor
             cancelacion = {'fecha': comprobante.fecha_elaboracion, 'valor': valor}
             item['cancelaciones'].append(cancelacion)
-            if not es_ajuste:
+            if tipo == 'RC':
                 item['pagos'].append(cancelacion)
-
-        notas_credito_sin_asignar = db.session.query(
-            func.coalesce(func.sum(SiigoMovimiento.credito - SiigoMovimiento.debito), 0)
-        ).join(SiigoComprobante).filter(
-            SiigoComprobante.tipo_documento == 'NC',
-            SiigoMovimiento.codigo_contable == '13050501',
-            SiigoComprobante.fecha_elaboracion <= fecha_corte,
-        ).scalar()
 
         periodos = {}
         cartera_por_cliente = {}
         pagos_completos = []
         for item in facturas.values():
-            saldo = max(item['valor_factura'] - item['recaudado'] - item['ajustes_ac'], Decimal('0'))
+            saldo = max(item['valor_factura'] - item['recaudado'] - item['ajustes_ac'] - item['notas_credito'] + item['notas_debito'], Decimal('0'))
             vencimiento = item['fecha_vencimiento'] or item['fecha_factura']
             dias_vencido = (fecha_corte - vencimiento).days
             periodo = item['fecha_factura'].strftime('%Y-%m')
             resumen = periodos.setdefault(periodo, {
-                'periodo': periodo, 'facturado': Decimal('0'), 'recaudado': Decimal('0'), 'ajustes_ac': Decimal('0'), 'saldo': Decimal('0'),
+                'periodo': periodo, 'facturado': Decimal('0'), 'recaudado': Decimal('0'), 'ajustes_ac': Decimal('0'), 'notas_credito': Decimal('0'), 'notas_debito': Decimal('0'), 'saldo': Decimal('0'),
                 'por_vencer': Decimal('0'), 'vencido_1_30': Decimal('0'), 'vencido_31_60': Decimal('0'),
                 'vencido_61_90': Decimal('0'), 'vencido_91_mas': Decimal('0'), 'documentos': 0,
             })
             resumen['facturado'] += item['valor_factura']
             resumen['recaudado'] += item['recaudado']
             resumen['ajustes_ac'] += item['ajustes_ac']
+            resumen['notas_credito'] += item['notas_credito']
+            resumen['notas_debito'] += item['notas_debito']
             resumen['saldo'] += saldo
             resumen['documentos'] += 1
             if dias_vencido <= 0:
@@ -944,6 +979,8 @@ def cartera_dinamica():
                 'facturado': Decimal('0'),
                 'recaudado': Decimal('0'),
                 'ajustes_ac': Decimal('0'),
+                'notas_credito': Decimal('0'),
+                'notas_debito': Decimal('0'),
                 'saldo': Decimal('0'),
                 'por_vencer': Decimal('0'),
                 'vencido_1_30': Decimal('0'),
@@ -955,6 +992,8 @@ def cartera_dinamica():
             resumen_cliente['facturado'] += item['valor_factura']
             resumen_cliente['recaudado'] += item['recaudado']
             resumen_cliente['ajustes_ac'] += item['ajustes_ac']
+            resumen_cliente['notas_credito'] += item['notas_credito']
+            resumen_cliente['notas_debito'] += item['notas_debito']
             resumen_cliente['saldo'] += saldo
             if dias_vencido <= 0:
                 resumen_cliente['por_vencer'] += saldo
@@ -973,6 +1012,8 @@ def cartera_dinamica():
                 'facturado': item['valor_factura'],
                 'recaudado': item['recaudado'],
                 'ajustes_ac': item['ajustes_ac'],
+                'notas_credito': item['notas_credito'],
+                'notas_debito': item['notas_debito'],
                 'saldo': saldo,
                 'dias_vencido': dias_vencido,
             })
@@ -1037,7 +1078,7 @@ def cartera_dinamica():
             }
             clientes = _clientes_facturas_vencidas(cartera_por_cliente.values(), vendedores)
             if request.args.get('formato') == 'xlsx':
-                return _excel_facturas_vencidas(clientes, fecha_corte)
+                return _excel_facturas_vencidas(clientes, fecha_corte, movimientos_sin_asignar)
             return jsonify({
                 'fecha_corte': fecha_corte.isoformat(),
                 'clientes': [dict(cliente, total_vencido=float(cliente['total_vencido']),
@@ -1046,6 +1087,8 @@ def cartera_dinamica():
                 'cantidad_facturas': sum(cliente['cantidad_facturas'] for cliente in clientes),
                 'total_vencido': float(sum((cliente['total_vencido'] for cliente in clientes), Decimal('0'))),
                 'notas_credito_sin_asignar': float(notas_credito_sin_asignar or 0),
+                'notas_debito_sin_asignar': float(notas_debito_sin_asignar),
+                'movimientos_sin_asignar': movimientos_sin_asignar,
                 'pagos_sin_factura': pagos_sin_factura,
                 'ajustes_ac_sin_factura': ajustes_ac_sin_factura,
             })
@@ -1062,6 +1105,8 @@ def cartera_dinamica():
             'ajustes_ac_sin_factura': ajustes_ac_sin_factura,
             'valor_ac_sin_factura': float(valor_ac_sin_factura),
             'notas_credito_sin_asignar': float(notas_credito_sin_asignar or 0),
+            'notas_debito_sin_asignar': float(notas_debito_sin_asignar),
+            'movimientos_sin_asignar': movimientos_sin_asignar,
             'facturas': len(facturas),
         })
     except (ValueError, PermissionError) as exc:
