@@ -25,7 +25,7 @@ from app.routes import contable_bp
 from app.security import get_permission_names_for_user
 
 
-TIPOS_COMPROBANTE_PERMITIDOS = {'FV', 'RC', 'NC', 'ND'}
+TIPOS_COMPROBANTE_PERMITIDOS = {'FV', 'RC', 'NC', 'ND', 'AC'}
 CLASIFICACIONES_REPORTE_VENTAS = {'INGRESO', 'NOTA_CREDITO', 'IVA_GENERADO'}
 REFERENCIA_FACTURA_RE = re.compile(r'\b(FV-\d+-[^\s]+)', re.IGNORECASE)
 FECHA_REFERENCIA_RE = re.compile(r'(?:fecha|date):\s*(\d{2}/\d{2}/\d{4})', re.IGNORECASE)
@@ -89,6 +89,35 @@ def _referencia_factura(descripcion):
 def _fecha_vencimiento(descripcion):
     match = FECHA_REFERENCIA_RE.search(_texto(descripcion))
     return _fecha(match.group(1)) if match else None
+
+
+def _cancelaciones_cartera(fecha_corte, identificaciones=None):
+    """Solo aplica la contrapartida de cartera, sin duplicar las retenciones del AC."""
+    query = db.session.query(SiigoComprobante, SiigoMovimiento).join(SiigoMovimiento).filter(
+        SiigoMovimiento.codigo_contable == '13050501',
+        SiigoComprobante.fecha_elaboracion <= fecha_corte,
+        or_(
+            (SiigoComprobante.tipo_documento == 'RC') & (SiigoMovimiento.credito > 0),
+            (SiigoComprobante.tipo_documento == 'AC') & (SiigoMovimiento.credito != SiigoMovimiento.debito),
+        ),
+    )
+    if identificaciones is not None:
+        query = query.filter(SiigoMovimiento.identificacion.in_(identificaciones))
+    for comprobante, movimiento in query.all():
+        es_ajuste = comprobante.tipo_documento == 'AC'
+        referencia = (
+            _referencia_factura(movimiento.detalle) or _referencia_factura(movimiento.descripcion)
+            if es_ajuste else _referencia_factura(movimiento.descripcion)
+        )
+        valor = movimiento.credito - movimiento.debito if es_ajuste else movimiento.credito
+        yield comprobante, movimiento, referencia, valor
+
+
+def _mismo_tercero_cartera(factura, movimiento):
+    return factura is not None and (
+        not factura['identificacion'] or not movimiento.identificacion
+        or factura['identificacion'] == movimiento.identificacion
+    )
 
 
 def _estado_actualizacion_comprobantes():
@@ -162,6 +191,9 @@ def _crear_carga(tipo_archivo, nombre_archivo, contenido):
     digest = sha256(contenido).hexdigest()
     existente = SiigoCarga.query.filter_by(hash_archivo=digest).first()
     if existente:
+        if tipo_archivo == existente.tipo_archivo == 'COMPROBANTES':
+            # Completa tipos antes omitidos (AC); la clave de origen evita duplicados.
+            return existente
         raise ValueError(f'Este archivo ya fue cargado el {existente.created_at:%Y-%m-%d %H:%M}.')
     carga = SiigoCarga(
         tipo_archivo=tipo_archivo,
@@ -244,13 +276,15 @@ def _guardar_comprobantes_en_lote(carga, filas, header_row, columns):
         total_debito += document_debito
         total_credito += document_credito
 
+    if not imported:
+        raise ValueError('El archivo no contiene comprobantes nuevos de los tipos FV, RC, NC, ND o AC. No se duplicaron registros.')
     carga.registros_leidos = len(documentos)
-    carga.registros_importados = imported
-    carga.registros_omitidos = len(documentos) - imported
-    carga.total_debito = total_debito
-    carga.total_credito = total_credito
+    carga.registros_importados += imported
+    carga.registros_omitidos = len(documentos) - carga.registros_importados
+    carga.total_debito += total_debito
+    carga.total_credito += total_credito
     db.session.commit()
-    return jsonify({'mensaje': 'Comprobantes cargados correctamente.', 'comprobantes': imported, 'movimientos': movements, 'omitidos': carga.registros_omitidos})
+    return jsonify({'mensaje': 'Comprobantes cargados correctamente.', 'comprobantes': imported, 'movimientos': movements, 'omitidos': len(documentos) - imported})
 
 
 @contable_bp.route('/resumen', methods=['GET'])
@@ -391,87 +425,6 @@ def cargar_comprobantes():
         carga = _crear_carga('COMPROBANTES', nombre_archivo, contenido)
         return _guardar_comprobantes_en_lote(carga, filas, header_row, columns)
 
-        current = None
-        imported = omitted = movements = 0
-        total_debito = total_credito = Decimal('0')
-
-        for row_index, fila in enumerate(filas[header_row + 1:], start=header_row + 1):
-            first = _texto(fila[0] if fila else None)
-            if first.startswith('Comprobante:'):
-                match = re.match(r'^Comprobante:\s*([^-\s]+)-([^-\s]+)-(.+?)\s*$', first)
-                if not match:
-                    raise ValueError(f'Formato de comprobante no reconocido: {first}')
-                tipo, codigo, numero = (group.strip() for group in match.groups())
-                current = {'tipo': tipo, 'codigo': codigo, 'numero': numero, 'lines': []}
-                continue
-
-            if not isinstance(fila[0] if fila else None, (int, float)):
-                continue
-            if current is None:
-                raise ValueError('Se encontró una secuencia sin comprobante asociado.')
-            current['lines'].append(fila)
-
-            # El bloque se procesa al encontrar el siguiente encabezado o al final.
-            # Una secuencia termina cuando la siguiente fila deja de ser numérica.
-            # SIIGO puede insertar una fila vacía o un pie de página al final del archivo.
-            next_row = filas[row_index + 1] if row_index + 1 < len(filas) else None
-            if next_row is not None and isinstance(next_row[0] if next_row else None, (int, float)):
-                continue
-            if current['tipo'] not in TIPOS_COMPROBANTE_PERMITIDOS:
-                omitted += 1
-                current = None
-                continue
-
-            existing = SiigoComprobante.query.filter_by(
-                tipo_documento=current['tipo'],
-                codigo_comprobante=current['codigo'],
-                numero_comprobante=current['numero'],
-            ).first()
-            if existing:
-                omitted += 1
-                current = None
-                continue
-
-            fecha = _fecha(_valor(current['lines'][0], columns, 'Fecha elaboración'))
-            document_debito = sum((_decimal(_valor(line, columns, 'Débito')) for line in current['lines']), Decimal('0'))
-            document_credito = sum((_decimal(_valor(line, columns, 'Crédito')) for line in current['lines']), Decimal('0'))
-            if document_debito.quantize(Decimal('0.01')) != document_credito.quantize(Decimal('0.01')):
-                raise ValueError(f"El comprobante {first} no cuadra: débito {document_debito} / crédito {document_credito}.")
-
-            comprobante = SiigoComprobante(
-                tipo_documento=current['tipo'], codigo_comprobante=current['codigo'], numero_comprobante=current['numero'],
-                fecha_elaboracion=fecha, total_debito=document_debito, total_credito=document_credito, carga_id=carga.id,
-            )
-            db.session.add(comprobante)
-            db.session.flush()
-            for line in current['lines']:
-                db.session.add(SiigoMovimiento(
-                    comprobante_id=comprobante.id,
-                    secuencia=int(_valor(line, columns, 'Secuencia')),
-                    codigo_contable=_texto(_valor(line, columns, 'Código contable')),
-                    cuenta_contable=_texto(_valor(line, columns, 'Cuenta contable')),
-                    identificacion=_texto(_valor(line, columns, 'Identificación')) or None,
-                    sucursal=_texto(_valor(line, columns, 'Sucursal')) or None,
-                    nombre_tercero=_texto(_valor(line, columns, 'Nombre tercero')) or None,
-                    descripcion=_texto(_valor(line, columns, 'Descripción')) or None,
-                    detalle=_texto(_valor(line, columns, 'Detalle')) or None,
-                    centro_costo=_texto(_valor(line, columns, 'Centro de costo')) or None,
-                    debito=_decimal(_valor(line, columns, 'Débito')),
-                    credito=_decimal(_valor(line, columns, 'Crédito')),
-                ))
-                movements += 1
-            imported += 1
-            total_debito += document_debito
-            total_credito += document_credito
-            current = None
-
-        carga.registros_leidos = imported + omitted
-        carga.registros_importados = imported
-        carga.registros_omitidos = omitted
-        carga.total_debito = total_debito
-        carga.total_credito = total_credito
-        db.session.commit()
-        return jsonify({'mensaje': 'Comprobantes cargados correctamente.', 'comprobantes': imported, 'movimientos': movements, 'omitidos': omitted})
     except (ValueError, PermissionError) as exc:
         db.session.rollback()
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
@@ -602,20 +555,12 @@ def comparativo_clientes():
                 })
                 factura['valor'] += movimiento.debito - movimiento.credito
 
-            filas_pago = db.session.query(SiigoComprobante, SiigoMovimiento).join(SiigoMovimiento).filter(
-                SiigoComprobante.tipo_documento == 'RC',
-                SiigoMovimiento.codigo_contable == '13050501',
-                SiigoMovimiento.identificacion.in_(identificaciones),
-                SiigoComprobante.fecha_elaboracion <= fecha_corte_cartera,
-                SiigoMovimiento.credito > 0,
-            ).all()
-            for comprobante, movimiento in filas_pago:
-                referencia = _referencia_factura(movimiento.descripcion)
+            for comprobante, movimiento, referencia, valor in _cancelaciones_cartera(fecha_corte_cartera, identificaciones):
                 factura = facturas_cartera.get(referencia)
-                if factura is None:
-                    pagos_sin_factura[movimiento.identificacion] = pagos_sin_factura.get(movimiento.identificacion, Decimal('0')) + movimiento.credito
+                if not _mismo_tercero_cartera(factura, movimiento):
+                    pagos_sin_factura[movimiento.identificacion] = pagos_sin_factura.get(movimiento.identificacion, Decimal('0')) + valor
                 else:
-                    factura['pagado'] += movimiento.credito
+                    factura['pagado'] += valor
 
         def totales(items):
             identificaciones_grupo = {item['identificacion'] for item in items}
@@ -768,27 +713,31 @@ def cartera_dinamica():
                 'fecha_vencimiento': _fecha_vencimiento(movimiento.detalle),
                 'valor_factura': Decimal('0'),
                 'recaudado': Decimal('0'),
+                'ajustes_ac': Decimal('0'),
                 'pagos': [],
+                'cancelaciones': [],
             })
             item['valor_factura'] += movimiento.debito - movimiento.credito
             item['fecha_vencimiento'] = item['fecha_vencimiento'] or _fecha_vencimiento(movimiento.detalle)
 
         pagos_sin_factura = 0
-        lineas_pago = db.session.query(SiigoComprobante, SiigoMovimiento).join(SiigoMovimiento).filter(
-            SiigoComprobante.tipo_documento == 'RC',
-            SiigoMovimiento.codigo_contable == '13050501',
-            SiigoComprobante.fecha_elaboracion <= fecha_corte,
-            SiigoMovimiento.credito > 0,
-        ).all()
-        for comprobante, movimiento in lineas_pago:
-            referencia = _referencia_factura(movimiento.descripcion)
-            if referencia not in facturas:
-                pagos_sin_factura += 1
+        ajustes_ac_sin_factura = 0
+        valor_ac_sin_factura = Decimal('0')
+        for comprobante, movimiento, referencia, valor in _cancelaciones_cartera(fecha_corte):
+            es_ajuste = comprobante.tipo_documento == 'AC'
+            item = facturas.get(referencia)
+            if not _mismo_tercero_cartera(item, movimiento):
+                if es_ajuste:
+                    ajustes_ac_sin_factura += 1
+                    valor_ac_sin_factura += valor
+                else:
+                    pagos_sin_factura += 1
                 continue
-            item = facturas[referencia]
-            valor = movimiento.credito
-            item['recaudado'] += valor
-            item['pagos'].append({'fecha': comprobante.fecha_elaboracion, 'valor': valor})
+            item['ajustes_ac' if es_ajuste else 'recaudado'] += valor
+            cancelacion = {'fecha': comprobante.fecha_elaboracion, 'valor': valor}
+            item['cancelaciones'].append(cancelacion)
+            if not es_ajuste:
+                item['pagos'].append(cancelacion)
 
         notas_credito_sin_asignar = db.session.query(
             func.coalesce(func.sum(SiigoMovimiento.credito - SiigoMovimiento.debito), 0)
@@ -802,17 +751,18 @@ def cartera_dinamica():
         cartera_por_cliente = {}
         pagos_completos = []
         for item in facturas.values():
-            saldo = max(item['valor_factura'] - item['recaudado'], Decimal('0'))
+            saldo = max(item['valor_factura'] - item['recaudado'] - item['ajustes_ac'], Decimal('0'))
             vencimiento = item['fecha_vencimiento'] or item['fecha_factura']
             dias_vencido = (fecha_corte - vencimiento).days
             periodo = item['fecha_factura'].strftime('%Y-%m')
             resumen = periodos.setdefault(periodo, {
-                'periodo': periodo, 'facturado': Decimal('0'), 'recaudado': Decimal('0'), 'saldo': Decimal('0'),
+                'periodo': periodo, 'facturado': Decimal('0'), 'recaudado': Decimal('0'), 'ajustes_ac': Decimal('0'), 'saldo': Decimal('0'),
                 'por_vencer': Decimal('0'), 'vencido_1_30': Decimal('0'), 'vencido_31_60': Decimal('0'),
                 'vencido_61_90': Decimal('0'), 'vencido_91_mas': Decimal('0'), 'documentos': 0,
             })
             resumen['facturado'] += item['valor_factura']
             resumen['recaudado'] += item['recaudado']
+            resumen['ajustes_ac'] += item['ajustes_ac']
             resumen['saldo'] += saldo
             resumen['documentos'] += 1
             if dias_vencido <= 0:
@@ -833,6 +783,7 @@ def cartera_dinamica():
                 'cliente': cliente_nombre,
                 'facturado': Decimal('0'),
                 'recaudado': Decimal('0'),
+                'ajustes_ac': Decimal('0'),
                 'saldo': Decimal('0'),
                 'por_vencer': Decimal('0'),
                 'vencido_1_30': Decimal('0'),
@@ -843,6 +794,7 @@ def cartera_dinamica():
             })
             resumen_cliente['facturado'] += item['valor_factura']
             resumen_cliente['recaudado'] += item['recaudado']
+            resumen_cliente['ajustes_ac'] += item['ajustes_ac']
             resumen_cliente['saldo'] += saldo
             if dias_vencido <= 0:
                 resumen_cliente['por_vencer'] += saldo
@@ -860,12 +812,13 @@ def cartera_dinamica():
                 'fecha_vencimiento': vencimiento.isoformat(),
                 'facturado': item['valor_factura'],
                 'recaudado': item['recaudado'],
+                'ajustes_ac': item['ajustes_ac'],
                 'saldo': saldo,
                 'dias_vencido': dias_vencido,
             })
 
             if saldo == 0 and item['pagos']:
-                fecha_pago_total = max(pago['fecha'] for pago in item['pagos'])
+                fecha_pago_total = max(pago['fecha'] for pago in item['cancelaciones'])
                 pagos_completos.append({
                     'referencia': item['referencia'], 'cliente': item['cliente'],
                     'identificacion': item['identificacion'],
@@ -919,6 +872,8 @@ def cartera_dinamica():
             'cartera_clientes': serializar_cartera_clientes(),
             'pagos_clientes': analisis_pagos,
             'pagos_sin_factura': pagos_sin_factura,
+            'ajustes_ac_sin_factura': ajustes_ac_sin_factura,
+            'valor_ac_sin_factura': float(valor_ac_sin_factura),
             'notas_credito_sin_asignar': float(notas_credito_sin_asignar or 0),
             'facturas': len(facturas),
         })
