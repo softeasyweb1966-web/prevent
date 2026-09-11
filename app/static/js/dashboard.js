@@ -867,6 +867,10 @@ function switchModule(moduleName) {
     }
 
     markSidebarModuleActive(moduleName, '');
+    if (moduleName !== 'ventas' && typeof mostrarFiltrosVencidasSiigo === 'function') {
+        mostrarFiltrosVencidasSiigo();
+        actualizarModoCarteraSiigo(false);
+    }
 
     // Hide all views
     const views = document.querySelectorAll('.module-view');

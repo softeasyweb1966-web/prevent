@@ -345,7 +345,7 @@ def resumen():
             'comprobantes': SiigoComprobante.query.count(),
             'movimientos': SiigoMovimiento.query.count(),
             'vigencia_comprobantes': _estado_actualizacion_comprobantes(),
-            'cargas': SiigoCarga.query.order_by(SiigoCarga.created_at.desc()).limit(8).all() and [
+            'cargas': [
                 {
                     'tipo': carga.tipo_archivo,
                     'archivo': carga.nombre_archivo,
@@ -353,7 +353,7 @@ def resumen():
                     'importados': carga.registros_importados,
                     'omitidos': carga.registros_omitidos,
                 }
-                for carga in SiigoCarga.query.order_by(SiigoCarga.created_at.desc()).limit(8).all()
+                for carga in SiigoCarga.query.order_by(SiigoCarga.created_at.desc(), SiigoCarga.id.desc()).limit(1).all()
             ],
         })
     except PermissionError as exc:
@@ -464,7 +464,7 @@ def cargar_comprobantes():
         except ValueError as exc:
             raise ValueError(
                 'No se reconoce el formato del archivo. Para cargar comprobantes, '
-                'en el menú principal de SIIGO busque Comprobantes detallados, '
+                'en SIIGO vaya a Reportes - Versiones anteriores reportes - Comprobantes detallados, use Agrupar, '
                 'seleccione el período que desea actualizar y exporte el informe a Excel (.xlsx). '
                 'El informe Consecutivo de comprobantes no contiene el detalle requerido. '
                 f'Detalle de validación: {exc}'
