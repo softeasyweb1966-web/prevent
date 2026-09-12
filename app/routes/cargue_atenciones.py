@@ -37,6 +37,7 @@ from app.models import (
 )
 from app.routes import comercial_bp
 from app.security import get_permission_names_for_user
+from app.clientes_scope import filtrar_cliente, exigir_cliente
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +265,8 @@ _VALORES_EMPRESA_GENERICOS = {
 
 
 def _is_admin_user():
-    return bool(getattr(current_user, 'is_easy', False)) or getattr(getattr(current_user, 'role', None), 'nombre', None) == 'Administrador'
+    from app.clientes_scope import es_administrador
+    return es_administrador()
 
 
 def _get_current_permission_names():
@@ -520,39 +522,21 @@ def _extraer_registros_excel(filas):
 
 
 def _resolver_vendedor_usuario_actual():
-    if _is_admin_user():
-        return None
-
-    normalized_candidates = [
-        _normalizar_match(getattr(current_user, 'email', None)),
-        _normalizar_match(getattr(current_user, 'usuario', None)),
-        _normalizar_match(getattr(current_user, 'nombre_completo', None)),
-    ]
-    normalized_candidates = [value for value in normalized_candidates if value]
-    if not normalized_candidates:
-        return None
-
-    vendedores = Vendedor.query.all()
-    for vendedor in vendedores:
-        vendor_candidates = {
-            _normalizar_match(vendedor.nombre),
-            _normalizar_match(vendedor.email),
-            _normalizar_match(vendedor.documento),
-        }
-        vendor_candidates.discard('')
-        if any(candidate in vendor_candidates for candidate in normalized_candidates):
-            return vendedor
-    return None
+    from app.clientes_scope import vendedor_actual
+    return vendedor_actual()
 
 
 def _construir_lookup_clientes():
     lookup = {}
     clientes = ClienteComercial.query.all()
     for cliente in clientes:
-        for value in (cliente.razon_social, cliente.nombre_comercial, cliente.nit):
+        for value in (cliente.razon_social, cliente.nombre_comercial, cliente.nit, *(cliente.nombres_alternativos or [])):
             normalized = _normalizar_match(value)
-            if normalized and normalized not in lookup:
-                lookup[normalized] = cliente
+            if normalized:
+                if normalized in lookup and lookup[normalized] != cliente:
+                    lookup[normalized] = None  # Coincidencia ambigua: requiere revisión.
+                else:
+                    lookup[normalized] = cliente
     return lookup
 
 
@@ -602,8 +586,19 @@ def _scope_descriptor(vendedor):
     return 'vendedor'
 
 
+def _condicion_scope_atenciones(vendedor_scope):
+    if vendedor_scope is None:
+        return AtencionDiaDetalle.id == -1
+    clientes = ClienteComercial.query.with_entities(ClienteComercial.id).filter_by(vendedor_id=vendedor_scope.id)
+    return or_(AtencionDiaDetalle.cliente_id.in_(clientes),
+               and_(AtencionDiaDetalle.cliente_id.is_(None), AtencionDiaDetalle.vendedor_id == vendedor_scope.id))
+
+
 def _asegurar_acceso_registro_atencion(registro, vendedor_scope):
     if _is_admin_user():
+        return
+    if registro.cliente_id is not None:
+        exigir_cliente(registro.cliente_id)
         return
     if vendedor_scope is None or registro.vendedor_id != vendedor_scope.id:
         raise PermissionError('No tienes permiso para acceder a esta atencion comercial')
@@ -613,10 +608,13 @@ def _construir_lookup_clientes_visibles(vendedor_scope):
     lookup = {}
     clientes = _clientes_visibles_query(vendedor_scope).all()
     for cliente in clientes:
-        for value in (cliente.razon_social, cliente.nombre_comercial, cliente.nit):
+        for value in (cliente.razon_social, cliente.nombre_comercial, cliente.nit, *(cliente.nombres_alternativos or [])):
             normalized = _normalizar_match(value)
-            if normalized and normalized not in lookup:
-                lookup[normalized] = cliente
+            if normalized:
+                if normalized in lookup and lookup[normalized] != cliente:
+                    lookup[normalized] = None  # Coincidencia ambigua: requiere revisión.
+                else:
+                    lookup[normalized] = cliente
     return lookup
 
 
@@ -1136,7 +1134,8 @@ def historial_cargues_atenciones():
             from cargue_atenciones_dia c
             join atenciones_dia_detalle d on d.cargue_id = c.id
             left join usuarios u on u.id = c.usuario_id
-            where d.vendedor_id = :vendedor_id
+            where (d.cliente_id in (select id from clientes_comerciales where vendedor_id = :vendedor_id)
+                   or (d.cliente_id is null and d.vendedor_id = :vendedor_id))
             group by c.id, c.nombre_archivo, c.created_at, u.usuario
             order by c.created_at desc
             limit 20
@@ -1172,7 +1171,7 @@ def historial_cargues_atenciones():
     cargues = (
         db.session.query(CargueAtencionDia)
         .join(AtencionDiaDetalle, AtencionDiaDetalle.cargue_id == CargueAtencionDia.id)
-        .filter(AtencionDiaDetalle.vendedor_id == vendedor_scope.id)
+        .filter(_condicion_scope_atenciones(vendedor_scope))
         .order_by(CargueAtencionDia.created_at.desc())
         .distinct()
         .limit(20)
@@ -1181,7 +1180,7 @@ def historial_cargues_atenciones():
 
     registros = []
     for cargue in cargues:
-        visibles = AtencionDiaDetalle.query.filter_by(cargue_id=cargue.id, vendedor_id=vendedor_scope.id).count()
+        visibles = AtencionDiaDetalle.query.filter_by(cargue_id=cargue.id).filter(_condicion_scope_atenciones(vendedor_scope)).count()
         registros.append({
             'id': cargue.id,
             'nombre_archivo': cargue.nombre_archivo,
@@ -1222,7 +1221,7 @@ def listar_periodos_cargue_atenciones():
             query_cargues = (
                 query_cargues
                 .join(AtencionDiaDetalle, AtencionDiaDetalle.cargue_id == CargueAtencionDia.id)
-                .filter(AtencionDiaDetalle.vendedor_id == vendedor_scope.id)
+                .filter(_condicion_scope_atenciones(vendedor_scope))
             )
 
         for cargue in query_cargues.order_by(CargueAtencionDia.periodo_desde.desc(), CargueAtencionDia.periodo_hasta.desc()).all():
@@ -1393,7 +1392,7 @@ def consultar_atenciones_dia():
     query = AtencionDiaDetalle.query.outerjoin(AtencionDiaDetalle.cliente).outerjoin(AtencionDiaDetalle.vendedor)
 
     if not _is_admin_user():
-        query = query.filter(AtencionDiaDetalle.vendedor_id == vendedor_scope.id)
+        query = query.filter(_condicion_scope_atenciones(vendedor_scope))
 
     if acuerdo:
         query = query.filter(
@@ -1762,7 +1761,7 @@ def regenerar_prefactura_empresa():
         )
     )
     if not _is_admin_user():
-        query = query.filter(AtencionDiaDetalle.vendedor_id == vendedor_scope.id)
+        query = query.filter(_condicion_scope_atenciones(vendedor_scope))
 
     todos = query.all()
     catalogo_lookup = _construir_lookup_catalogo()
@@ -2137,7 +2136,7 @@ def generar_prefacturas():
     )
 
     if not _is_admin_user():
-        query = query.filter(AtencionDiaDetalle.vendedor_id == vendedor_scope.id)
+        query = query.filter(_condicion_scope_atenciones(vendedor_scope))
 
     todos = query.order_by(
         AtencionDiaDetalle.cliente_id.asc().nullslast(),
@@ -3156,6 +3155,8 @@ def obtener_prefactura(pref_id):
         return jsonify({'error': str(exc)}), 403
 
     pref = PrefacturaComercial.query.get_or_404(pref_id)
+
+    exigir_cliente(pref.cliente_id)
     pagos = [_pago_cartera_to_dict(pg) for pg in pref.pagos_cartera.order_by(CarteraPrefactura.fecha_pago.asc()).all()]
     data = _prefactura_to_dict(pref)
     data['pagos'] = pagos
@@ -3181,6 +3182,8 @@ def agregar_detalle_prefactura_manual(pref_id):
         return jsonify({'error': str(exc)}), 403
 
     pref = PrefacturaComercial.query.get_or_404(pref_id)
+
+    exigir_cliente(pref.cliente_id)
     try:
         _asegurar_prefactura_manual_editable(pref)
         fecha_programada = pref.fecha_programada or pref.fecha_desde
@@ -3313,6 +3316,8 @@ def actualizar_prefactura(pref_id):
         return jsonify({'error': str(exc)}), 403
 
     pref = PrefacturaComercial.query.get_or_404(pref_id)
+
+    exigir_cliente(pref.cliente_id)
     if pref.estado == 'CERRADA':
         return jsonify({'error': 'La prefactura está cerrada y no puede modificarse'}), 409
 
@@ -3345,6 +3350,8 @@ def cerrar_prefactura(pref_id):
         return jsonify({'error': str(exc)}), 403
 
     pref = PrefacturaComercial.query.get_or_404(pref_id)
+
+    exigir_cliente(pref.cliente_id)
     if pref.estado == 'CERRADA':
         return jsonify({'error': 'La prefactura ya está cerrada'}), 409
 
@@ -3403,6 +3410,8 @@ def reabrir_prefactura(pref_id):
         return jsonify({'error': 'Solo el administrador puede reabrir una prefactura cerrada'}), 403
 
     pref = PrefacturaComercial.query.get_or_404(pref_id)
+
+    exigir_cliente(pref.cliente_id)
     if pref.estado != 'CERRADA':
         return jsonify({'error': 'La prefactura no está cerrada'}), 409
 
@@ -3429,6 +3438,8 @@ def eliminar_prefactura(pref_id):
         return jsonify({'error': 'Solo el administrador puede eliminar prefacturas'}), 403
 
     pref = PrefacturaComercial.query.get_or_404(pref_id)
+
+    exigir_cliente(pref.cliente_id)
     if pref.estado == 'CERRADA':
         return jsonify({'error': 'No se puede eliminar una prefactura cerrada'}), 409
     if (pref.origen or PREF_ORIGEN_ATENCIONES).upper() == PREF_ORIGEN_MANUAL and _prefactura_manual_bloqueada(pref):
@@ -3588,6 +3599,8 @@ def listar_cartera_prefactura(pref_id):
         return jsonify({'error': str(exc)}), 403
 
     pref = PrefacturaComercial.query.get_or_404(pref_id)
+
+    exigir_cliente(pref.cliente_id)
     pagos = pref.pagos_cartera.order_by(CarteraPrefactura.fecha_pago.asc()).all()
     return jsonify({'pagos': [_pago_cartera_to_dict(pg) for pg in pagos]}), 200
 
@@ -3601,6 +3614,8 @@ def registrar_pago_cartera(pref_id):
         return jsonify({'error': str(exc)}), 403
 
     pref = PrefacturaComercial.query.get_or_404(pref_id)
+
+    exigir_cliente(pref.cliente_id)
     if (pref.origen or PREF_ORIGEN_ATENCIONES).upper() == PREF_ORIGEN_MANUAL and _prefactura_manual_bloqueada(pref):
         return jsonify({'error': 'La prefactura manual ya esta bloqueada y no admite mas movimientos'}), 409
 
@@ -4152,7 +4167,7 @@ def listar_ordenes_caja():
     page       = max(1, int(request.args.get('page', 1)))
     per_page   = min(100, max(10, int(request.args.get('per_page', 50))))
 
-    q = OrdenServicioCaja.query
+    q = filtrar_cliente(OrdenServicioCaja.query, OrdenServicioCaja.cliente_id)
 
     if empresa:
         q = q.filter(or_(
@@ -4206,7 +4221,7 @@ def detectar_gaps_ordenes_caja():
     fd_str = (request.args.get('fecha_desde') or '').strip()
     fh_str = (request.args.get('fecha_hasta') or '').strip()
 
-    q = OrdenServicioCaja.query.filter(
+    q = filtrar_cliente(OrdenServicioCaja.query, OrdenServicioCaja.cliente_id).filter(
         OrdenServicioCaja.estado != 'ANULADO'
     )
     if fd_str:
@@ -4302,6 +4317,8 @@ def obtener_orden_caja(orden_id):
         return jsonify({'error': str(exc)}), 403
 
     orden = OrdenServicioCaja.query.get_or_404(orden_id)
+
+    exigir_cliente(orden.cliente_id)
     return jsonify({'orden': _orden_caja_to_dict(orden)}), 200
 
 
@@ -4317,6 +4334,8 @@ def editar_orden_caja(orden_id):
         return jsonify({'error': str(exc)}), 403
 
     orden = OrdenServicioCaja.query.get_or_404(orden_id)
+
+    exigir_cliente(orden.cliente_id)
     if orden.estado != 'INGRESADO':
         return jsonify({'error': f'Solo se pueden editar órdenes en estado INGRESADO. Esta está en {orden.estado}'}), 409
 
@@ -4412,6 +4431,8 @@ def descargar_adjunto_orden_caja(orden_id, adjunto_id):
         return jsonify({'error': str(exc)}), 403
 
     orden = OrdenServicioCaja.query.get_or_404(orden_id)
+
+    exigir_cliente(orden.cliente_id)
     adjunto = OrdenServicioCajaAdjunto.query.filter_by(id=adjunto_id, orden_id=orden.id).first_or_404()
     try:
         ruta = _get_adjunto_orden_caja_path(adjunto)
@@ -4433,6 +4454,8 @@ def eliminar_orden_caja(orden_id):
         return jsonify({'error': 'Solo el administrador puede eliminar órdenes'}), 403
 
     orden = OrdenServicioCaja.query.get_or_404(orden_id)
+
+    exigir_cliente(orden.cliente_id)
     if orden.estado != 'INGRESADO':
         return jsonify({'error': 'Solo se pueden eliminar órdenes en estado INGRESADO'}), 409
 

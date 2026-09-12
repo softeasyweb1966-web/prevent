@@ -28,6 +28,51 @@ from app.routes import contable_bp
 from app.security import get_permission_names_for_user
 
 
+from app.clientes_scope import es_administrador, clientes_visibles
+from app.clientes_maestro import identificacion
+
+
+def _clientes_informe():
+    query = clientes_visibles()
+    # El filtro nunca amplía el alcance del usuario vendedor.
+    vendedor = request.args.get('vendedor_id')
+    if vendedor == 'sin_asignar':
+        query = query.filter(ClienteComercial.vendedor_id.is_(None))
+    elif vendedor:
+        query = query.filter(ClienteComercial.vendedor_id == int(vendedor))
+    contacto = request.args.get('contacto_id', type=int)
+    if contacto:
+        from app.models import ContactoCliente
+        query = query.filter(ClienteComercial.contactos.any(ContactoCliente.id == contacto))
+    return query
+
+
+def _alcance_movimiento():
+    if es_administrador() and not request.args.get('vendedor_id') and not request.args.get('contacto_id'):
+        return True
+    nits = [identificacion(c.nit) for c in _clientes_informe() if c.nit]
+    normalizado = func.upper(func.regexp_replace(func.split_part(SiigoMovimiento.identificacion, '-', 1), '[^a-zA-Z0-9]', '', 'g'))
+    return normalizado.in_(nits)
+
+
+def _comprobantes_visibles(query=None):
+    query = SiigoComprobante.query if query is None else query
+    return query.filter(SiigoComprobante.movimientos.any(_alcance_movimiento()))
+
+
+@contable_bp.route('/filtros-clientes', methods=['GET'])
+@login_required
+def filtros_clientes():
+    _requiere_ventas()
+    clientes = clientes_visibles().all()
+    vendedores = {c.vendedor_id: c.vendedor.nombre for c in clientes if c.vendedor}
+    contactos = {p.id: {'id': p.id, 'nombre': p.nombre, 'vendedor_id': p.vendedor_id}
+                 for c in clientes for p in c.contactos}
+    return jsonify(es_administrador=es_administrador(),
+                   vendedores=[{'id': pk, 'nombre': nombre} for pk, nombre in sorted(vendedores.items(), key=lambda item: item[1])],
+                   contactos=sorted(contactos.values(), key=lambda p: p['nombre']))
+
+
 TIPOS_COMPROBANTE_PERMITIDOS = {'FV', 'RC', 'NC', 'ND', 'AC'}
 CLASIFICACIONES_REPORTE_VENTAS = {'INGRESO', 'NOTA_CREDITO', 'IVA_GENERADO'}
 REFERENCIA_FACTURA_RE = re.compile(r'\b(FV-\d+-[A-Z0-9]+(?:-[A-Z0-9]+)*)\b', re.IGNORECASE)
@@ -134,6 +179,7 @@ def _cancelaciones_cartera(fecha_corte, identificaciones=None):
     duplicaría las contrapartidas del mismo asiento. La FV base se suma por separado.
     """
     query = db.session.query(SiigoComprobante, SiigoMovimiento).join(SiigoMovimiento).filter(
+            _alcance_movimiento(),
         SiigoMovimiento.codigo_contable == '13050501',
         SiigoComprobante.fecha_elaboracion <= fecha_corte,
         SiigoMovimiento.credito != SiigoMovimiento.debito,
@@ -161,9 +207,7 @@ def _mismo_tercero_cartera(factura, movimiento):
 
 def _estado_actualizacion_comprobantes():
     """Resume la vigencia con base en la fecha contable, no en la del archivo."""
-    fecha_ultimo_comprobante = db.session.query(
-        func.max(SiigoComprobante.fecha_elaboracion)
-    ).scalar()
+    fecha_ultimo_comprobante = _comprobantes_visibles(db.session.query(func.max(SiigoComprobante.fecha_elaboracion))).scalar()
     fecha_minima_requerida = datetime.now(ZoneInfo('America/Bogota')).date() - timedelta(days=1)
     al_dia = bool(
         fecha_ultimo_comprobante
@@ -340,10 +384,10 @@ def resumen():
     try:
         _requiere_ventas()
         return jsonify({
-            'clientes': SiigoCliente.query.count(),
+            'clientes': _clientes_informe().count(),
             'cuentas': SiigoCuentaContable.query.count(),
-            'comprobantes': SiigoComprobante.query.count(),
-            'movimientos': SiigoMovimiento.query.count(),
+            'comprobantes': _comprobantes_visibles().count(),
+            'movimientos': SiigoMovimiento.query.filter(_alcance_movimiento()).count(),
             'vigencia_comprobantes': _estado_actualizacion_comprobantes(),
             'cargas': [
                 {
@@ -353,7 +397,7 @@ def resumen():
                     'importados': carga.registros_importados,
                     'omitidos': carga.registros_omitidos,
                 }
-                for carga in SiigoCarga.query.order_by(SiigoCarga.created_at.desc(), SiigoCarga.id.desc()).limit(1).all()
+                for carga in (SiigoCarga.query.order_by(SiigoCarga.created_at.desc(), SiigoCarga.id.desc()).limit(10).all() if es_administrador() else [])
             ],
         })
     except PermissionError as exc:
@@ -462,26 +506,12 @@ def consultar_clientes():
     try:
         _requiere_ventas()
         search = _texto(request.args.get('q'))
-        query = SiigoCliente.query
+        query = _clientes_informe()
         if search:
             like = f'%{search}%'
             query = query.filter(or_(SiigoCliente.identificacion.ilike(like), SiigoCliente.nombre.ilike(like)))
         items = query.order_by(SiigoCliente.nombre).limit(100).all()
         clientes = [{'identificacion': item.identificacion, 'sucursal': item.sucursal, 'nombre': item.nombre, 'ciudad': item.ciudad, 'estado': item.estado} for item in items]
-        if not clientes:
-            # Los comprobantes permiten buscar terceros incluso si el catálogo aún no se ha cargado.
-            terceros = db.session.query(
-                SiigoMovimiento.identificacion,
-                SiigoMovimiento.sucursal,
-                SiigoMovimiento.nombre_tercero,
-            ).filter(SiigoMovimiento.identificacion.isnot(None))
-            if search:
-                like = f'%{search}%'
-                terceros = terceros.filter(or_(SiigoMovimiento.identificacion.ilike(like), SiigoMovimiento.nombre_tercero.ilike(like)))
-            clientes = [
-                {'identificacion': identificacion, 'sucursal': sucursal or '0', 'nombre': nombre or '', 'ciudad': None, 'estado': None}
-                for identificacion, sucursal, nombre in terceros.distinct().order_by(SiigoMovimiento.nombre_tercero).limit(100).all()
-            ]
         return jsonify({'clientes': clientes})
     except PermissionError as exc:
         return jsonify({'error': str(exc)}), 403
@@ -492,7 +522,7 @@ def consultar_clientes():
 def consultar_comprobantes():
     try:
         _requiere_ventas()
-        query = SiigoComprobante.query
+        query = _comprobantes_visibles()
         tipo = _texto(request.args.get('tipo')).upper()
         numero = _texto(request.args.get('numero'))
         desde = _texto(request.args.get('desde'))
@@ -513,12 +543,13 @@ def consultar_comprobantes():
             query = query.filter(SiigoComprobante.fecha_elaboracion <= _fecha(hasta))
         if cliente:
             like = f'%{cliente}%'
-            query = query.join(SiigoMovimiento).filter(or_(SiigoMovimiento.identificacion.ilike(like), SiigoMovimiento.nombre_tercero.ilike(like))).distinct()
+            query = query.join(SiigoMovimiento).filter(_alcance_movimiento(), or_(SiigoMovimiento.identificacion.ilike(like), SiigoMovimiento.nombre_tercero.ilike(like))).distinct()
         items = query.order_by(SiigoComprobante.fecha_elaboracion.desc()).limit(200).all()
+        movimientos_visibles = {item.id: SiigoMovimiento.query.filter(SiigoMovimiento.comprobante_id == item.id, _alcance_movimiento()).all() for item in items}
         return jsonify({'comprobantes': [{
             'tipo': item.tipo_documento, 'codigo': item.codigo_comprobante, 'numero': item.numero_comprobante,
-            'fecha': item.fecha_elaboracion.isoformat(), 'debito': float(item.total_debito), 'credito': float(item.total_credito),
-            'movimientos': len(item.movimientos),
+            'fecha': item.fecha_elaboracion.isoformat(), 'debito': float(sum(m.debito for m in movimientos_visibles[item.id])), 'credito': float(sum(m.credito for m in movimientos_visibles[item.id])),
+            'movimientos': len(movimientos_visibles[item.id]),
         } for item in items]})
     except (ValueError, PermissionError) as exc:
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
@@ -543,6 +574,7 @@ def comparativo_clientes():
                 func.count(func.distinct(SiigoComprobante.id)),
                 func.coalesce(func.sum(SiigoMovimiento.debito - SiigoMovimiento.credito), 0),
             ).join(SiigoComprobante).filter(
+            _alcance_movimiento(),
                 SiigoComprobante.tipo_documento == 'FV',
                 SiigoComprobante.fecha_elaboracion.between(desde, hasta),
                 SiigoMovimiento.identificacion.isnot(None),
@@ -568,6 +600,7 @@ def comparativo_clientes():
         pagos_sin_factura = {}
         if identificaciones:
             filas_factura = db.session.query(SiigoComprobante, SiigoMovimiento).join(SiigoMovimiento).filter(
+            _alcance_movimiento(),
                 SiigoComprobante.tipo_documento == 'FV',
                 SiigoMovimiento.codigo_contable == '13050501',
                 SiigoMovimiento.identificacion.in_(identificaciones),
@@ -686,6 +719,7 @@ def ventas_mensuales():
         valor = func.coalesce(SiigoMovimiento.credito, 0) - func.coalesce(SiigoMovimiento.debito, 0)
         mes = func.extract('month', SiigoComprobante.fecha_elaboracion)
         rows = db.session.query(mes, func.sum(valor)).join(SiigoComprobante).filter(
+            _alcance_movimiento(),
             SiigoComprobante.tipo_documento.in_(tipos),
             func.extract('year', SiigoComprobante.fecha_elaboracion) == anio,
             SiigoMovimiento.codigo_contable.in_(cuentas),
@@ -735,6 +769,7 @@ def seguimiento_cartera():
         if not clave or len(identificacion) > 50:
             raise ValueError('El cliente debe tener una identificación válida para registrar su seguimiento.')
         cliente = db.session.query(SiigoMovimiento.nombre_tercero).join(SiigoComprobante).filter(
+            _alcance_movimiento(),
             SiigoMovimiento.identificacion == identificacion,
             SiigoComprobante.tipo_documento == 'FV',
             SiigoMovimiento.codigo_contable == '13050501',
@@ -907,6 +942,7 @@ def cartera_dinamica():
             raise ValueError('La fecha inicial no puede ser posterior a la fecha final.')
         facturas = {}
         consulta_facturas = db.session.query(SiigoComprobante, SiigoMovimiento).join(SiigoMovimiento).filter(
+            _alcance_movimiento(),
             SiigoComprobante.tipo_documento == 'FV',
             SiigoMovimiento.codigo_contable == '13050501',
             SiigoComprobante.fecha_elaboracion <= fecha_corte,
@@ -1118,6 +1154,10 @@ def cartera_dinamica():
                 ))
                 resultado.append(registro)
             return resultado
+
+        vendedores_maestro = {identificacion(c.nit): c.vendedor.nombre if c.vendedor else 'Sin asignar' for c in _clientes_informe() if c.nit}
+        for registro_cliente in cartera_por_cliente.values():
+            registro_cliente['vendedor'] = vendedores_maestro.get(identificacion(registro_cliente['identificacion']), 'Sin asignar')
 
         if request.args.get('informe') == 'vencidas':
             vendedores_por_nit = {}

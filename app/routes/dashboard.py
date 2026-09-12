@@ -7,6 +7,7 @@ from sqlalchemy import func
 
 from app.models import ClienteComercial, ClienteSeguimientoDocumento, ClienteSeguimientoPago, ComisionLiquidacion, Usuario, Vendedor, db
 from app.routes import dashboard_bp
+from app.clientes_scope import clientes_visibles, filtrar_vendedor, filtrar_cliente
 
 
 logger = logging.getLogger(__name__)
@@ -17,8 +18,8 @@ logger = logging.getLogger(__name__)
 def dashboard_stats():
     return jsonify({
         'usuarios_activos': Usuario.query.filter_by(activo=True).count(),
-        'vendedores_activos': Vendedor.query.filter_by(activo=True).count(),
-        'clientes_activos': ClienteComercial.query.filter_by(activo=True).count(),
+        'vendedores_activos': filtrar_vendedor(Vendedor.query, Vendedor.id).filter_by(activo=True).count(),
+        'clientes_activos': clientes_visibles().filter_by(activo=True).count(),
     })
 
 
@@ -31,23 +32,23 @@ def dashboard_comercial():
         anio = request.args.get('referencia_anio', type=int) or request.args.get('anio', type=int) or hoy.year
         inicio = datetime(anio, mes, 1)
         fin = datetime(anio + 1, 1, 1) if mes == 12 else datetime(anio, mes + 1, 1)
-        cartera = db.session.query(func.coalesce(func.sum(ClienteSeguimientoDocumento.saldo_actual), 0)).filter(
+        cartera = filtrar_cliente(db.session.query(func.coalesce(func.sum(ClienteSeguimientoDocumento.saldo_actual), 0)), ClienteSeguimientoDocumento.cliente_id).filter(
             ClienteSeguimientoDocumento.genera_cartera.is_(True),
             ClienteSeguimientoDocumento.estado_documento != 'ANULADO',
             ClienteSeguimientoDocumento.saldo_actual > 0,
         ).scalar() or 0
-        recaudo = db.session.query(func.coalesce(func.sum(ClienteSeguimientoPago.valor_pago), 0)).filter(
+        recaudo = filtrar_vendedor(db.session.query(func.coalesce(func.sum(ClienteSeguimientoPago.valor_pago), 0)), ClienteSeguimientoPago.vendedor_id).filter(
             ClienteSeguimientoPago.fecha_pago >= inicio,
             ClienteSeguimientoPago.fecha_pago < fin,
         ).scalar() or 0
-        comisiones = db.session.query(func.coalesce(func.sum(ComisionLiquidacion.total_comision_aprobada), 0)).filter_by(
+        comisiones = filtrar_vendedor(db.session.query(func.coalesce(func.sum(ComisionLiquidacion.total_comision_aprobada), 0)), ComisionLiquidacion.vendedor_id).filter_by(
             mes=mes, anio=anio
         ).scalar() or 0
         return jsonify({
             'nombre': 'Comercial',
-            'total_vendedores': Vendedor.query.count(),
-            'vendedores_activos': Vendedor.query.filter_by(activo=True).count(),
-            'clientes_activos': ClienteComercial.query.filter_by(activo=True).count(),
+            'total_vendedores': filtrar_vendedor(Vendedor.query, Vendedor.id).count(),
+            'vendedores_activos': filtrar_vendedor(Vendedor.query, Vendedor.id).filter_by(activo=True).count(),
+            'clientes_activos': clientes_visibles().filter_by(activo=True).count(),
             'cartera_pendiente': float(cartera),
             'recaudo_mes': float(recaudo),
             'comisiones_mes': float(comisiones),
@@ -88,8 +89,8 @@ def dashboard_usuarios():
 def dashboard_tablas():
     return jsonify({'nombre': 'Tablas', 'conteos': {
         'usuarios': Usuario.query.count(),
-        'vendedores': Vendedor.query.count(),
-        'clientes': ClienteComercial.query.count(),
+        'vendedores': filtrar_vendedor(Vendedor.query, Vendedor.id).count(),
+        'clientes': clientes_visibles().count(),
     }})
 
 

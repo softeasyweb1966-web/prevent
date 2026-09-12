@@ -22,3 +22,5 @@ contable_bp = Blueprint('contable', __name__, url_prefix='/api/contable')
 # Importar las rutas
 from app.routes import auth, dashboard, usuarios, comercial, contable, cargue_atenciones, maestros
 
+
+from app.routes import clientes_acceso

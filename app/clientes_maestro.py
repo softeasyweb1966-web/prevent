@@ -116,71 +116,50 @@ def preparar_filas(filas):
     return grupos
 
 
-def _tablas_que_referencian(inspector, objetivo):
-    """Devuelve {tabla: [columnas_fk]} de todas las tablas con FK hacia 'objetivo'."""
-    refs = {}
-    for tabla in inspector.get_table_names():
-        columnas = []
-        for fk in inspector.get_foreign_keys(tabla):
-            if fk.get('referred_table') == objetivo:
-                columnas.extend(fk.get('constrained_columns') or [])
-        if columnas:
-            refs[tabla] = columnas
-    return refs
-
-
-def _borrar_maestro_clientes():
-    """Elimina clientes y TODAS sus relaciones para una carga de reemplazo total.
-
-    Descubre dinamicamente las tablas con FK hacia clientes_comerciales para no
-    dejar por fuera ninguna dependencia. NO toca el catalogo de examenes/paquetes
-    ni los vendedores. Las columnas FK que permiten NULL se desvinculan; el resto
-    se borra (hijos antes que el padre)."""
-    inspector = db.inspect(db.engine)
-    refs = _tablas_que_referencian(inspector, 'clientes_comerciales')
-
-    # Nombres de columnas FK que solo deben desvincularse (no borrar la fila),
-    # porque el registro pertenece a otro modulo (p. ej. cargue de atenciones).
-    solo_desvincular = {'atenciones_dia_detalle'}
-
-    # 1) Desvincula referencias opcionales (incluye tablas de otros modulos).
-    pendientes_borrar = []
-    for tabla, columnas in refs.items():
-        col_info = {c['name']: c for c in inspector.get_columns(tabla)}
-        obligatoria = any(not col_info.get(col, {}).get('nullable', True) for col in columnas)
-        if tabla in solo_desvincular or not obligatoria:
-            for col in columnas:
-                if col_info.get(col, {}).get('nullable', True):
-                    db.session.execute(text(f'UPDATE {tabla} SET {col} = NULL WHERE {col} IS NOT NULL'))
+def conciliar_atenciones(aplicar=False):
+    """Vincula solo coincidencias únicas; nunca reasigna clientes ya vinculados."""
+    from app.models import AtencionDiaDetalle
+    if aplicar:
+        bloquear_maestros()
+    lookup = defaultdict(set)
+    clientes = {c.id: c for c in ClienteComercial.query.all()}
+    for c in clientes.values():
+        for value in (c.nit, c.razon_social, c.nombre_comercial, *(c.nombres_alternativos or [])):
+            key = normalizar(value)
+            if key:
+                lookup[key].add(c.id)
+    resumen = dict(pendientes=0, vinculables=0, ambiguas=0, sin_coincidencia=0,
+                   vendedor_historico_distinto=0, vinculadas=0)
+    query = AtencionDiaDetalle.query.filter(AtencionDiaDetalle.cliente_id.is_(None))
+    if aplicar:
+        query = query.with_for_update()
+    for atencion in query:
+        resumen['pendientes'] += 1
+        candidatos = set()
+        for value in (atencion.acuerdo_comercial, atencion.empresa_mision):
+            candidatos.update(lookup.get(normalizar(value), set()))
+        if not candidatos:
+            resumen['sin_coincidencia'] += 1
+        elif len(candidatos) != 1:
+            resumen['ambiguas'] += 1
         else:
-            pendientes_borrar.append(tabla)
-
-    # 2) Borra las tablas con FK obligatoria, reintentando para resolver cadenas
-    #    de dependencias multinivel (p. ej. atenciones -> atenciones_detalle).
-    pendientes = list(pendientes_borrar) + ['clientes_contactos', 'contactos_clientes']
-    pendientes = [t for t in pendientes if t in inspector.get_table_names()]
-    intentos = 0
-    while pendientes and intentos <= len(pendientes) + 3:
-        intentos += 1
-        restantes = []
-        for tabla in pendientes:
-            sp = db.session.begin_nested()
-            try:
-                db.session.execute(text(f'DELETE FROM {tabla}'))
-                sp.commit()
-            except Exception:
-                sp.rollback()
-                restantes.append(tabla)
-        if len(restantes) == len(pendientes):
-            # No se pudo avanzar: deja que el DELETE final falle con mensaje claro.
-            break
-        pendientes = restantes
-
-    db.session.execute(text('DELETE FROM clientes_comerciales'))
-    db.session.flush()
+            cliente = clientes[next(iter(candidatos))]
+            resumen['vinculables'] += 1
+            if atencion.vendedor_id is not None and atencion.vendedor_id != cliente.vendedor_id:
+                resumen['vendedor_historico_distinto'] += 1
+            if aplicar:
+                atencion.cliente_id = cliente.id
+                if atencion.vendedor_id is None:
+                    atencion.vendedor_id = cliente.vendedor_id
+                resumen['vinculadas'] += 1
+    if aplicar:
+        db.session.flush()
+    return resumen
 
 
 def importar_clientes(filas, contenido, archivo, usuario_id=None, reemplazar=False):
+    if reemplazar:
+        raise ValueError('El maestro se actualiza conservando clientes y relaciones. El reemplazo destructivo no est? permitido.')
     grupos = preparar_filas(filas)
     bloquear_maestros()
     digest = sha256(contenido).hexdigest()
@@ -190,8 +169,6 @@ def importar_clientes(filas, contenido, archivo, usuario_id=None, reemplazar=Fal
     carga = SiigoCarga(tipo_archivo='CLIENTES', nombre_archivo=archivo, hash_archivo=digest, usuario_id=usuario_id)
     db.session.add(carga)
     db.session.flush()
-    if reemplazar:
-        _borrar_maestro_clientes()
     actuales = ClienteComercial.query.all()
     por_nit = {identificacion(c.nit): c for c in actuales if c.nit}
     por_nombre = defaultdict(list)
@@ -231,7 +208,7 @@ def importar_clientes(filas, contenido, archivo, usuario_id=None, reemplazar=Fal
         if len(nombres_vendedor) == 1:
             key = normalizar(nombres_vendedor[0])
             exactos = [v for v in vendedores if normalizar(v.nombre) == key]
-            candidatos = exactos or [v for v in vendedores if key in normalizar(v.nombre) or normalizar(v.nombre) in key]
+            candidatos = exactos  # No asignar por coincidencias parciales de nombres.
             if len(candidatos) == 1:
                 vendedor = candidatos[0]
             elif len(candidatos) > 1:
@@ -256,7 +233,8 @@ def importar_clientes(filas, contenido, archivo, usuario_id=None, reemplazar=Fal
         for campo, header in [('tipo_identificacion', 'TIPODEIDENTIFICACION'), ('digito_verificacion', 'DIGITOVERIFICACION'),
                               ('direccion', 'DIRECCION'), ('ciudad', 'CIUDAD'), ('telefono_empresa', 'TELEFONO'),
                               ('regimen_iva', 'TIPODEREGIMENIVA')]:
-            setattr(c, campo, row.get(header) or None)
+            if row.get(header) or nuevo:
+                setattr(c, campo, row.get(header) or None)
         c.sucursal = row.get('SUCURSAL') or '0'
         c.importado_siigo = True
         c.carga_id = carga.id
@@ -284,12 +262,10 @@ def importar_clientes(filas, contenido, archivo, usuario_id=None, reemplazar=Fal
         c.revision_importacion = '\n'.join(revision) or None
         if revision:
             resumen['revision'] += 1
+    # Los clientes creados en el aplicativo y los ausentes del Excel conservan
+    # su estado, tarifas, contactos y movimientos.
+    resumen['conservados_fuera_archivo'] = sum(c.id not in vistos for c in actuales)
     for c in actuales:
-        if c.id not in vistos:
-            c.activo = False
-            c.estado_cliente = 'INACTIVO'
-            c.revision_importacion = 'No aparece en el Excel vigente. Se conserva la ficha y sus relaciones históricas para revisión.'
-            resumen['inactivados'] += 1
         sincronizar_contacto_legacy(c)
     carga.registros_leidos = resumen['filas']
     carga.registros_importados = len(grupos)

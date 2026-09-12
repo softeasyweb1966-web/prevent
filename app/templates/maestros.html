@@ -50,12 +50,25 @@
     <a href="/dashboard" class="m-btn m-btn-secondary">← Volver al panel</a>
   </div>
 
+  <p>Un solo maestro para Atenciones, Ventas y Vendedores.</p>
+  <div id="maestroResumen" role="status"></div>
+  <div class="maestros-toolbar">
+    <label>Vendedor <select id="filtroVendedorMaestro" onchange="refrescarMaestro()"><option value="">Todos los vendedores disponibles</option></select></label>
+    <label>Revisión <select id="filtroRevisionMaestro" onchange="refrescarMaestro()"><option value="">Todos los clientes</option><option value="sin_vendedor">Sin vendedor</option><option value="sin_contacto">Sin contacto</option><option value="sin_paquete">Sin paquete vigente</option><option value="sin_servicios">Sin productos/servicios vigentes</option><option value="revision">Importación por revisar</option></select></label>
+  </div>
   <div class="maestros-tabs">
     <button class="maestros-tab active" data-tab="clientes" onclick="maestrosTab('clientes')">Clientes</button>
     <button class="maestros-tab" data-tab="contactos" onclick="maestrosTab('contactos')">Contactos</button>
+    <button class="maestros-tab" data-tab="grupos" onclick="maestrosTab('grupos')">Empresas agrupadas</button>
+    <button class="maestros-tab" data-tab="servicios" onclick="maestrosTab('servicios')">Clientes–Productos/Servicios</button>
     <button class="maestros-tab" data-tab="paquetes" onclick="maestrosTab('paquetes')">Paquetes</button>
   </div>
 
+  <section class="maestros-panel" id="panel-grupos"><p>Una empresa puede aparecer en varios contactos. Los conteos generales consideran empresas ?nicas.</p><div id="gruposEmpresas"></div></section>
+  <section class="maestros-panel" id="panel-servicios">
+    <div class="maestros-toolbar"><label>Empresa <select id="serviciosCliente" onchange="renderServiciosMaestro()"></select></label><button id="btnNuevaTarifa" class="m-btn m-btn-primary" onclick="abrirTarifaMaestro()">Asignar producto/servicio</button></div>
+    <div id="serviciosEmpresaDetalle"></div>
+  </section>
   <!-- CLIENTES -->
   <section class="maestros-panel active" id="panel-clientes">
     <div class="maestros-toolbar">
@@ -175,6 +188,15 @@
   </div>
 </div></div>
 
+<div class="m-modal" id="modalTarifaMaestro"><div class="m-modal-card">
+<h2>Producto/servicio del cliente</h2><form id="formTarifaMaestro" onsubmit="guardarTarifaMaestro(event)">
+<input type="hidden" id="tarifaMaestroId"><div class="m-field"><label>Producto, servicio o paquete<select id="tarifaMaestroItem" required></select></label></div>
+<div class="m-field"><label>Tarifa negociada<input id="tarifaMaestroValor" type="number" min="0" step="0.01" required></label></div>
+<div class="m-row"><div class="m-field"><label>Vigente desde<input id="tarifaMaestroDesde" type="date"></label></div><div class="m-field"><label>Vigente hasta<input id="tarifaMaestroHasta" type="date"></label></div></div>
+<div class="m-field"><label>Estado<select id="tarifaMaestroActivo"><option value="true">Activo</option><option value="false">Inactivo</option></select></label></div>
+<div class="m-field"><label>Observaciones<textarea id="tarifaMaestroObservacion"></textarea></label></div>
+<div class="m-modal-actions"><button type="button" class="m-btn m-btn-secondary" onclick="cerrarModal('modalTarifaMaestro')">Cancelar</button><button class="m-btn m-btn-primary">Guardar</button></div></form></div></div>
+<div class="m-modal" id="modalOrigenMaestro"><div class="m-modal-card"><h2>Origen e historial de vendedor</h2><div id="origenMaestroDetalle"></div><button class="m-btn m-btn-secondary" onclick="cerrarModal('modalOrigenMaestro')">Cerrar</button></div></div>
 <div class="m-toast" id="mToast"></div>
 {% endblock %}
 
@@ -203,9 +225,12 @@ async function cargarTodo(){
     const op = await api('/api/comercial/maestro/opciones');
     M.vendedores = op.vendedores || [];
     M.permisos = op.permisos || {};
+    M.esAdmin = op.es_administrador;
+    inicializarFiltrosMaestro();
     aplicarPermisos();
   } catch(e){ mToast(e.message, false); }
-  await Promise.all([cargarClientes(), cargarContactos(), cargarPaquetes()]);
+  await Promise.all([cargarClientes(), cargarContactos(), cargarPaquetes(), cargarTarifasMaestro()]);
+  refrescarMaestro();
 }
 
 function aplicarPermisos(){
@@ -217,14 +242,14 @@ function aplicarPermisos(){
 }
 
 function opcionesVendedor(sel){
-  return '<option value="">Sin asignar</option>' + M.vendedores.map(v=>`<option value="${v.id}" ${String(sel)===String(v.id)?'selected':''}>${esc(v.nombre)}</option>`).join('');
+  return (M.esAdmin ? '<option value="">Sin asignar</option>' : '') + M.vendedores.map(v=>`<option value="${v.id}" ${String(sel)===String(v.id)?'selected':''}>${esc(v.nombre)}</option>`).join('');
 }
 
 /* ===== CLIENTES ===== */
-async function cargarClientes(){ try { M.clientes = await api('/api/comercial/maestro/clientes'); renderClientes(); } catch(e){ document.getElementById('tbodyClientes').innerHTML=`<tr><td colspan="8" class="m-empty">${esc(e.message)}</td></tr>`; } }
+async function cargarClientes(){ try { M.clientes = await api('/api/comercial/maestro/clientes'); renderClientes(); refrescarMaestro(); } catch(e){ document.getElementById('tbodyClientes').innerHTML=`<tr><td colspan="8" class="m-empty">${esc(e.message)}</td></tr>`; } }
 function renderClientes(){
   const q=(document.getElementById('buscarCliente').value||'').toLowerCase();
-  const rows = M.clientes.filter(c=>!q || [c.razon_social,c.nit,c.vendedor_nombre,c.responsable].some(x=>(x||'').toLowerCase().includes(q)));
+  const rows = clientesFiltradosMaestro().filter(c=>!q || [c.razon_social,c.nit,c.vendedor_nombre,c.responsable,...(c.contactos||[]).map(p=>p.nombre)].some(x=>(x||'').toLowerCase().includes(q)));
   const canU = M.permisos.clientes && M.permisos.clientes.update;
   const canD = M.permisos.clientes && M.permisos.clientes.delete;
   document.getElementById('tbodyClientes').innerHTML = rows.length ? rows.map(c=>`
@@ -232,8 +257,10 @@ function renderClientes(){
       <td>${esc(c.nit)}</td><td>${esc(c.razon_social)}</td><td>${esc(c.vendedor_nombre)}</td>
       <td>${esc(c.responsable||'')}</td><td>${esc(c.telefono_empresa||'')}</td>
       <td>${(c.contactos||[]).map(p=>`<span class="mtag">${esc(p.nombre)}</span>`).join('')||'<span class="m-hint">—</span>'}</td>
-      <td>${estadoTag(c.estado_cliente, c.activo)}</td>
+      <td>${estadoTag(c.estado_cliente, c.activo)}<br><span class="m-hint">${c.paquetes_vigentes||0} paquete(s) vigente(s)</span>${c.revision_importacion?`<br><span class="mtag mtag-warn" title="${esc(c.revision_importacion)}">Por revisar</span>`:''}</td>
       <td style="white-space:nowrap;">
+        <button class="m-btn m-btn-secondary m-btn-sm" onclick="verServiciosCliente(${c.id})">Servicios</button>
+        <button class="m-btn m-btn-secondary m-btn-sm" onclick="verOrigenMaestro(${c.id})">Origen e historial</button>
         ${canU?`<button class="m-btn m-btn-secondary m-btn-sm" onclick="abrirModalCliente(${c.id})">Editar</button>`:''}
         ${canD?`<button class="m-btn m-btn-danger m-btn-sm" onclick="borrarCliente(${c.id})">Borrar</button>`:''}
       </td>
@@ -287,10 +314,10 @@ async function borrarCliente(id){
 }
 
 /* ===== CONTACTOS ===== */
-async function cargarContactos(){ try { M.contactos = await api('/api/comercial/maestro/contactos'); renderContactos(); } catch(e){ document.getElementById('tbodyContactos').innerHTML=`<tr><td colspan="7" class="m-empty">${esc(e.message)}</td></tr>`; } }
+async function cargarContactos(){ try { M.contactos = await api('/api/comercial/maestro/contactos'); renderContactos(); renderGruposMaestro(); } catch(e){ document.getElementById('tbodyContactos').innerHTML=`<tr><td colspan="7" class="m-empty">${esc(e.message)}</td></tr>`; } }
 function renderContactos(){
   const q=(document.getElementById('buscarContacto').value||'').toLowerCase();
-  const rows = M.contactos.filter(c=>!q || [c.nombre,c.telefono,c.email,c.vendedor_nombre].some(x=>(x||'').toLowerCase().includes(q)));
+  const rows = M.contactos.filter(c=>(!document.getElementById('filtroVendedorMaestro').value || String(c.vendedor_id)===document.getElementById('filtroVendedorMaestro').value)).filter(c=>!q || [c.nombre,c.telefono,c.email,c.vendedor_nombre].some(x=>(x||'').toLowerCase().includes(q)));
   const canU = M.permisos.clientes && M.permisos.clientes.update;
   const canD = M.permisos.clientes && M.permisos.clientes.delete;
   document.getElementById('tbodyContactos').innerHTML = rows.length ? rows.map(c=>`
@@ -399,4 +426,5 @@ async function borrarPaquete(id){
 
 document.addEventListener('DOMContentLoaded', cargarTodo);
 </script>
+<script src="{{ asset_url('js/maestros_relaciones.js') }}"></script>
 {% endblock %}

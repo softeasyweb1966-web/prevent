@@ -512,6 +512,7 @@ function syncComercialPermissionUI() {
     setComercialElementsVisibility('#comercialNavVendedores', hasComercialSectionPermission('vendedores'));
     setComercialElementsVisibility('#comercialNavExamenes', hasComercialSectionPermission('examenes'));
     setComercialElementsVisibility('#comercialNavClientes', hasComercialSectionPermission('clientes'));
+    setComercialElementsVisibility('#accesoMaestroClientes', canManageComercial('clientes', 'read')); 
     setComercialElementsVisibility('#comercialNavCargue', hasComercialSectionPermission('gestion_informacion'));
     setComercialElementsVisibility('#comercialNavCaja', hasComercialSectionPermission('caja'));
     setComercialElementsVisibility('#comercialNavMes', hasComercialSectionPermission('mes'));

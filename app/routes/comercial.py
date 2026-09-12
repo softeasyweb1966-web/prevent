@@ -1,3 +1,4 @@
+from app.security import get_permission_names_for_user
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 import json
@@ -199,7 +200,8 @@ def _parse_int_list_field(data, field_name):
 
 
 def _is_admin_user():
-    return getattr(getattr(current_user, 'role', None), 'nombre', None) == 'Administrador'
+    from app.clientes_scope import es_administrador
+    return es_administrador()
 
 
 def _get_current_permission_names():
@@ -208,7 +210,7 @@ def _get_current_permission_names():
         for entity_actions in COMMERCIAL_PERMISSIONS.values():
             permission_names.update(entity_actions.values())
         return permission_names
-    return get_permission_names_for_role(getattr(current_user, 'role', None))
+    return get_permission_names_for_user(current_user)
 
 
 def _has_commercial_permission(entity, action):
@@ -256,38 +258,8 @@ def _normalize_text_for_matching(value):
 
 
 def _resolver_vendedor_usuario_actual():
-    if _is_admin_user():
-        return None
-
-    # 1) Vinculo directo por usuario_id (login real del vendedor).
-    usuario_id = getattr(current_user, 'id', None)
-    if usuario_id is not None:
-        vendedor_directo = Vendedor.query.filter_by(usuario_id=usuario_id).first()
-        if vendedor_directo is not None:
-            return vendedor_directo
-
-    # 2) Respaldo por coincidencia de texto (compatibilidad con datos previos
-    #    a la vinculacion directa usuario<->vendedor).
-    normalized_candidates = [
-        _normalize_text_for_matching(getattr(current_user, 'email', None)),
-        _normalize_text_for_matching(getattr(current_user, 'usuario', None)),
-        _normalize_text_for_matching(getattr(current_user, 'nombre_completo', None)),
-    ]
-    normalized_candidates = [value for value in normalized_candidates if value]
-    if not normalized_candidates:
-        return None
-
-    vendedores = Vendedor.query.all()
-    for vendedor in vendedores:
-        vendor_candidates = {
-            _normalize_text_for_matching(vendedor.nombre),
-            _normalize_text_for_matching(vendedor.email),
-            _normalize_text_for_matching(vendedor.documento),
-        }
-        vendor_candidates.discard('')
-        if any(candidate in vendor_candidates for candidate in normalized_candidates):
-            return vendedor
-    return None
+    from app.clientes_scope import vendedor_actual
+    return vendedor_actual()
 
 
 def _asegurar_cliente_en_scope(cliente):
@@ -415,9 +387,9 @@ def _build_cliente_payload(data):
         vendedor = vendedor_actual
         vendedor_id = vendedor_actual.id
     else:
-        vendedor_id = _parse_int_field(data, 'vendedor_id', required=True)
-        vendedor = Vendedor.query.get(vendedor_id)
-        if not vendedor:
+        vendedor_id = _parse_int_field(data, 'vendedor_id')
+        vendedor = Vendedor.query.get(vendedor_id) if vendedor_id else None
+        if vendedor_id and not vendedor:
             raise ValueError('Debe seleccionar un vendedor válido')
 
     razon_social = (data.get('razon_social') or '').strip()
@@ -605,6 +577,11 @@ def _build_tarifa_cliente_payload(data):
     item = ComercialCatalogoItem.query.get(item_id)
     if not item:
         raise ValueError('Debe seleccionar un examen o paquete válido')
+
+    desde = _parse_date_field(data, 'vigencia_desde')
+    hasta = _parse_date_field(data, 'vigencia_hasta')
+    if desde and hasta and hasta < desde:
+        raise ValueError('La vigencia final no puede ser anterior a la inicial.')
 
     return {
         'cliente_id': cliente_id,
@@ -1518,7 +1495,8 @@ def _get_adjunto_path(adjunto):
 def get_vendedores():
     try:
         _require_commercial_permission('vendedores', 'read')
-        vendedores = Vendedor.query.order_by(Vendedor.activo.desc(), Vendedor.nombre.asc()).all()
+        from app.clientes_scope import filtrar_vendedor
+        vendedores = filtrar_vendedor(Vendedor.query, Vendedor.id).order_by(Vendedor.activo.desc(), Vendedor.nombre.asc()).all()
         return jsonify([_serialize_vendedor(vendedor) for vendedor in vendedores]), 200
     except PermissionError as exc:
         return jsonify({'error': str(exc)}), 403
@@ -1580,6 +1558,10 @@ def crear_vendedor():
     try:
         _require_commercial_permission('vendedores', 'create')
         payload = _build_vendedor_payload(data)
+        from app.clientes_maestro import bloquear_maestros, normalizar
+        bloquear_maestros()
+        if any(v.id != None and normalizar(v.nombre) == normalizar(payload['nombre']) for v in Vendedor.query.all()):
+            return jsonify(error='Ya existe un vendedor con ese nombre. Complete su ficha existente.'), 409
         documento = payload['documento']
 
         if documento and Vendedor.query.filter_by(documento=documento).first():
@@ -1612,6 +1594,10 @@ def actualizar_vendedor(vendedor_id):
         _require_commercial_permission('vendedores', 'update')
         vendedor = Vendedor.query.get_or_404(vendedor_id)
         payload = _build_vendedor_payload(data)
+        from app.clientes_maestro import bloquear_maestros, normalizar
+        bloquear_maestros()
+        if any(v.id != vendedor_id and normalizar(v.nombre) == normalizar(payload['nombre']) for v in Vendedor.query.all()):
+            return jsonify(error='Ya existe un vendedor con ese nombre. Complete su ficha existente.'), 409
         documento = payload['documento']
 
         if documento:

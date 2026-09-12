@@ -1,8 +1,10 @@
 """CRUD del maestro único y contactos que comparten vendedor."""
 from functools import wraps
+from datetime import datetime
 from flask import jsonify, request, render_template
 from flask_login import login_required
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, or_, func
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 
 from app.models import (db, ClienteComercial, ContactoCliente, ClienteImportacionFila,
@@ -59,7 +61,7 @@ def datos_cliente(c):
         'id', 'nit', 'razon_social', 'nombre_comercial', 'vendedor_id', 'ciudad', 'direccion',
         'telefono_empresa', 'email_empresa', 'tipo_identificacion', 'digito_verificacion', 'regimen_iva',
         'estado_cliente', 'activo', 'importado_siigo', 'revision_importacion', 'vendedor_nombre_origen',
-        'nombres_alternativos', 'observaciones')},
+        'nombres_alternativos', 'observaciones', 'responsable', 'telefono_responsable')},
         'vendedor_nombre': c.vendedor.nombre if c.vendedor else 'Sin asignar',
         'contactos_ids': [p.id for p in c.contactos],
         'contactos': [{'id': p.id, 'nombre': p.nombre, 'telefono': p.telefono, 'email': p.email} for p in c.contactos]}
@@ -78,8 +80,11 @@ def vendedor_permitido(value):
         raise ValueError('El vendedor no existe.')
     if not _is_admin_user():
         vendedor = _resolver_vendedor_usuario_actual()
-        if vendedor is None or vid != vendedor.id:
+        if vendedor is None:
+            raise PermissionError('No tienes un vendedor asociado.')
+        if vid is not None and vid != vendedor.id:
             raise PermissionError('Solo puede gestionar registros de su vendedor.')
+        vid = vendedor.id
     return vid
 
 
@@ -117,11 +122,24 @@ def pantalla_maestros():
     return render_template('maestros.html')
 
 
+@comercial_bp.route('/maestro/conciliar-atenciones', methods=['GET', 'POST'])
+@api('read')
+def conciliar_atenciones_maestro():
+    if not _is_admin_user():
+        raise PermissionError('La conciliación global requiere un administrador.')
+    from app.clientes_maestro import conciliar_atenciones
+    aplicar = request.method == 'POST'
+    resumen = conciliar_atenciones(aplicar=aplicar)
+    if aplicar:
+        db.session.commit()
+    return jsonify(resumen)
+
+
 @comercial_bp.route('/maestro/opciones')
 @api('read')
 def opciones_maestros():
     vendedores = Vendedor.query.order_by(Vendedor.nombre).all() if _is_admin_user() else [_resolver_vendedor_usuario_actual()]
-    return jsonify(vendedores=[{'id': v.id, 'nombre': v.nombre} for v in vendedores if v],
+    return jsonify(es_administrador=_is_admin_user(), vendedores=[{'id': v.id, 'nombre': v.nombre} for v in vendedores if v],
                    permisos={entity: {action: _has_commercial_permission(entity, action) for action in ('read', 'create', 'update', 'delete')}
                              for entity in ('clientes', 'paquetes', 'examenes', 'tarifas')})
 
@@ -129,7 +147,33 @@ def opciones_maestros():
 @comercial_bp.route('/maestro/clientes')
 @api('read')
 def listar_clientes():
-    return jsonify([datos_cliente(c) for c in query_clientes().order_by(ClienteComercial.razon_social)])
+    hoy = datetime.utcnow()
+    vigentes = db.session.query(ClienteComercialTarifa.cliente_id, ComercialCatalogoItem.tipo_item, func.count()).join(
+        ComercialCatalogoItem, ClienteComercialTarifa.catalogo_item_id == ComercialCatalogoItem.id
+    ).filter(
+        ClienteComercialTarifa.cliente_id.in_(query_clientes().with_entities(ClienteComercial.id)),
+        ClienteComercialTarifa.activo.is_(True), ComercialCatalogoItem.activo.is_(True),
+        or_(ClienteComercialTarifa.vigencia_desde.is_(None), ClienteComercialTarifa.vigencia_desde <= hoy),
+        or_(ClienteComercialTarifa.vigencia_hasta.is_(None), ClienteComercialTarifa.vigencia_hasta >= hoy),
+    ).group_by(ClienteComercialTarifa.cliente_id, ComercialCatalogoItem.tipo_item).all()
+    conteos = {}
+    for cid, tipo, cantidad in vigentes:
+        conteos.setdefault(cid, {})[tipo] = cantidad
+    return jsonify([{**datos_cliente(c), 'paquetes_vigentes': conteos.get(c.id, {}).get('PAQUETE', 0),
+                     'servicios_vigentes': sum(conteos.get(c.id, {}).values())}
+                    for c in query_clientes().options(selectinload(ClienteComercial.contactos),
+                        selectinload(ClienteComercial.vendedor)).order_by(ClienteComercial.razon_social)])
+
+
+@comercial_bp.route('/maestro/clientes/<int:cid>/historial-vendedor')
+@api('read')
+def historial_vendedor(cid):
+    from app.models import ClienteVendedorHistorial
+    _obtener_cliente_comercial_en_scope(cid)
+    nombres = {v.id: v.nombre for v in Vendedor.query.all()}
+    return jsonify([{'fecha': h.fecha.isoformat(), 'anterior': nombres.get(h.vendedor_anterior_id, 'Sin asignar'),
+                     'nuevo': nombres.get(h.vendedor_nuevo_id, 'Sin asignar'), 'origen': h.origen}
+                    for h in ClienteVendedorHistorial.query.filter_by(cliente_id=cid).order_by(ClienteVendedorHistorial.id.desc())])
 
 
 def guardar_cliente(cid=None):

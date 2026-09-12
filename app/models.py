@@ -1121,3 +1121,37 @@ class OrdenServicioCajaAdjunto(db.Model):
 
     def __repr__(self):
         return f'<OrdenServicioCajaAdjunto orden={self.orden_id} archivo={self.nombre_original}>'
+
+
+class ClienteVendedorHistorial(db.Model):
+    __tablename__ = 'clientes_vendedor_historial'
+    id = db.Column(db.Integer, primary_key=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes_comerciales.id'), nullable=False, index=True)
+    vendedor_anterior_id = db.Column(db.Integer, db.ForeignKey('vendedores.id'))
+    vendedor_nuevo_id = db.Column(db.Integer, db.ForeignKey('vendedores.id'))
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+    fecha = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    origen = db.Column(db.String(50), nullable=False)
+
+
+# Audita todos los escritores ORM del maestro, incluidos los dos formularios y Excel.
+from sqlalchemy import event, inspect as sa_inspect
+from sqlalchemy.orm import Session
+
+
+@event.listens_for(Session, 'before_flush')
+def registrar_cambio_vendedor(session, flush_context, instances):
+    from flask import has_request_context, request
+    from flask_login import current_user
+    for cliente in list(session.dirty):
+        if not isinstance(cliente, ClienteComercial):
+            continue
+        cambio = sa_inspect(cliente).attrs.vendedor_id.history
+        if cambio.has_changes():
+            session.add(ClienteVendedorHistorial(
+                cliente_id=cliente.id,
+                vendedor_anterior_id=cambio.deleted[0] if cambio.deleted else None,
+                vendedor_nuevo_id=cliente.vendedor_id,
+                usuario_id=current_user.id if has_request_context() and current_user.is_authenticated else None,
+                origen=('EXCEL' if 'cargar-clientes' in request.path else 'APLICATIVO') if has_request_context() else 'PROCESO',
+            ))

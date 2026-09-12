@@ -70,9 +70,9 @@ function mostrarDetalleCarteraClienteSiigo(result, cliente, button) {
 function tablaCarteraClientesSiigo(clientes) {
     if (!clientes.length) return '';
     const filas = clientes.map((cliente, index) => {
-        return `<tr><td>${escapeSiigo(cliente.identificacion)}</td><td>${escapeSiigo(cliente.cliente)}</td><td>${formatoSiigoNumero(cliente.facturado)}</td><td>${formatoSiigoNumero(cliente.recaudado)}</td><td>${formatoSiigoNumero(cliente.ajustes_ac)}</td><td>${formatoSiigoNumero(cliente.notas_credito)}</td><td>${formatoSiigoNumero(cliente.notas_debito)}</td><td>${formatoSiigoNumero(cliente.otros_movimientos)}</td><td>${formatoSiigoNumero(cliente.por_vencer)}</td><td>${formatoSiigoNumero(cliente.vencido_1_30)}</td><td>${formatoSiigoNumero(cliente.vencido_31_60)}</td><td>${formatoSiigoNumero(cliente.vencido_61_90)}</td><td>${formatoSiigoNumero(cliente.vencido_91_mas)}</td><td>${formatoSiigoNumero(cliente.saldo)}</td><td><button type="button" class="action-btn" data-siigo-cliente-index="${index}">Ver detalle</button></td></tr>`;
+        return `<tr><td>${escapeSiigo(cliente.identificacion)}</td><td>${escapeSiigo(cliente.cliente)}</td><td>${escapeSiigo(cliente.vendedor||'Sin asignar')}</td><td>${formatoSiigoNumero(cliente.facturado)}</td><td>${formatoSiigoNumero(cliente.recaudado)}</td><td>${formatoSiigoNumero(cliente.ajustes_ac)}</td><td>${formatoSiigoNumero(cliente.notas_credito)}</td><td>${formatoSiigoNumero(cliente.notas_debito)}</td><td>${formatoSiigoNumero(cliente.otros_movimientos)}</td><td>${formatoSiigoNumero(cliente.por_vencer)}</td><td>${formatoSiigoNumero(cliente.vencido_1_30)}</td><td>${formatoSiigoNumero(cliente.vencido_31_60)}</td><td>${formatoSiigoNumero(cliente.vencido_61_90)}</td><td>${formatoSiigoNumero(cliente.vencido_91_mas)}</td><td>${formatoSiigoNumero(cliente.saldo)}</td><td><button type="button" class="action-btn" data-siigo-cliente-index="${index}">Ver detalle</button></td></tr>`;
     }).join('');
-    return `<h4 style="margin:20px 0 8px;">Detalle de cartera por cliente</h4><p class="form-help">Seleccione “Ver detalle” para consultar las facturas que componen cada saldo.</p><div class="siigo-tabla-con-encabezado-fijo"><table class="data-table"><thead><tr><th>Identificacion</th><th>Cliente</th><th>Facturado</th><th>Recaudado</th><th>Ajustes AC</th><th>Notas crédito</th><th>Notas débito</th><th>Otros cruces</th><th>Por vencer</th><th>1 a 30</th><th>31 a 60</th><th>61 a 90</th><th>Mas de 90</th><th>Saldo</th><th>Detalle</th></tr></thead><tbody>${filas}</tbody></table></div>`;
+    return `<h4 style="margin:20px 0 8px;">Detalle de cartera por cliente</h4><p class="form-help">Seleccione “Ver detalle” para consultar las facturas que componen cada saldo.</p><div class="siigo-tabla-con-encabezado-fijo"><table class="data-table"><thead><tr><th>Identificacion</th><th>Cliente</th><th>Vendedor</th><th>Facturado</th><th>Recaudado</th><th>Ajustes AC</th><th>Notas crédito</th><th>Notas débito</th><th>Otros cruces</th><th>Por vencer</th><th>1 a 30</th><th>31 a 60</th><th>61 a 90</th><th>Mas de 90</th><th>Saldo</th><th>Detalle</th></tr></thead><tbody>${filas}</tbody></table></div>`;
 }
 
 async function leerRespuestaSiigo(response) {
@@ -200,6 +200,7 @@ function crearPanelComparativoSiigo() {
     panel.innerHTML = `<h3 style="margin-top:0;">Clientes nuevos y clientes que no volvieron</h3><p class="form-help">Se comparan las facturas FV de dos periodos. La cartera cruza facturas y recibos de caja hasta la fecha de corte indicada.</p><form id="siigoComparativoForm"><div class="form-row"><div class="form-group"><label>Periodo 1: desde</label><input id="siigoPeriodoADesde" type="date" required></div><div class="form-group"><label>Periodo 1: hasta</label><input id="siigoPeriodoAHasta" type="date" required></div><div class="form-group"><label>Periodo 2: desde</label><input id="siigoPeriodoBDesde" type="date" required></div><div class="form-group"><label>Periodo 2: hasta</label><input id="siigoPeriodoBHasta" type="date" required></div><div class="form-group"><label>Cartera a fecha de corte</label><input id="siigoComparativoFechaCorte" type="date"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar comparativo</button></div></div></form><div id="siigoComparativoResultado" class="table-container" style="margin-top:16px;"></div>`;
     consulta.insertAdjacentElement('afterend', panel);
     panel.querySelector('form').addEventListener('submit', consultarComparativoClientesSiigo);
+    agregarFiltrosMaestroSiigo(panel.querySelector('form'));
     return panel;
 }
 
@@ -212,6 +213,7 @@ function mostrarComparativoClientes() {
 async function consultarComparativoClientesSiigo(event) {
     event.preventDefault();
     const params = new URLSearchParams({
+        ...valoresFiltrosMaestroSiigo(event.currentTarget || event.target),
         periodo_a_desde: document.getElementById('siigoPeriodoADesde').value,
         periodo_a_hasta: document.getElementById('siigoPeriodoAHasta').value,
         periodo_b_desde: document.getElementById('siigoPeriodoBDesde').value,
@@ -244,6 +246,7 @@ function crearPanelVentasMensualesSiigo() {
     panel.innerHTML = `<h3 style="margin-top:0;">Control mensual de ventas</h3><p class="form-help">Calculado desde PREVENT con las mismas reglas de FV, NC e IVA que se compararan contra SIIGO.</p><form id="siigoVentasMensualesForm"><div class="form-row"><div class="form-group"><label for="siigoVentasAnio">Ano</label><input id="siigoVentasAnio" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" required></div><div class="form-group" style="align-self:end;"><label><input id="siigoVentasIncluirNC" type="checkbox" checked> Incluir notas credito</label></div><div class="form-group" style="align-self:end;"><label><input id="siigoVentasIncluirIVA" type="checkbox"> Incluir impuesto</label></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Calcular ventas</button></div></div></form><div id="siigoVentasMensualesResultado" class="table-container" style="margin-top:16px;"></div><h4 style="margin:20px 0 8px;">Cuentas incluidas en el calculo</h4><div id="siigoConfiguracionVentas" class="table-container"></div>`;
     anchor.insertAdjacentElement('afterend', panel);
     panel.querySelector('form').addEventListener('submit', consultarVentasMensualesSiigo);
+    agregarFiltrosMaestroSiigo(panel.querySelector('form'));
     return panel;
 }
 
@@ -261,6 +264,7 @@ function crearPanelCarteraDinamicaSiigo(tipo) {
         ? `<h3 style="margin-top:0;">Analisis de pago de clientes</h3><p class="form-help">Cruza cada recibo de caja RC con la factura FV indicada en la descripcion. El promedio considera facturas con recibos RC cuyo saldo fue cancelado con RC, ajustes AC y notas crédito/débito; cuenta hasta la fecha de la cancelación total.</p><form data-siigo-cartera="pagos"><div class="form-row"><div class="form-group"><label>Fecha de corte</label><input type="date" required value="${new Date().toISOString().slice(0, 10)}"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar analisis</button></div></div></form><div class="table-container" style="margin-top:16px;"></div>`
         : `<h3 style="margin-top:0;">Cartera y recaudo por periodo</h3><p class="form-help">Calculado desde las facturas FV, recibos RC, ajustes AC y notas crédito/débito asociados a cada factura. Saldo = débitos menos créditos de cartera vinculados a la factura, sin restringir el tipo de comprobante. Los ajustes AC incluyen los documentos antiguos CC-AC y las retenciones que afectan cartera; un ajuste negativo aumenta el saldo. La fecha de vencimiento corresponde a la cuota indicada por SIIGO.</p><form data-siigo-cartera="recaudo"><div class="form-row"><div class="form-group"><label>Fecha de corte</label><input type="date" required value="${new Date().toISOString().slice(0, 10)}"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar cartera</button></div></div></form><div class="table-container" style="margin-top:16px;"></div>`;
     const form = panel.querySelector('form');
+    agregarFiltrosMaestroSiigo(form);
     anchor.insertAdjacentElement('afterend', panel);
     const boton = form.querySelector('button[type="submit"]');
     boton.type = 'button';
@@ -300,6 +304,7 @@ function crearPanelFacturasVencidasSiigo() {
     cabeceraFiltros.insertAdjacentHTML('beforeend', '<button type="button" class="btn btn-secondary" data-vencidas-informes>Regresar a informes</button>');
     cabeceraFiltros.querySelector('button').addEventListener('click', () => mostrarInformeSiigo('comparativo'));
     const form = panel.querySelector('form');
+    agregarFiltrosMaestroSiigo(form);
     form.addEventListener('submit', event => {
         event.preventDefault();
         consultarFacturasVencidasSiigo(form);
@@ -397,7 +402,7 @@ async function consultarFacturasVencidasSiigo(form) {
     panel._consultaVencidas = controller;
     const visor = panel.querySelector('.siigo-vencidas-visor');
     const estado = panel.querySelector(visor.hidden ? '[data-vencidas-estado]' : '#siigoVencidasCargaResultado');
-    const filtros = { fecha_corte: form.querySelector('input[type="date"]').value, cliente: form.elements.cliente.value.trim() };
+    const filtros = { ...valoresFiltrosMaestroSiigo(form), fecha_corte: form.querySelector('input[type="date"]').value, cliente: form.elements.cliente.value.trim() };
     const params = new URLSearchParams({ informe: 'vencidas', ...filtros });
     const botones = [form.querySelector('[type="submit"]'), panel.querySelector('[data-vencidas-generar]')];
     botones.forEach(boton => { boton.disabled = true; });
@@ -551,7 +556,7 @@ async function consultarCarteraDinamicaSiigo(form, tipo) {
     const panel = form.closest('.recent-section');
     const result = panel.querySelector('.table-container');
     const fechaCorte = form.querySelector('input[type="date"]').value;
-    const params = new URLSearchParams({ fecha_corte: fechaCorte });
+    const params = new URLSearchParams({ ...valoresFiltrosMaestroSiigo(form), fecha_corte: fechaCorte });
     if (tipo !== 'recaudo') actualizarModoCarteraSiigo(false);
     result.textContent = 'Calculando desde los comprobantes cargados...';
     try {
@@ -615,6 +620,7 @@ async function guardarConfiguracionVentasSiigo(row) {
 async function consultarVentasMensualesSiigo(event) {
     event.preventDefault();
     const params = new URLSearchParams({
+        ...valoresFiltrosMaestroSiigo(event.currentTarget || event.target),
         anio: document.getElementById('siigoVentasAnio').value,
         incluir_nc: document.getElementById('siigoVentasIncluirNC').checked,
         incluir_iva: document.getElementById('siigoVentasIncluirIVA').checked,
@@ -747,4 +753,41 @@ function inicializarVentasSiigo() {
         const result = document.getElementById('siigoCargaResultado');
         if (result) result.textContent = error.message;
     });
+}
+
+
+function valoresFiltrosMaestroSiigo(form) {
+    const filtros = {};
+    for (const name of ['vendedor_id', 'contacto_id']) {
+        const value = form?.elements?.namedItem(name)?.value;
+        if (value) filtros[name] = value;
+    }
+    return filtros;
+}
+
+async function agregarFiltrosMaestroSiigo(form) {
+    if (!form || form.dataset.maestroFiltros) return;
+    form.dataset.maestroFiltros = '1';
+    const box = document.createElement('div');
+    box.className = 'form-row';
+    const labelV = document.createElement('label'); labelV.textContent = 'Vendedor ';
+    const labelC = document.createElement('label'); labelC.textContent = 'Contacto ';
+    const vendedor = document.createElement('select'); vendedor.name = 'vendedor_id';
+    const contacto = document.createElement('select'); contacto.name = 'contacto_id';
+    vendedor.add(new Option('Todos los disponibles', '')); contacto.add(new Option('Todos los disponibles', ''));
+    labelV.append(vendedor); labelC.append(contacto); box.append(labelV, labelC); form.append(box);
+    try {
+        const response = await fetch('/api/contable/filtros-clientes', {credentials:'include'});
+        const data = await leerRespuestaSiigo(response);
+        if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los filtros.');
+        if (data.es_administrador) vendedor.add(new Option('Sin asignar', 'sin_asignar'));
+        data.vendedores.forEach(v=>vendedor.add(new Option(v.nombre, v.id)));
+        const cargarContactos = () => {
+            contacto.replaceChildren(new Option('Todos los disponibles',''));
+            data.contactos.filter(p=>!vendedor.value || String(p.vendedor_id)===vendedor.value || (vendedor.value==='sin_asignar' && !p.vendedor_id)).forEach(p=>contacto.add(new Option(p.nombre,p.id)));
+        };
+        vendedor.addEventListener('change', cargarContactos); cargarContactos();
+    } catch(error) {
+        const aviso=document.createElement('span'); aviso.textContent=error.message; box.append(aviso);
+    }
 }

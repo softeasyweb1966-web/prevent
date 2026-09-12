@@ -49,6 +49,13 @@ class CarteraACTest(unittest.TestCase):
         for model in (SiigoSeguimientoCartera, SiigoMovimiento, SiigoComprobante, SiigoCarga):
             db.session.query(model).delete()
         db.session.commit()
+        # Estas pruebas verifican el consolidado contable. El aislamiento real
+        # por vendedor se prueba con usuarios autenticados en test_clientes_maestro.
+        for target in ('app.clientes_scope.es_administrador', 'app.routes.contable.es_administrador',
+                       'app.routes.clientes_acceso.es_administrador'):
+            scope_patch = patch(target, return_value=True)
+            scope_patch.start()
+            self.addCleanup(scope_patch.stop)
         self.permission = patch.object(contable, '_requiere_ventas')
         self.permission.start()
         self.addCleanup(self.permission.stop)
