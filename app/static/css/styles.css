@@ -624,6 +624,24 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     white-space: pre-wrap;
 }
 
+.siigo-seguimiento-icono {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid currentColor;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.siigo-seguimiento-icono:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+.siigo-semaforo { display: inline-block; padding: 2px 7px; border-radius: 5px; font-size: 13px; }
+.siigo-vencido { color: #991b1b; background: #fee2e2; }
+.siigo-proximo { color: #854d0e; background: #fef08a; }
+.siigo-cumplido { color: #166534; background: #dcfce7; }
+.siigo-pendiente, .siigo-con_seguimiento { color: #1e40af; background: #dbeafe; }
+.siigo-sin_seguimiento, .siigo-sin_compromiso { color: #475569; background: #e2e8f0; }
+
 .siigo-seguimiento-dialogo [hidden] {
     display: none !important;
 }

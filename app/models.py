@@ -651,6 +651,8 @@ class SiigoSeguimientoCartera(db.Model):
     contacto = db.Column(db.String(200))
     observaciones = db.Column(db.Text, nullable=False)
     fecha_compromiso = db.Column(db.Date)
+    compromiso_cumplido_at = db.Column(db.DateTime)
+    compromiso_cumplido_por = db.Column(db.String(200))
     valor_compromiso = db.Column(Numeric(18, 2))
     proximo_seguimiento = db.Column(db.Date)
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)

@@ -253,7 +253,7 @@ class CarteraACTest(unittest.TestCase):
             response.direct_passthrough = False
             libro = load_workbook(BytesIO(response.get_data()))
             self.assertEqual(libro['Por conciliar'].max_row, 5)
-            self.assertEqual(libro['Facturas vencidas']['F4'].value, 100)
+            self.assertEqual(libro['Facturas vencidas']['G4'].value, 100)
             libro.close()
             response.close()
 
@@ -312,12 +312,13 @@ class CarteraACTest(unittest.TestCase):
             self.assertEqual([c['identificacion'] for c in data['clientes']], ['9001', '9002'])
             primero = data['clientes'][0]
             self.assertEqual(primero['vendedor'], 'Vendedora de prueba')
-            self.assertEqual(primero['cantidad_facturas'], 3)
+            self.assertEqual(primero['cantidad_facturas'], 5)
             self.assertEqual(primero['total_vencido'], 270)
-            self.assertEqual([f['referencia'] for f in primero['facturas']], ['FV-2-2', 'FV-2-1', 'FV-2-7'])
+            self.assertEqual(primero['total_cliente'], 1270)
+            self.assertEqual([f['referencia'] for f in primero['facturas']], ['FV-2-2', 'FV-2-1', 'FV-2-7', 'FV-2-3', 'FV-2-4'])
             self.assertEqual(primero['facturas'][1]['saldo'], 70)
             self.assertEqual(primero['facturas'][1]['dias_vencido'], 28)
-            self.assertEqual(data['cantidad_facturas'], 4)
+            self.assertEqual(data['cantidad_facturas'], 6)
             self.assertEqual(data['clientes'][1]['vendedor'], 'Sin vendedor asignado')
             with self.app.test_request_context(query_string={
                 'informe': 'vencidas', 'fecha_corte': '2026-02-28', 'cliente': '9002',
@@ -339,13 +340,13 @@ class CarteraACTest(unittest.TestCase):
             response.direct_passthrough = False
             libro = load_workbook(BytesIO(response.get_data()))
             self.assertEqual(list(libro.active.values)[3],
-                             ('Sin vendedor asignado', 'Cliente prueba', 1, 'FV-2-1', 28, 100))
-            self.assertEqual(libro.active.freeze_panes, 'D4')
+                             ('Sin vendedor asignado', 'Cliente prueba', 1, 100, 'FV-2-1', 28, 100))
+            self.assertEqual(libro.active.freeze_panes, 'E4')
             libro.close()
             response.close()
         with self.app.test_request_context(query_string={'informe': 'vencidas', 'fecha_corte': '2026-01-31'}):
             data = contable.cartera_dinamica.__wrapped__().get_json()
-        self.assertEqual(data['clientes'], [])
+        self.assertEqual(data['cantidad_facturas'], 1)
         self.assertEqual(data['total_vencido'], 0)
 
     def usuario_seguimiento(self):
@@ -381,6 +382,20 @@ class CarteraACTest(unittest.TestCase):
         self.assertEqual([item['fecha_gestion'] for item in historial], ['2026-01-16', '2026-01-15'])
         self.assertEqual(historial[1]['valor_compromiso'], 50.25)
         self.assertEqual(historial[1]['observaciones'], datos['observaciones'])
+        compromiso_id = primero.json['seguimiento']['id']
+        g.pop('_login_user', None)
+        ajeno = http.patch('/api/contable/seguimiento-cartera', json={'identificacion': '9002', 'id': compromiso_id})
+        self.assertEqual(ajeno.status_code, 404)
+        cumplido = http.patch('/api/contable/seguimiento-cartera', json={'identificacion': '9001', 'id': compromiso_id})
+        self.assertEqual(cumplido.status_code, 200)
+        self.assertEqual(cumplido.json['seguimiento']['estado_compromiso'], 'cumplido')
+        self.assertEqual(cumplido.json['seguimiento']['compromiso_cumplido_por'], 'Gestora cartera')
+        repetido = http.patch('/api/contable/seguimiento-cartera', json={'identificacion': '9001', 'id': compromiso_id})
+        self.assertEqual(repetido.json, cumplido.json)
+        with self.app.test_request_context(query_string={'informe': 'vencidas', 'fecha_corte': '2026-02-28'}):
+            informe = contable.cartera_dinamica.__wrapped__().get_json()
+        cliente = next(c for c in informe['clientes'] if c['identificacion'] == '9001')
+        self.assertTrue(any(r['estado_compromiso'] == 'cumplido' for r in cliente['seguimientos']))
         self.assertEqual(http.get('/api/contable/seguimiento-cartera?identificacion=9002').json['seguimientos'], [])
         # Una variante del NIT con puntos y DV conserva el mismo historial.
         self.documento('FV', 3, '2026-01-01', [{'identificacion': '9.001-2', 'detalle': 'FV-2-3', 'debito': Decimal('10')}])
@@ -535,7 +550,7 @@ class CarteraACTest(unittest.TestCase):
             response = contable.cartera_dinamica.__wrapped__()
             response.direct_passthrough = False
             libro = load_workbook(BytesIO(response.get_data()))
-            self.assertEqual(libro['Facturas vencidas']['F4'].value, 25)
+            self.assertEqual(libro['Facturas vencidas']['G4'].value, 25)
             filas = list(libro['Cruces por factura'].values)[1:]
             self.assertEqual(sum(f[5] - f[6] for f in filas), 25)
             self.assertEqual({f[2] for f in filas}, {'FV-2-1', 'RC-1-1', 'NUEVO-9-1', 'REV-1-2'})

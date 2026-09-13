@@ -294,7 +294,7 @@ function crearPanelFacturasVencidasSiigo() {
     panel.id = 'siigoFacturasVencidasPanel';
     panel.className = 'recent-section';
     const hoy = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
-    panel.innerHTML = `<div data-vencidas-filtros><h3>Facturas vencidas por cliente</h3><form class="siigo-vencidas-filtros"><div class="form-group"><label for="siigoVencidasCorte">Fecha de corte</label><input id="siigoVencidasCorte" type="date" required value="${hoy}"></div><div class="form-group"><label for="siigoVencidasCliente">Cliente o identificación (opcional)</label><input id="siigoVencidasCliente" name="cliente" type="text"></div><button class="btn btn-primary" type="submit">Generar informe</button></form><p data-vencidas-estado role="status"></p></div><div class="siigo-vencidas-visor" hidden><header class="siigo-vencidas-cabecera"><div><h2 tabindex="-1">Facturas vencidas por cliente</h2><p data-vencidas-meta></p></div><button type="button" class="btn btn-secondary" data-vencidas-regresar>Regresar</button></header><div class="table-container siigo-vencidas-datos"></div><footer class="siigo-vencidas-pie"><div class="siigo-vencidas-barra" tabindex="0" role="region" aria-label="Desplazamiento horizontal de las facturas"><div></div></div><div class="siigo-vencidas-acciones"><button class="btn btn-primary" type="button" data-vencidas-generar>Generar informe</button><button class="btn btn-secondary" type="button" data-siigo-exportar-vencidas>Descargar Excel</button><button class="btn btn-secondary" type="button" id="siigoAlternarMenuVencidas">Mostrar menú lateral</button><button class="btn btn-secondary" type="button" data-vencidas-actualizar>Actualizar comprobantes</button></div><p id="siigoVencidasCargaResultado" role="status" aria-live="polite"></p></footer></div>`;
+    panel.innerHTML = `<div data-vencidas-filtros><h3>Facturas vencidas y por vencer por cliente</h3><form class="siigo-vencidas-filtros"><div class="form-group"><label for="siigoVencidasCorte">Fecha de corte</label><input id="siigoVencidasCorte" type="date" required value="${hoy}"></div><div class="form-group"><label for="siigoVencidasCliente">Cliente o identificación (opcional)</label><input id="siigoVencidasCliente" name="cliente" type="text"></div><div class="form-group"><label for="siigoSoloPorVencer"><input id="siigoSoloPorVencer" name="solo_por_vencer" type="checkbox"> Solo clientes con facturas por vencer</label><small>Incluye todas las facturas pendientes de esos clientes.</small></div><button class="btn btn-primary" type="submit">Generar informe</button></form><p data-vencidas-estado role="status"></p></div><div class="siigo-vencidas-visor" hidden><header class="siigo-vencidas-cabecera"><div><h2 tabindex="-1">Facturas vencidas y por vencer por cliente</h2><p data-vencidas-meta></p><p data-alertas-cartera role="status" aria-live="polite"></p></div><button type="button" class="btn btn-secondary" data-vencidas-regresar>Regresar</button></header><div class="table-container siigo-vencidas-datos"></div><footer class="siigo-vencidas-pie"><div class="siigo-vencidas-barra" tabindex="0" role="region" aria-label="Desplazamiento horizontal de las facturas"><div></div></div><div class="siigo-vencidas-acciones"><button class="btn btn-primary" type="button" data-vencidas-generar>Generar informe</button><button class="btn btn-secondary" type="button" data-siigo-exportar-vencidas>Descargar Excel</button><button class="btn btn-secondary" type="button" id="siigoAlternarMenuVencidas">Mostrar menú lateral</button><button class="btn btn-secondary" type="button" data-vencidas-actualizar>Actualizar comprobantes</button></div><p id="siigoVencidasCargaResultado" role="status" aria-live="polite"></p></footer></div>`;
     crearPanelCarteraDinamicaSiigo('recaudo').insertAdjacentElement('afterend', panel);
     const tituloFiltros = panel.querySelector('[data-vencidas-filtros] h3');
     const cabeceraFiltros = document.createElement('div');
@@ -402,7 +402,7 @@ async function consultarFacturasVencidasSiigo(form) {
     panel._consultaVencidas = controller;
     const visor = panel.querySelector('.siigo-vencidas-visor');
     const estado = panel.querySelector(visor.hidden ? '[data-vencidas-estado]' : '#siigoVencidasCargaResultado');
-    const filtros = { ...valoresFiltrosMaestroSiigo(form), fecha_corte: form.querySelector('input[type="date"]').value, cliente: form.elements.cliente.value.trim() };
+    const filtros = { ...valoresFiltrosMaestroSiigo(form), fecha_corte: form.querySelector('input[type="date"]').value, cliente: form.elements.cliente.value.trim(), solo_por_vencer: form.elements.solo_por_vencer.checked ? '1' : '0' };
     const params = new URLSearchParams({ informe: 'vencidas', ...filtros });
     const botones = [form.querySelector('[type="submit"]'), panel.querySelector('[data-vencidas-generar]')];
     botones.forEach(boton => { boton.disabled = true; });
@@ -416,7 +416,9 @@ async function consultarFacturasVencidasSiigo(form) {
         const nombre = filtros.cliente && (data.clientes?.length === 1 ? data.clientes[0].cliente : filtros.cliente);
         panel.querySelector('[data-vencidas-meta]').textContent = `Fecha de corte: ${formatoSiigoFecha(data.fecha_corte)}${nombre ? ` · Cliente: ${nombre}` : ''}`;
         const resultado = panel.querySelector('.siigo-vencidas-datos');
+        panel._datosVencidas = data;
         resultado.innerHTML = tablaFacturasVencidasSiigo(data);
+        actualizarAlertasCarteraSiigo(panel);
         resultado.querySelectorAll('[data-siigo-seguimiento]').forEach(boton => {
             boton.addEventListener('click', () => abrirSeguimientoCarteraSiigo(data.clientes[Number(boton.dataset.siigoSeguimiento)]));
         });
@@ -439,7 +441,28 @@ async function consultarFacturasVencidasSiigo(form) {
 
 function historialSeguimientoCarteraSiigo(registros) {
     if (!registros.length) return '<p>Este cliente aún no tiene seguimientos registrados.</p>';
-    return registros.map(item => `<article class="siigo-seguimiento-registro"><h4>${escapeSiigo(formatoSiigoFecha(item.fecha_gestion))} · ${escapeSiigo(item.medio)}</h4><p>Registrado por: <strong>${escapeSiigo(item.registrado_por)}</strong>${item.contacto ? ` · Contacto: ${escapeSiigo(item.contacto)}` : ''}</p><p class="siigo-seguimiento-nota">${escapeSiigo(item.observaciones)}</p>${item.fecha_compromiso ? `<p>Compromiso de pago: ${escapeSiigo(formatoSiigoFecha(item.fecha_compromiso))}${item.valor_compromiso != null ? ` · ${formatoSiigoNumero(item.valor_compromiso)}` : ''}</p>` : ''}${item.proximo_seguimiento ? `<p>Próximo seguimiento: ${escapeSiigo(formatoSiigoFecha(item.proximo_seguimiento))}</p>` : ''}</article>`).join('');
+    return registros.map(item => `<article class="siigo-seguimiento-registro"><h4>${escapeSiigo(formatoSiigoFecha(item.fecha_gestion))} · ${escapeSiigo(item.medio)}</h4><p>Registrado por: <strong>${escapeSiigo(item.registrado_por)}</strong>${item.contacto ? ` · Contacto: ${escapeSiigo(item.contacto)}` : ''}</p><p class="siigo-seguimiento-nota">${escapeSiigo(item.observaciones)}</p>${item.fecha_compromiso ? `<p><span class="siigo-semaforo siigo-${item.estado_compromiso}">${estadosCompromisoSiigo[item.estado_compromiso]}</span> Compromiso de pago: ${escapeSiigo(formatoSiigoFecha(item.fecha_compromiso))}${item.valor_compromiso != null ? ` · ${formatoSiigoNumero(item.valor_compromiso)}` : ''}</p>` : ''}${item.fecha_compromiso && !item.compromiso_cumplido_at ? `<button type="button" class="btn btn-secondary" data-cumplir="${item.id}">Marcar cumplido</button>` : ''}${item.compromiso_cumplido_at ? `<p>Cumplimiento registrado por ${escapeSiigo(item.compromiso_cumplido_por)} · ${escapeSiigo(formatoSiigoFecha(item.compromiso_cumplido_at.slice(0, 10)))}</p>` : ''}${item.proximo_seguimiento ? `<p>Próximo seguimiento: ${escapeSiigo(formatoSiigoFecha(item.proximo_seguimiento))}</p>` : ''}</article>`).join('');
+}
+
+const estadosCompromisoSiigo = { vencido: 'Vencido', proximo: 'Próximo a vencer', cumplido: 'Cumplido', pendiente: 'Pendiente', sin_compromiso: 'Sin compromiso' };
+
+function estadoClienteCarteraSiigo(cliente) {
+    const registros = cliente.seguimientos || [];
+    return ['vencido', 'proximo', 'pendiente', 'cumplido'].find(estado => registros.some(r => r.estado_compromiso === estado)) || (registros.length ? 'con_seguimiento' : 'sin_seguimiento');
+}
+
+function actualizarAlertasCarteraSiigo(panel) {
+    const clientes = panel._datosVencidas?.clientes || [];
+    const registros = clientes.flatMap(c => c.seguimientos || []);
+    panel.querySelector('[data-alertas-cartera]').innerHTML = ['vencido', 'proximo', 'cumplido'].map(estado => `<span class="siigo-semaforo siigo-${estado}">${estadosCompromisoSiigo[estado]}: ${registros.filter(r => r.estado_compromiso === estado).length}</span>`).join(' ') + '<br><small>Compromisos a hoy: amarillo hasta 3 días; azul con seguimiento o compromiso posterior; gris sin seguimiento.</small>';
+    panel.querySelectorAll('[data-siigo-seguimiento]').forEach(boton => {
+        const cliente = clientes[Number(boton.dataset.siigoSeguimiento)];
+        const estado = estadoClienteCarteraSiigo(cliente);
+        boton.className = `siigo-seguimiento-icono siigo-${estado}`;
+        const etiqueta = `Seguimiento de cartera: ${estadosCompromisoSiigo[estado] || (estado === 'con_seguimiento' ? 'Con seguimiento' : 'Sin seguimiento')}`;
+        boton.title = etiqueta;
+        boton.setAttribute('aria-label', etiqueta);
+    });
 }
 
 async function abrirSeguimientoCarteraSiigo(cliente) {
@@ -482,6 +505,8 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
             if (!response.ok) throw new Error(data.error || 'No fue posible consultar el seguimiento.');
             registros = data.seguimientos;
             historial.innerHTML = historialSeguimientoCarteraSiigo(registros);
+            cliente.seguimientos = registros;
+            actualizarAlertasCarteraSiigo(document.getElementById('siigoFacturasVencidasPanel'));
             estado.textContent = '';
             nuevo.disabled = false;
         } catch (error) {
@@ -509,6 +534,8 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
             registros.push(data.seguimiento);
             registros.sort((a, b) => b.fecha_gestion.localeCompare(a.fecha_gestion) || b.created_at.localeCompare(a.created_at) || b.id - a.id);
             historial.innerHTML = historialSeguimientoCarteraSiigo(registros);
+            cliente.seguimientos = registros;
+            actualizarAlertasCarteraSiigo(document.getElementById('siigoFacturasVencidasPanel'));
             guardando = false;
             cancelarNuevo();
             estado.textContent = 'Seguimiento guardado correctamente.';
@@ -517,6 +544,28 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
         } finally {
             guardando = false;
             guardar.disabled = false;
+        }
+    });
+    historial.addEventListener('click', async event => {
+        const boton = event.target.closest('[data-cumplir]');
+        if (!boton) return;
+        boton.disabled = true;
+        estado.textContent = 'Registrando cumplimiento...';
+        try {
+            const response = await fetch('/api/contable/seguimiento-cartera', {
+                method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ identificacion: cliente.identificacion, id: Number(boton.dataset.cumplir) }),
+            });
+            const data = await leerRespuestaSiigo(response);
+            if (!response.ok) throw new Error(data.error || 'No fue posible registrar el cumplimiento.');
+            registros = registros.map(r => r.id === data.seguimiento.id ? data.seguimiento : r);
+            cliente.seguimientos = registros;
+            historial.innerHTML = historialSeguimientoCarteraSiigo(registros);
+            actualizarAlertasCarteraSiigo(document.getElementById('siigoFacturasVencidasPanel'));
+            estado.textContent = 'Compromiso marcado como cumplido.';
+        } catch (error) {
+            estado.textContent = error.message;
+            boton.disabled = false;
         }
     });
     dialogo.showModal();
@@ -537,18 +586,18 @@ function movimientosSinAsignarSiigo(movimientos) {
 
 function tablaFacturasVencidasSiigo(data) {
     const clientes = data.clientes || [];
-    if (!clientes.length) return '<p class="siigo-vencidas-vacio">No hay facturas vencidas con saldo pendiente para esta consulta.</p>';
+    if (!clientes.length) return '<p class="siigo-vencidas-vacio">No hay facturas con saldo pendiente para esta consulta.</p>';
     const cantidad = clientes.reduce((maximo, cliente) => Math.max(maximo, cliente.cantidad_facturas), 0);
-    const encabezados = Array.from({ length: cantidad }, (_, indice) => `<th>N.º factura ${indice + 1}</th><th>Días vencida</th><th>Valor</th>`).join('');
+    const encabezados = Array.from({ length: cantidad }, (_, indice) => `<th>N.º factura ${indice + 1}</th><th>Vencimiento</th><th>Valor</th>`).join('');
     const filas = clientes.map((cliente, indice) => {
-        const detalle = cliente.facturas.map(factura => `<td>${escapeSiigo(factura.referencia)}</td><td>${factura.dias_vencido}</td><td>${detalleCrucesFacturaSiigo(factura)}</td>`).join('');
+        const detalle = cliente.facturas.map(factura => `<td>${escapeSiigo(factura.referencia)}</td><td>${factura.dias_vencido > 0 ? `Vencida hace ${factura.dias_vencido} días` : factura.dias_vencido === 0 ? 'Vence hoy' : `Por vencer en ${-factura.dias_vencido} días`}</td><td>${detalleCrucesFacturaSiigo(factura)}</td>`).join('');
         const vacias = '<td></td><td></td><td></td>'.repeat(cantidad - cliente.facturas.length);
         const seguimiento = cliente.identificacion
-            ? `<button type="button" class="btn btn-secondary" data-siigo-seguimiento="${indice}">Seguimiento de cartera</button>`
+            ? `<button type="button" class="siigo-seguimiento-icono siigo-${estadoClienteCarteraSiigo(cliente)}" data-siigo-seguimiento="${indice}" title="Seguimiento de cartera: ${estadosCompromisoSiigo[estadoClienteCarteraSiigo(cliente)] || (cliente.seguimientos?.length ? 'Con seguimiento' : 'Sin seguimiento')}" aria-label="Seguimiento de cartera: ${estadosCompromisoSiigo[estadoClienteCarteraSiigo(cliente)] || (cliente.seguimientos?.length ? 'Con seguimiento' : 'Sin seguimiento')}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11a8 8 0 0 1-8 8H6l-4 3V11a9 9 0 0 1 19 0Z"/><path d="M7 9h10M7 13h7"/></svg></button>`
             : '<span class="form-help">Sin identificación para seguimiento</span>';
-        return `<tr><td>${escapeSiigo(cliente.vendedor)}</td><td>${escapeSiigo(cliente.cliente)}</td><td>${cliente.cantidad_facturas}</td><td>${seguimiento}</td>${detalle}${vacias}</tr>`;
+        return `<tr><td>${escapeSiigo(cliente.vendedor)}</td><td>${escapeSiigo(cliente.cliente)}</td><td>${cliente.cantidad_facturas}</td><td>${formatoSiigoNumero(cliente.total_cliente)}</td><td>${seguimiento}</td>${detalle}${vacias}</tr>`;
     }).join('');
-    return `<div class="siigo-tabla-con-encabezado-fijo" tabindex="0" role="region" aria-label="Facturas vencidas por cliente"><table class="data-table"><thead><tr><th>Vendedor</th><th>Cliente</th><th>Cantidad facturas</th><th>Seguimiento</th>${encabezados}</tr></thead><tbody>${filas}</tbody></table></div>`;
+    return `<div class="siigo-tabla-con-encabezado-fijo" tabindex="0" role="region" aria-label="Facturas vencidas y por vencer por cliente"><table class="data-table"><thead><tr><th>Vendedor</th><th>Cliente</th><th>Cantidad</th><th>Valor total cliente</th><th>Seguimiento</th>${encabezados}</tr></thead><tbody>${filas}</tbody></table></div>`;
 }
 
 async function consultarCarteraDinamicaSiigo(form, tipo) {
