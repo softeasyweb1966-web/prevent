@@ -850,17 +850,20 @@ def seguimiento_cartera():
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
 
 
-def _clientes_facturas_vencidas(cartera_clientes, vendedores, solo_por_vencer=False):
+def _clientes_facturas_vencidas(cartera_clientes, vendedores, estado_facturas='todos'):
+    if estado_facturas not in {'todos', 'vencidos', 'por_vencer'}:
+        raise ValueError('Seleccione Todos, Solo vencidos o Por vencer.')
     resultado = []
     for cliente in cartera_clientes:
         facturas = sorted(
             (factura for factura in cliente['facturas']
-             if factura['saldo'] > 0),
+             if factura['saldo'] > 0
+             and (estado_facturas == 'todos'
+                  or (estado_facturas == 'vencidos' and factura['dias_vencido'] > 0)
+                  or (estado_facturas == 'por_vencer' and factura['dias_vencido'] <= 0))),
             key=lambda factura: (-factura['dias_vencido'], factura['referencia']),
         )
         if not facturas:
-            continue
-        if solo_por_vencer and not any(f['dias_vencido'] <= 0 for f in facturas):
             continue
         resultado.append({
             'vendedor': vendedores.get(_nit_cartera(cliente['identificacion']), 'Sin vendedor asignado'),
@@ -872,7 +875,9 @@ def _clientes_facturas_vencidas(cartera_clientes, vendedores, solo_por_vencer=Fa
             'facturas': facturas,
         })
     resultado.sort(key=lambda cliente: (
-        -cliente['cantidad_facturas'], -cliente['total_vencido'],
+        -cliente['cantidad_facturas'],
+        -cliente['facturas'][0]['dias_vencido'] if cliente['cantidad_facturas'] == 1 else 0,
+        -cliente['total_vencido'],
         _normalizar(cliente['cliente']), cliente['identificacion'],
     ))
     return resultado
@@ -891,7 +896,8 @@ def _excel_facturas_vencidas(clientes, fecha_corte, movimientos_sin_asignar=None
     hoja.title = 'Facturas vencidas'
     hoja.append([f'Facturas vencidas y por vencer al {fecha_corte.isoformat()}'])
     hoja.append(['Valor = débitos menos créditos de cartera vinculados a cada factura, de cualquier tipo de comprobante, a la fecha de corte. '
-                 'Facturas con saldo mayor que cero. Días negativos: por vencer; cero: vence hoy. Orden: cantidad, luego total vencido. '
+                 'Facturas con saldo mayor que cero según el filtro. Días negativos: por vencer; cero: vence hoy. '
+                 'Orden: cantidad, luego total vencido; clientes con una factura: de mayor a menor días de vencimiento. '
                  'Sin vencimiento SIIGO se usa la fecha de factura. Vendedor actual de la ficha comercial.'])
     encabezados = ['Vendedor', 'Cliente', 'Cantidad', 'Valor total cliente']
     for indice in range(1, cantidad + 1):
@@ -1199,7 +1205,8 @@ def cartera_dinamica():
                 nit: next(iter(nombres)) if len(nombres) == 1 else 'Asignación por revisar'
                 for nit, nombres in vendedores_por_nit.items()
             }
-            clientes = _clientes_facturas_vencidas(cartera_por_cliente.values(), vendedores, request.args.get('solo_por_vencer') == '1')
+            estado_facturas = request.args.get('estado_facturas') or ('por_vencer' if request.args.get('solo_por_vencer') == '1' else 'todos')
+            clientes = _clientes_facturas_vencidas(cartera_por_cliente.values(), vendedores, estado_facturas)
             claves = {_nit_cartera(c['identificacion']) for c in clientes}
             seguimientos = {}
             if claves:

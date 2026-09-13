@@ -24,9 +24,22 @@ class CompromisosTest(unittest.TestCase):
             dict(identificacion='2', cliente='Vencido', facturas=[factura('D', 1, '300')]),
             dict(identificacion='3', cliente='Hoy', facturas=[factura('E', 0, '50')]),
         ]
-        resultado = _clientes_facturas_vencidas(clientes, {}, True)
+        resultado = _clientes_facturas_vencidas(clientes, {}, 'por_vencer')
         self.assertEqual({c['identificacion'] for c in resultado}, {'1', '3'})
-        self.assertEqual(resultado[0]['cantidad_facturas'], 2)
-        self.assertEqual(resultado[0]['total_cliente'], Decimal('300'))
-        self.assertEqual(resultado[0]['total_vencido'], Decimal('100'))
+        mixto = next(c for c in resultado if c['identificacion'] == '1')
+        self.assertEqual(mixto['cantidad_facturas'], 1)
+        self.assertEqual(mixto['total_cliente'], Decimal('200'))
+        self.assertEqual(mixto['total_vencido'], Decimal('0'))
+        vencidos = _clientes_facturas_vencidas(clientes, {}, 'vencidos')
+        self.assertEqual([c['identificacion'] for c in vencidos], ['1', '2'])
+        self.assertEqual(vencidos[0]['total_cliente'], Decimal('100'))
         self.assertEqual(len(_clientes_facturas_vencidas(clientes, {})), 3)
+
+    def test_una_factura_ordena_por_dias_antes_que_valor(self):
+        clientes = [dict(identificacion=str(i), cliente=str(i), facturas=[
+            dict(referencia=str(i), dias_vencido=dias, saldo=Decimal(valor))
+        ]) for i, (dias, valor) in enumerate([(2, '900'), (50, '10'), (-10, '1000'), (0, '20'), (-1, '5')])]
+        resultado = _clientes_facturas_vencidas(clientes, {})
+        self.assertEqual([c['facturas'][0]['dias_vencido'] for c in resultado], [50, 2, 0, -1, -10])
+        with self.assertRaises(ValueError):
+            _clientes_facturas_vencidas(clientes, {}, 'incorrecto')
