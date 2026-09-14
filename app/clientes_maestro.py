@@ -9,6 +9,19 @@ from app.models import (db, ClienteComercial, ContactoCliente, ClienteImportacio
                         Vendedor, SiigoCarga)
 
 
+# Mapa acordado con el cliente para traducir los nombres de la columna VENDEDOR
+# del Excel a un vendedor unico del sistema (evita duplicados por tipeo/apodos).
+# Clave: valor tal como aparece en el Excel. Valor: nombre canonico del vendedor.
+MAPA_VENDEDORES_EXCEL = {
+    'YELI': 'YELI',
+    'IVONNE': 'IVONE',
+    'PREVENTSALUD - TATIANA': 'TATIANA',
+    'CARLOS': 'CARLOS',
+    'CHICHARRON': 'PROBLEMA',
+    'JUAN DAVID': 'JUAN DAVID',
+}
+
+
 def texto(value):
     if value is None:
         return ''
@@ -179,6 +192,9 @@ def importar_clientes(filas, contenido, archivo, usuario_id=None, reemplazar=Fal
         raise ValueError('El maestro se actualiza conservando clientes y relaciones. El reemplazo destructivo no est? permitido.')
     # mapa_vendedores: {nombre_excel_normalizado: nombre_canonico}. Traduce los
     # nombres del Excel a un vendedor unico (evita duplicados por tipeo/apodos).
+    # Si no se pasa uno explicito, se usa el mapa acordado con el cliente.
+    if mapa_vendedores is None:
+        mapa_vendedores = MAPA_VENDEDORES_EXCEL
     mapa_norm = {normalizar(k): (v or '').strip() for k, v in (mapa_vendedores or {}).items()}
     grupos = preparar_filas(filas)
     bloquear_maestros()
