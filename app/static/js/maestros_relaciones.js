@@ -44,19 +44,31 @@ function refrescarMaestro() {
   renderClientes(); renderContactos(); renderGruposMaestro(); renderServiciosMaestro();
 }
 
-function renderGruposMaestro() {
-  const vendedores = new Map();
-  for (const c of clientesFiltradosMaestro()) {
-    const vid = c.vendedor_id || 0;
+function agruparEmpresasMaestro(clientes) {
+    const vendedores = new Map();
+    for (const c of clientes) {
+        const vid = c.vendedor_id || 0;
     if (!vendedores.has(vid)) vendedores.set(vid, {nombre:c.vendedor_nombre, clientes:new Set(), contactos:new Map()});
     const vendedor = vendedores.get(vid);
     vendedor.clientes.add(c.id);
-    for (const p of (c.contactos.length ? c.contactos : [{id:0,nombre:'Sin contacto'}])) {
-      if (!vendedor.contactos.has(p.id)) vendedor.contactos.set(p.id,{nombre:p.nombre,telefono:p.telefono,empresas:[]});
-      vendedor.contactos.get(p.id).empresas.push(c);
+    const contactos = c.contactos_agrupacion ?? c.contactos ?? [];
+    for (const p of (contactos.length ? contactos : [{nombre:'',telefono:''}])) {
+      const nombre = (p.nombre || '').trim().replace(/\s+/g, ' ');
+      const clave = vid && nombre ? nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase() : `sin-datos:${c.id}`;
+      if (!vendedor.contactos.has(clave)) vendedor.contactos.set(clave,{nombre:nombre || 'Sin CONTACTO',telefonos:new Set(),empresas:new Map()});
+      const grupo = vendedor.contactos.get(clave);
+      if (p.telefono) grupo.telefonos.add(p.telefono.trim());
+      grupo.empresas.set(c.id, c);
     }
   }
-  document.getElementById('gruposEmpresas').innerHTML = [...vendedores.values()].map(v=>`<details open><summary><strong>${esc(v.nombre)}</strong> · ${v.clientes.size} empresas</summary>${[...v.contactos.values()].map(p=>`<details style="margin:12px 20px"><summary>${esc(p.nombre)} ${esc(p.telefono||'')} · ${p.empresas.length} empresas</summary><ul>${p.empresas.map(c=>`<li>${esc(c.razon_social)} · ${esc(c.nit)} · ${c.paquetes_vigentes||0} paquete(s) vigente(s) <button class="m-btn m-btn-secondary m-btn-sm" onclick="verServiciosCliente(${c.id})">Servicios</button></li>`).join('')}</ul></details>`).join('')}</details>`).join('') || '<p>No hay empresas para estos filtros.</p>';
+  return [...vendedores.entries()].sort(([a], [b]) => (a === 0) - (b === 0)).map(([,v]) => ({...v,
+    contactos:[...v.contactos.values()].map(p=>({...p,telefonos:[...p.telefonos],empresas:[...p.empresas.values()]}))
+      .sort((a,b)=>b.empresas.length-a.empresas.length || a.nombre.localeCompare(b.nombre, 'es'))}));
+}
+
+function renderGruposMaestro() {
+  const vendedores = agruparEmpresasMaestro(clientesFiltradosMaestro());
+  document.getElementById('gruposEmpresas').innerHTML = vendedores.map(v=>`<details open><summary><strong>${esc(v.nombre)}</strong> · ${v.clientes.size} empresas</summary>${v.contactos.map(p=>`<details style="margin:12px 20px"><summary>${esc(p.nombre)} ${esc(p.telefonos.join(' / '))} · ${p.empresas.length} empresas</summary><ul>${p.empresas.map(c=>`<li>${esc(c.razon_social)} · ${esc(c.nit)} · ${c.paquetes_vigentes||0} paquete(s) vigente(s) <button class="m-btn m-btn-secondary m-btn-sm" onclick="verServiciosCliente(${c.id})">Servicios</button></li>`).join('')}</ul></details>`).join('')}</details>`).join('') || '<p>No hay empresas para estos filtros.</p>';
 }
 
 async function cargarTarifasMaestro() {

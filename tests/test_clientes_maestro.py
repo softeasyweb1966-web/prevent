@@ -271,6 +271,23 @@ class MaestroTest(unittest.TestCase):
         self.assertEqual(len(self.http.get('/api/contable/clientes').json['clientes']), 108)
         self.assertEqual(self.http.get('/api/contable/resumen').json['clientes_sin_vendedor'], 106)
 
+    def test_grupos_usan_contacto_excel_y_respetan_vendedor(self):
+        from app.models import ClienteImportacionFila
+        from app.clientes_maestro import vincular_contacto
+        carga = SiigoCarga(tipo_archivo='CLIENTES', nombre_archivo='grupos.xlsx', hash_archivo='grupos')
+        db.session.add(carga); db.session.flush()
+        for numero, cliente, nombre in [(1, self.c1, 'CON SUELO'), (2, self.c2, '')]:
+            cliente.carga_id = carga.id
+            vincular_contacto(cliente, 'Otro contacto administrativo', '999')
+            db.session.add(ClienteImportacionFila(carga_id=carga.id, numero_fila=numero, cliente_id=cliente.id,
+                datos={'CONTACTO': nombre, 'TELEFONOCONTACTO': '123', 'NOMBRESCONTACTO': 'No agrupar por este campo'}))
+        db.session.commit(); self.login(0)
+        clientes = {c['id']: c for c in self.http.get('/api/comercial/maestro/clientes').json}
+        self.assertEqual(clientes[self.c1.id]['contactos_agrupacion'], [{'nombre': 'CON SUELO', 'telefono': '123'}])
+        self.assertEqual(clientes[self.c2.id]['contactos_agrupacion'], [])
+        self.login(1)
+        self.assertEqual([c['id'] for c in self.http.get('/api/comercial/maestro/clientes').json], [self.c1.id])
+
     def test_comprobantes_cartera_persisten_y_respetan_propietario(self):
         from app.models import SiigoSeguimientoCartera, SiigoComprobantePago
         registro = SiigoSeguimientoCartera(identificacion='9001', cliente_nombre='Empresa Uno',

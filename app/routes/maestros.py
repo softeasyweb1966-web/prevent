@@ -156,7 +156,19 @@ def listar_clientes():
     conteos = {}
     for cid, tipo, cantidad in vigentes:
         conteos.setdefault(cid, {})[tipo] = cantidad
+    contactos_excel = {}
+    filas = ClienteImportacionFila.query.join(ClienteComercial,
+        (ClienteImportacionFila.cliente_id == ClienteComercial.id) &
+        (ClienteImportacionFila.carga_id == ClienteComercial.carga_id)).filter(
+            ClienteComercial.id.in_(query_clientes().with_entities(ClienteComercial.id)))
+    for fila in filas:
+        contactos = contactos_excel.setdefault(fila.cliente_id, [])
+        nombre = texto(fila.datos.get('CONTACTO'))
+        if nombre:
+            contactos.append({'nombre': nombre, 'telefono': texto(fila.datos.get('TELEFONOCONTACTO'))})
     return jsonify([{**datos_cliente(c), 'paquetes_vigentes': conteos.get(c.id, {}).get('PAQUETE', 0),
+                     'contactos_agrupacion': contactos_excel.get(c.id, [
+                         {'nombre': p.nombre, 'telefono': p.telefono} for p in c.contactos]),
                      'servicios_vigentes': sum(conteos.get(c.id, {}).values())}
                     for c in query_clientes().options(selectinload(ClienteComercial.contactos),
                         selectinload(ClienteComercial.vendedor)).order_by(ClienteComercial.razon_social)])
