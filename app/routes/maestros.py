@@ -167,8 +167,9 @@ def listar_clientes():
         if nombre:
             contactos.append({'nombre': nombre, 'telefono': texto(fila.datos.get('TELEFONOCONTACTO'))})
     return jsonify([{**datos_cliente(c), 'paquetes_vigentes': conteos.get(c.id, {}).get('PAQUETE', 0),
-                     'contactos_agrupacion': contactos_excel.get(c.id, [
-                         {'nombre': p.nombre, 'telefono': p.telefono} for p in c.contactos]),
+                     'contactos_agrupacion': ([{'nombre': p.nombre, 'telefono': p.telefono} for p in c.contactos]
+                         if c.contactos_agrupacion_manual else contactos_excel.get(c.id, [
+                         {'nombre': p.nombre, 'telefono': p.telefono} for p in c.contactos])),
                      'servicios_vigentes': sum(conteos.get(c.id, {}).values())}
                     for c in query_clientes().options(selectinload(ClienteComercial.contactos),
                         selectinload(ClienteComercial.vendedor)).order_by(ClienteComercial.razon_social)])
@@ -196,6 +197,8 @@ def guardar_cliente(cid=None):
     contactos = anteriores
     if 'contactos_ids' in data:
         contactos = [query_contactos().filter_by(id=pk).first_or_404() for pk in lista_ids(data['contactos_ids'])]
+        if {p.id for p in contactos} != {p.id for p in anteriores}:
+            c.contactos_agrupacion_manual = True
     if any(p.vendedor_id != vid and not (cid and vid != c.vendedor_id and p in anteriores) for p in contactos):
         raise ValueError('Todos los contactos y la empresa deben tener el mismo vendedor. Desvincule primero los contactos de otro vendedor.')
     if vid is None and vid == c.vendedor_id and any(any(x.id != cid for x in p.clientes) for p in contactos):
@@ -283,6 +286,7 @@ def guardar_contacto(pk=None):
     coincidencias = [x for x in buscar_contacto(vid, nombre, telefono, email) if x.id != pk]
     if coincidencias:
         raise ValueError(f'El contacto ya existe (ID {coincidencias[0].id}). Vincule las empresas a ese registro.')
+    anteriores = list(c.clientes)
     if pk and vid != c.vendedor_id:
         c.clientes = []
         db.session.flush()
@@ -295,8 +299,9 @@ def guardar_contacto(pk=None):
     c.clave = clave_contacto(vid, nombre, telefono, email, clientes[0].id if clientes else pk)
     db.session.add(c)
     db.session.flush()
-    anteriores = list(c.clientes)
     c.clientes = clientes
+    for empresa in set(anteriores + clientes):
+        empresa.contactos_agrupacion_manual = True
     for x in anteriores:
         if (x.contacto_principal, x.celular_contacto_principal, x.email_contacto_principal) == anterior:
             x.contacto_principal = nombre if x in clientes else None

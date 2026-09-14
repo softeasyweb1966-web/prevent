@@ -143,6 +143,7 @@ class ClienteComercial(db.Model):
     telefono_responsable = db.Column(db.String(80))
     nombres_alternativos = db.Column(db.JSON)
     revision_importacion = db.Column(db.Text)
+    contactos_agrupacion_manual = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     contactos = db.relationship('ContactoCliente', secondary='clientes_contactos', back_populates='clientes')
     # Compatibilidad de consultas contables: un solo registro fisico por cliente.
     identificacion = synonym('nit')

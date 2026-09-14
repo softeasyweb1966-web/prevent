@@ -285,8 +285,51 @@ class MaestroTest(unittest.TestCase):
         clientes = {c['id']: c for c in self.http.get('/api/comercial/maestro/clientes').json}
         self.assertEqual(clientes[self.c1.id]['contactos_agrupacion'], [{'nombre': 'CON SUELO', 'telefono': '123'}])
         self.assertEqual(clientes[self.c2.id]['contactos_agrupacion'], [])
+        self.login(2)
+        respuesta = self.http.post('/api/comercial/maestro/contactos', json={
+            'nombre': 'Contacto nuevo', 'telefono': '456', 'vendedor_id': self.v2.id,
+            'clientes_ids': [self.c2.id], 'activo': True})
+        self.assertEqual(respuesta.status_code, 201, respuesta.json)
+        actualizado = self.http.get('/api/comercial/maestro/clientes').json[0]
+        self.assertIn({'nombre': 'Contacto nuevo', 'telefono': '456'}, actualizado['contactos_agrupacion'])
+        self.assertTrue(self.c2.contactos_agrupacion_manual)
         self.login(1)
         self.assertEqual([c['id'] for c in self.http.get('/api/comercial/maestro/clientes').json], [self.c1.id])
+
+    def test_corregir_y_desvincular_contacto_no_recupera_excel(self):
+        from app.models import ClienteImportacionFila
+        from app.clientes_maestro import vincular_contacto
+        carga = SiigoCarga(tipo_archivo='CLIENTES', nombre_archivo='contactos.xlsx', hash_archivo='contactos')
+        db.session.add(carga); db.session.flush()
+        self.c1.carga_id = carga.id
+        contacto = vincular_contacto(self.c1, 'Original', '123')
+        self.c1.contacto_principal = 'Original'
+        self.c1.celular_contacto_principal = '123'
+        db.session.add(ClienteImportacionFila(carga_id=carga.id, numero_fila=1, cliente_id=self.c1.id,
+            datos={'CONTACTO': 'Original', 'TELEFONOCONTACTO': '123'}))
+        db.session.commit(); self.login(0)
+        payload = {'nombre': 'Corregido', 'telefono': '456', 'vendedor_id': self.v1.id,
+                   'clientes_ids': [self.c1.id]}
+        respuesta = self.http.put(f'/api/comercial/maestro/contactos/{contacto.id}', json=payload)
+        self.assertEqual(respuesta.status_code, 200, respuesta.json)
+        clientes = {c['id']: c for c in self.http.get('/api/comercial/maestro/clientes').json}
+        self.assertEqual(clientes[self.c1.id]['contactos_agrupacion'], [{'nombre': 'Corregido', 'telefono': '456'}])
+        # Reasignar el contacto debe limpiar tambien su empresa anterior.
+        self.c1.contactos_agrupacion_manual = False
+        db.session.commit()
+        payload.update(vendedor_id=self.v2.id, clientes_ids=[self.c2.id])
+        respuesta = self.http.put(f'/api/comercial/maestro/contactos/{contacto.id}', json=payload)
+        self.assertEqual(respuesta.status_code, 200, respuesta.json)
+        clientes = {c['id']: c for c in self.http.get('/api/comercial/maestro/clientes').json}
+        self.assertEqual(clientes[self.c1.id]['contactos_agrupacion'], [])
+        self.assertIsNone(self.c1.contacto_principal)
+        self.assertEqual(clientes[self.c2.id]['contactos_agrupacion'], [{'nombre': 'Corregido', 'telefono': '456'}])
+        respuesta = self.http.put(f'/api/comercial/maestro/clientes/{self.c2.id}', json={
+            'razon_social': self.c2.razon_social, 'nit': self.c2.nit,
+            'vendedor_id': self.v2.id, 'contactos_ids': []})
+        self.assertEqual(respuesta.status_code, 200, respuesta.json)
+        clientes = {c['id']: c for c in self.http.get('/api/comercial/maestro/clientes').json}
+        self.assertEqual(clientes[self.c2.id]['contactos_agrupacion'], [])
 
     def test_comprobantes_cartera_persisten_y_respetan_propietario(self):
         from app.models import SiigoSeguimientoCartera, SiigoComprobantePago
