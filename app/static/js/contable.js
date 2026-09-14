@@ -113,14 +113,57 @@ async function importarArchivoSiigo(tipo, archivo, resultadoId = 'siigoCargaResu
     try {
         const response = await fetch(`/api/contable/cargar-${tipo}`, { method: 'POST', body: formData, credentials: 'include' });
         const data = await leerRespuestaSiigo(response);
-        if (!response.ok) throw new Error(data.error || 'No fue posible procesar el archivo.');
+        if (!response.ok && response.status !== 202) throw new Error(data.error || 'No fue posible procesar el archivo.');
         if (tipo === 'clientes' && typeof invalidarClientesComerciales === 'function') invalidarClientesComerciales();
-        result.textContent = `${data.mensaje} ${data.creados != null ? `Creados: ${data.creados}. Actualizados: ${data.actualizados}.` : `Comprobantes: ${data.comprobantes}. Movimientos: ${data.movimientos}. Omitidos: ${data.omitidos}.`}`;
+        if (tipo === 'clientes' && data.estado === 'en_proceso') {
+            result.textContent = 'Importación de clientes en proceso... (puede tardar varios minutos)';
+            seguirEstadoCargaClientes(result, alCompletar);
+            return;
+        }
+        const detalleCarga = data.creados != null
+            ? ` Creados: ${data.creados}. Actualizados: ${data.actualizados}.`
+            : (data.comprobantes != null ? ` Comprobantes: ${data.comprobantes}. Movimientos: ${data.movimientos}. Omitidos: ${data.omitidos}.` : '');
+        result.textContent = `${data.mensaje}${detalleCarga}`;
         await cargarResumenSiigo();
         if (alCompletar) await alCompletar();
     } catch (error) {
         result.textContent = error.message;
     }
+}
+
+async function seguirEstadoCargaClientes(result, alCompletar = null) {
+    const consultar = async () => {
+        try {
+            const r = await fetch('/api/contable/estado-carga-clientes', { credentials: 'include' });
+            const d = await r.json().catch(() => ({}));
+            if (d.estado === 'en_proceso') return false;
+            if (d.estado === 'completado') {
+                const s = d.resumen || {};
+                const partes = [];
+                if (s.identificaciones != null) partes.push(`${s.identificaciones} identificaciones`);
+                if (s.creados != null) partes.push(`creados ${s.creados}`);
+                if (s.actualizados != null) partes.push(`actualizados ${s.actualizados}`);
+                if (s.revision != null) partes.push(`en revisión ${s.revision}`);
+                result.textContent = partes.length
+                    ? `Importación de clientes completada: ${partes.join(', ')}.`
+                    : 'Importación de clientes completada sin duplicados.';
+            } else if (d.estado === 'error') {
+                result.textContent = `Error en la importación de clientes: ${d.error || 'revisa el archivo e intenta de nuevo.'}`;
+            } else {
+                result.textContent = 'Importación de clientes finalizada.';
+            }
+            if (typeof invalidarClientesComerciales === 'function') invalidarClientesComerciales();
+            await cargarResumenSiigo();
+            if (alCompletar) await alCompletar();
+            return true;
+        } catch (e) {
+            return false;
+        }
+    };
+    if (await consultar()) return;
+    const timer = setInterval(async () => {
+        if (await consultar()) clearInterval(timer);
+    }, 4000);
 }
 
 async function consultarComprobantesSiigo(event) {
