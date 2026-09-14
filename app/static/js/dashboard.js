@@ -41,13 +41,15 @@ function updateCurrentUserDisplay() {
 }
 
 function applySidebarAccess() {
+    setComercialElementsVisibility('#accesoMaestroClientes', canManageComercial('clientes', 'read'));
     const menuItems = document.querySelectorAll('.menu-item, .menu-subitem');
     const allowedModules = Array.isArray(currentUser?.menu_modules) ? currentUser.menu_modules : [];
     const isAdminUser = currentUser?.role === 'Administrador';
 
     menuItems.forEach(item => {
         const moduleName = item.dataset.module;
-        const visible = !moduleName || isAdminUser || allowedModules.includes(moduleName);
+        const visible = !moduleName || isAdminUser || allowedModules.includes(moduleName) ||
+            (moduleName === 'tablas' && canManageComercial('clientes', 'read'));
         const container = item.closest('li') || item;
         container.style.display = visible ? '' : 'none';
     });
@@ -134,7 +136,9 @@ document.addEventListener('DOMContentLoaded', () => {
     setupUsuariosModule();
     setupEstructuraLaboralForms();
     setupModulosPeriodoActual();
-    refreshCurrentUserContext();
+    refreshCurrentUserContext().then(() => {
+        if (location.hash === '#tablas') switchModule('tablas');
+    });
 });
 
 // ==================== TOGGLE PANELES DE PERÍODO POR MÓDULO ====================
@@ -862,7 +866,8 @@ function setupMenuNavigation() {
 function switchModule(moduleName) {
     const allowedModules = Array.isArray(currentUser?.menu_modules) ? currentUser.menu_modules : [];
     const isAdminUser = currentUser?.role === 'Administrador';
-    if (!isAdminUser && moduleName !== 'dashboard' && moduleName !== 'appBanner' && !allowedModules.includes(moduleName)) {
+    if (!isAdminUser && moduleName !== 'dashboard' && moduleName !== 'appBanner' && !allowedModules.includes(moduleName)
+        && !(moduleName === 'tablas' && canManageComercial('clientes', 'read'))) {
         showError('No tienes acceso a ese módulo con tu rol actual.');
         return;
     }

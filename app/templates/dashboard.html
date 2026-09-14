@@ -10,7 +10,6 @@
             <p id="userInfo">Cargando...</p>
         </div>
         
-        <a href="/api/comercial/maestros" class="btn btn-secondary" id="accesoMaestroClientes" style="display:none; margin:16px;">Clientes y relaciones</a>
         <ul class="menu">
             <!-- Dashboard menu removed: initial screen shows application banner -->
             <li><a href="#" class="menu-item" data-module="gestion_informacion">
@@ -240,7 +239,17 @@
                 <div class="module-header">
                     <h2>Tablas de Configuración</h2>
                 </div>
-                <p class="placeholder">Este módulo está en desarrollo.</p>
+                <section id="accesoMaestroClientes" class="recent-section" style="display:none;">
+                    <h3>Clientes y relaciones</h3>
+                    <p>Maestro compartido por Atenciones, Ventas y Vendedores.</p>
+                    <div class="button-group module-actions">
+                        <a class="btn btn-secondary" href="/api/comercial/maestros#clientes">Clientes</a>
+                        <a class="btn btn-secondary" href="/api/comercial/maestros#contactos">Contactos</a>
+                        <a class="btn btn-secondary" href="/api/comercial/maestros#grupos">Empresas agrupadas</a>
+                        <a class="btn btn-secondary" href="/api/comercial/maestros#servicios">Clientes–Productos/Servicios</a>
+                        <a class="btn btn-secondary" href="/api/comercial/maestros#paquetes">Paquetes</a>
+                    </div>
+                </section>
             </div>
 
             <div id="comercialView" class="module-view">

@@ -47,7 +47,7 @@
 <div class="maestros-wrap">
   <div class="m-head">
     <h1 style="margin:0;">Maestros comerciales</h1>
-    <a href="/dashboard" class="m-btn m-btn-secondary">← Volver al panel</a>
+    <a href="/dashboard#tablas" class="m-btn m-btn-secondary">← Volver a Tablas</a>
   </div>
 
   <p>Un solo maestro para Atenciones, Ventas y Vendedores.</p>
@@ -491,7 +491,15 @@ async function borrarPaquete(id){
   catch(e){ mToast(e.message, false); }
 }
 
-document.addEventListener('DOMContentLoaded', cargarTodo);
+function abrirPestanaMaestroDesdeEnlace() {
+  const tab = location.hash.slice(1);
+  maestrosTab(['clientes', 'contactos', 'grupos', 'servicios', 'paquetes'].includes(tab) ? tab : 'clientes');
+}
+document.addEventListener('DOMContentLoaded', () => {
+  abrirPestanaMaestroDesdeEnlace();
+  cargarTodo();
+});
+window.addEventListener('hashchange', abrirPestanaMaestroDesdeEnlace);
 </script>
 <script src="{{ asset_url('js/maestros_relaciones.js') }}"></script>
 {% endblock %}
