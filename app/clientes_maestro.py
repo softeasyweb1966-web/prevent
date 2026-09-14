@@ -174,9 +174,12 @@ def conciliar_atenciones(aplicar=False):
     return resumen
 
 
-def importar_clientes(filas, contenido, archivo, usuario_id=None, reemplazar=False):
+def importar_clientes(filas, contenido, archivo, usuario_id=None, reemplazar=False, mapa_vendedores=None):
     if reemplazar:
         raise ValueError('El maestro se actualiza conservando clientes y relaciones. El reemplazo destructivo no est? permitido.')
+    # mapa_vendedores: {nombre_excel_normalizado: nombre_canonico}. Traduce los
+    # nombres del Excel a un vendedor unico (evita duplicados por tipeo/apodos).
+    mapa_norm = {normalizar(k): (v or '').strip() for k, v in (mapa_vendedores or {}).items()}
     grupos = preparar_filas(filas)
     bloquear_maestros()
     digest = sha256(contenido).hexdigest()
@@ -223,15 +226,17 @@ def importar_clientes(filas, contenido, archivo, usuario_id=None, reemplazar=Fal
         nombres_vendedor = list(dict.fromkeys(r.get('VENDEDOR') for _, r in registros if r.get('VENDEDOR')))
         vendedor = None
         if len(nombres_vendedor) == 1:
-            key = normalizar(nombres_vendedor[0])
+            # Traduce el nombre del Excel al canonico segun el mapa (si aplica).
+            nombre_canonico = mapa_norm.get(normalizar(nombres_vendedor[0]), nombres_vendedor[0])
+            key = normalizar(nombre_canonico)
             exactos = [v for v in vendedores if normalizar(v.nombre) == key]
             candidatos = exactos  # No asignar por coincidencias parciales de nombres.
             if len(candidatos) == 1:
                 vendedor = candidatos[0]
             elif len(candidatos) > 1:
-                revision.append('Vendedor ambiguo: ' + nombres_vendedor[0])
+                revision.append('Vendedor ambiguo: ' + nombre_canonico)
             else:
-                vendedor = Vendedor(nombre=nombres_vendedor[0], activo=True)
+                vendedor = Vendedor(nombre=nombre_canonico, activo=True)
                 db.session.add(vendedor)
                 db.session.flush()
                 vendedores.append(vendedor)
