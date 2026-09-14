@@ -1326,6 +1326,8 @@ let asignacionesLaboralesData = [];
 let vendedoresConfigData = [];
 let vendedorUsuariosAsignablesData = [];
 let clientesComercialesData = [];
+function invalidarClientesComerciales() { clientesComercialesData = []; }
+window.addEventListener('focus', invalidarClientesComerciales);
 let catalogoComercialData = [];
 let tarifasComercialesData = [];
 let clienteComercialTarifaContext = null;
@@ -4492,7 +4494,7 @@ function renderConsultaComercialResults(sectionName, query = '') {
     const input = document.getElementById(config.inputId);
     const showAll = input?.dataset.showAll === 'true';
     actualizarBotonVerTodosConsultaComercial(sectionName);
-    if (!normalizedQuery) {
+    if (!normalizedQuery && sectionName !== 'clientes') {
         summary.textContent = config.prompt;
         results.innerHTML = `<div class="loading">${escapeHtml(config.prompt)}</div>`;
         return;
@@ -5918,10 +5920,6 @@ async function llenarSelectVendedorComercial(selectedId = '') {
 }
 
 async function asegurarClientesComerciales() {
-    if (Array.isArray(clientesComercialesData) && clientesComercialesData.length > 0) {
-        return clientesComercialesData;
-    }
-
     const response = await fetch('/api/comercial/clientes', { credentials: 'include' });
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));

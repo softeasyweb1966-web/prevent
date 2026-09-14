@@ -92,6 +92,23 @@ def sincronizar_contacto_legacy(cliente):
                       cliente.email_facturacion, cliente.cargo_contacto_facturacion)
 
 
+def cambiar_vendedor_cliente(cliente, vendedor_id, contactos=None):
+    """Conserva los contactos del cliente sin reasignar los de otras empresas."""
+    contactos = list(cliente.contactos if contactos is None else contactos)
+    if cliente.vendedor_id == vendedor_id:
+        cliente.contactos = contactos
+        return
+    cliente.contactos = []
+    db.session.flush()
+    cliente.vendedor_id = vendedor_id
+    db.session.flush()
+    for contacto in contactos:
+        if contacto.vendedor_id == vendedor_id:
+            cliente.contactos.append(contacto)
+        else:
+            vincular_contacto(cliente, contacto.nombre, contacto.telefono, contacto.email, contacto.cargo)
+
+
 def preparar_filas(filas):
     requeridos = {'NOMBRETERCERO', 'IDENTIFICACION'}
     for index, fila in enumerate(filas):
@@ -164,9 +181,9 @@ def importar_clientes(filas, contenido, archivo, usuario_id=None, reemplazar=Fal
     bloquear_maestros()
     digest = sha256(contenido).hexdigest()
     previa = SiigoCarga.query.filter_by(hash_archivo=digest).first()
-    if previa and not reemplazar:
+    if previa and ClienteImportacionFila.query.filter_by(carga_id=previa.id).count() == sum(map(len, grupos.values())):
         return {'sin_cambios': True, 'mensaje': 'El archivo ya está importado; no se duplicaron registros.', 'carga_id': previa.id}
-    carga = SiigoCarga(tipo_archivo='CLIENTES', nombre_archivo=archivo, hash_archivo=digest, usuario_id=usuario_id)
+    carga = previa or SiigoCarga(tipo_archivo='CLIENTES', nombre_archivo=archivo, hash_archivo=digest, usuario_id=usuario_id)
     db.session.add(carga)
     db.session.flush()
     actuales = ClienteComercial.query.all()

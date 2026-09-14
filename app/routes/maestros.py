@@ -10,7 +10,8 @@ from sqlalchemy.exc import IntegrityError
 from app.models import (db, ClienteComercial, ContactoCliente, ClienteImportacionFila,
                         ComercialCatalogoItem, ClienteComercialTarifa, Vendedor)
 from app.clientes_maestro import (texto, normalizar, bloquear_maestros, validar_cliente,
-                                  clave_contacto, buscar_contacto)
+                                  clave_contacto, buscar_contacto, cambiar_vendedor_cliente)
+from app.clientes_scope import clientes_visibles
 from app.routes import comercial_bp
 from app.routes.comercial import (_require_commercial_permission, _is_admin_user,
     _resolver_vendedor_usuario_actual, _obtener_cliente_comercial_en_scope,
@@ -41,11 +42,7 @@ def api(action):
 
 
 def query_clientes():
-    query = ClienteComercial.query
-    if not _is_admin_user():
-        vendedor = _resolver_vendedor_usuario_actual()
-        query = query.filter(ClienteComercial.vendedor_id == vendedor.id) if vendedor else query.filter(text('false'))
-    return query
+    return clientes_visibles()
 
 
 def query_contactos():
@@ -183,17 +180,19 @@ def guardar_cliente(cid=None):
     nit = validar_texto(data, 'nit', 50, not bool(cid))
     c.nit = validar_cliente(nit, nombre, cid)
     vid = vendedor_permitido(data.get('vendedor_id', c.vendedor_id))
-    contactos = c.contactos
+    anteriores = list(c.contactos)
+    contactos = anteriores
     if 'contactos_ids' in data:
         contactos = [query_contactos().filter_by(id=pk).first_or_404() for pk in lista_ids(data['contactos_ids'])]
-    if any(p.vendedor_id != vid for p in contactos):
+    if any(p.vendedor_id != vid and not (cid and vid != c.vendedor_id and p in anteriores) for p in contactos):
         raise ValueError('Todos los contactos y la empresa deben tener el mismo vendedor. Desvincule primero los contactos de otro vendedor.')
-    if vid is None and any(any(x.id != cid for x in p.clientes) for p in contactos):
+    if vid is None and vid == c.vendedor_id and any(any(x.id != cid for x in p.clientes) for p in contactos):
         raise ValueError('Asigne vendedor antes de compartir un contacto entre empresas.')
-    if cid and vid != c.vendedor_id:
-        c.contactos = []
-        db.session.flush()
-    c.vendedor_id = vid
+    if cid:
+        cambiar_vendedor_cliente(c, vid, contactos)
+        contactos = list(c.contactos)
+    else:
+        c.vendedor_id = vid
     c.razon_social = nombre
     for campo, limite in [('nombre_comercial', 200), ('ciudad', 120), ('direccion', 255), ('telefono_empresa', 80),
                           ('email_empresa', 120), ('tipo_identificacion', 30), ('digito_verificacion', 10),

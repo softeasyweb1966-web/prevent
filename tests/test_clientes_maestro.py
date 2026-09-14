@@ -191,6 +191,71 @@ class MaestroTest(unittest.TestCase):
         self.assertEqual(r.status_code,200)
         self.assertIn('Empresas agrupadas',r.text)
 
+    def test_reasignar_vendedor_conserva_contacto_y_visibilidad(self):
+        from app.clientes_maestro import vincular_contacto
+        self.c3.vendedor_id = self.v1.id
+        db.session.flush()
+        contacto = vincular_contacto(self.c1, 'Contacto compartido', '555')
+        vincular_contacto(self.c3, 'Contacto compartido', '555')
+        db.session.commit()
+        self.login(0)
+        response = self.http.put(f'/api/comercial/maestro/clientes/{self.c1.id}', json={
+            'razon_social': self.c1.razon_social, 'nit': self.c1.nit,
+            'vendedor_id': self.v2.id, 'contactos_ids': [contacto.id]})
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(response.json['contactos'][0]['telefono'], '555')
+        self.assertNotEqual(response.json['contactos_ids'], [contacto.id])
+        self.assertEqual(contacto.vendedor_id, self.v1.id)
+        self.assertEqual(self.c3.contactos, [contacto])
+        self.factura('9001', 'Empresa Uno', Decimal('100'), 1)
+        self.login(2)
+        self.assertIn(self.c1.id, [c['id'] for c in self.http.get('/api/comercial/clientes').json])
+        reporte = self.http.get('/api/contable/cartera-dinamica?informe=vencidas&fecha_corte=2026-03-01').json
+        self.assertEqual(reporte['clientes'][0]['vendedor'], self.v2.nombre)
+        self.login(1)
+        self.assertNotIn(self.c1.id, [c['id'] for c in self.http.get('/api/comercial/clientes').json])
+
+    def test_recuperar_tabla_siigo_anterior_y_reimportar_mismo_archivo(self):
+        import importlib
+        from hashlib import sha256
+        from alembic.migration import MigrationContext
+        from alembic.operations import Operations
+        contenido = self.excel([['Nombre anterior', '9001', '', '', ''], ['Recuperada', '9011', 'Vendedor Excel Dos', '', '']]).getvalue()
+        carga = SiigoCarga(tipo_archivo='CLIENTES', nombre_archivo='anterior.xlsx', hash_archivo=sha256(contenido).hexdigest())
+        db.session.add(carga); db.session.flush()
+        db.session.execute(text('''CREATE TABLE IF NOT EXISTS siigo_clientes (
+            id integer PRIMARY KEY, identificacion varchar(50), sucursal varchar(30),
+            nombre varchar(255), tipo_identificacion varchar(30), digito_verificacion varchar(10),
+            direccion varchar(255), ciudad varchar(120), telefono varchar(80), estado varchar(30),
+            carga_id integer REFERENCES siigo_cargas(id), created_at timestamp, updated_at timestamp)'''))
+        db.session.execute(text('''INSERT INTO siigo_clientes (id,identificacion,sucursal,nombre,telefono,estado,carga_id,created_at)
+            VALUES (1,'9.001-1','0','Nombre anterior','999','ACTIVO',:carga,now()),
+                   (2,'9011','0','Recuperada','222','ACTIVO',:carga,now()),
+                   (3,'9011','1','Otra sucursal','333','ACTIVO',:carga,now())'''), {'carga': carga.id})
+        module = importlib.import_module('migrations.versions.20260913_043_recuperar_clientes_siigo')
+        with Operations.context(MigrationContext.configure(db.session.connection())):
+            module.upgrade(); module.upgrade()
+        db.session.commit(); db.session.expire_all()
+        self.assertEqual(ClienteComercial.query.count(), 4)
+        self.assertEqual(self.c1.vendedor_id, self.v1.id)
+        self.assertEqual(self.c1.telefono_empresa, '123')
+        self.assertEqual(self.c1.razon_social, 'Empresa Uno')
+        recuperada = ClienteComercial.query.filter_by(nit='9011').one()
+        self.assertIn('Otra sucursal', recuperada.nombres_alternativos)
+        self.assertIsNone(recuperada.vendedor_id)
+        self.login(0)
+        self.assertEqual(self.http.get('/api/contable/resumen').json['clientes'], 4)
+        response = self.http.post('/api/contable/cargar-clientes', data={'archivo': (BytesIO(contenido), 'anterior.xlsx')})
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(recuperada.vendedor_id, self.v2.id)
+        self.assertEqual(ClienteComercial.query.count(), 4)
+
+    def test_consulta_ventas_no_oculta_clientes_despues_de_cien(self):
+        db.session.add_all([ClienteComercial(nit=str(80000+i), razon_social=f'Cliente {i}') for i in range(105)])
+        db.session.commit(); self.login(0)
+        self.assertEqual(len(self.http.get('/api/contable/clientes').json['clientes']), 108)
+        self.assertEqual(self.http.get('/api/contable/resumen').json['clientes_sin_vendedor'], 106)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -5,12 +5,17 @@ from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from io import BytesIO
 import re
+import threading
 import unicodedata
 from zoneinfo import ZoneInfo
 
-from flask import jsonify, request, send_file
+from flask import jsonify, request, send_file, current_app
 from flask_login import current_user, login_required
 from sqlalchemy import func, or_
+
+# Estado en memoria de la importacion de clientes en segundo plano.
+_ESTADO_CARGA_CLIENTES = {}
+_CARGA_CLIENTES_LOCK = threading.Lock()
 
 from app.models import (
     ClienteComercial,
@@ -385,6 +390,7 @@ def resumen():
         _requiere_ventas()
         return jsonify({
             'clientes': _clientes_informe().count(),
+            'clientes_sin_vendedor': _clientes_informe().filter(ClienteComercial.vendedor_id.is_(None)).count(),
             'cuentas': SiigoCuentaContable.query.count(),
             'comprobantes': _comprobantes_visibles().count(),
             'movimientos': SiigoMovimiento.query.filter(_alcance_movimiento()).count(),
@@ -407,25 +413,87 @@ def resumen():
 @contable_bp.route('/cargar-clientes', methods=['POST'])
 @login_required
 def cargar_clientes():
+    """Importa el maestro de clientes desde el Excel EN SEGUNDO PLANO.
+
+    El import es largo (miles de clientes/contactos); ejecutarlo dentro del
+    request agotaria el timeout HTTP. Se lanza en un hilo con su propio contexto
+    de aplicacion y se responde de inmediato; el avance se consulta con
+    GET /estado-carga-clientes."""
     try:
         _requiere_ventas()
-        nombre_archivo, contenido, filas = _leer_excel()
-        from app.clientes_maestro import importar_clientes
         from app.routes.comercial import _is_admin_user
         if not _is_admin_user():
-            raise PermissionError('La importaci?n global del maestro requiere un administrador.')
-        # reemplazar=1 borra el maestro actual e inserta desde cero (sin duplicados).
-        reemplazar = str(request.form.get('reemplazar', '')).strip().lower() in {'1', 'true', 'si', 'yes'}
-        resumen = importar_clientes(filas, contenido, nombre_archivo, current_user.id, reemplazar=reemplazar)
-        db.session.commit()
-        mensaje = 'Maestro de clientes reemplazado desde el Excel sin duplicados.' if reemplazar else 'Maestro de clientes actualizado sin duplicados.'
-        return jsonify({'mensaje': mensaje, **resumen})
+            raise PermissionError('La importacion global del maestro requiere un administrador.')
+
+        with _CARGA_CLIENTES_LOCK:
+            if _ESTADO_CARGA_CLIENTES.get('estado') == 'en_proceso':
+                return jsonify({'error': 'Ya hay una importacion de clientes en curso. Espera a que termine.'}), 409
+
+        # Leer el archivo AQUI (mientras el request esta vivo); el hilo no tiene request.
+        nombre_archivo, contenido, filas = _leer_excel()
+        usuario_id = current_user.id
+        app_obj = current_app._get_current_object()
+
+        with _CARGA_CLIENTES_LOCK:
+            _ESTADO_CARGA_CLIENTES.clear()
+            _ESTADO_CARGA_CLIENTES.update({
+                'estado': 'en_proceso',
+                'archivo': nombre_archivo,
+                'iniciado': datetime.now(ZoneInfo('America/Bogota')).isoformat(),
+                'resumen': None,
+                'error': None,
+            })
+
+        hilo = threading.Thread(
+            target=_ejecutar_carga_clientes,
+            args=(app_obj, filas, contenido, nombre_archivo, usuario_id),
+            daemon=True,
+        )
+        hilo.start()
+        return jsonify({'mensaje': 'Importacion de clientes iniciada. Consulta el estado para ver el avance.', 'estado': 'en_proceso'}), 202
     except (ValueError, PermissionError) as exc:
-        db.session.rollback()
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
     except Exception as exc:
-        db.session.rollback()
-        return jsonify({'error': f'No fue posible cargar clientes: {exc}'}), 500
+        return jsonify({'error': f'No fue posible iniciar la carga de clientes: {exc}'}), 500
+
+
+def _ejecutar_carga_clientes(app_obj, filas, contenido, nombre_archivo, usuario_id):
+    from app.clientes_maestro import importar_clientes
+    with app_obj.app_context():
+        try:
+            resumen = importar_clientes(filas, contenido, nombre_archivo, usuario_id)
+            db.session.commit()
+            with _CARGA_CLIENTES_LOCK:
+                _ESTADO_CARGA_CLIENTES.update({
+                    'estado': 'completado',
+                    'resumen': resumen,
+                    'finalizado': datetime.now(ZoneInfo('America/Bogota')).isoformat(),
+                })
+        except Exception as exc:
+            db.session.rollback()
+            with _CARGA_CLIENTES_LOCK:
+                _ESTADO_CARGA_CLIENTES.update({
+                    'estado': 'error',
+                    'error': str(exc),
+                    'finalizado': datetime.now(ZoneInfo('America/Bogota')).isoformat(),
+                })
+        finally:
+            db.session.remove()
+
+
+@contable_bp.route('/estado-carga-clientes', methods=['GET'])
+@login_required
+def estado_carga_clientes():
+    try:
+        _requiere_ventas()
+        from app.routes.comercial import _is_admin_user
+        if not _is_admin_user():
+            raise PermissionError('Solo un administrador puede consultar la carga del maestro.')
+        with _CARGA_CLIENTES_LOCK:
+            estado = dict(_ESTADO_CARGA_CLIENTES) if _ESTADO_CARGA_CLIENTES else {'estado': 'inactivo'}
+        return jsonify(estado)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
 
 
 @contable_bp.route('/cargar-cuentas', methods=['POST'])
@@ -510,8 +578,9 @@ def consultar_clientes():
         if search:
             like = f'%{search}%'
             query = query.filter(or_(SiigoCliente.identificacion.ilike(like), SiigoCliente.nombre.ilike(like)))
-        items = query.order_by(SiigoCliente.nombre).limit(100).all()
-        clientes = [{'identificacion': item.identificacion, 'sucursal': item.sucursal, 'nombre': item.nombre, 'ciudad': item.ciudad, 'estado': item.estado} for item in items]
+        items = query.order_by(SiigoCliente.nombre).all()
+        clientes = [{'id': item.id, 'identificacion': item.identificacion, 'sucursal': item.sucursal, 'nombre': item.nombre, 'ciudad': item.ciudad, 'estado': item.estado,
+                     'vendedor_id': item.vendedor_id, 'vendedor_nombre': item.vendedor.nombre if item.vendedor else 'Sin vendedor asignado'} for item in items]
         return jsonify({'clientes': clientes})
     except PermissionError as exc:
         return jsonify({'error': str(exc)}), 403

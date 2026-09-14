@@ -1932,12 +1932,8 @@ def eliminar_tarifa_comercial(tarifa_id):
 def get_clientes():
     try:
         _require_commercial_permission('clientes', 'read')
-        clientes_query = ClienteComercial.query
-        if not _is_admin_user():
-            vendedor_scope = _resolver_vendedor_usuario_actual()
-            if vendedor_scope is None:
-                return jsonify([]), 200
-            clientes_query = clientes_query.filter(ClienteComercial.vendedor_id == vendedor_scope.id)
+        from app.clientes_scope import clientes_visibles
+        clientes_query = clientes_visibles()
 
         clientes = clientes_query.order_by(
             ClienteComercial.activo.desc(),
@@ -2021,8 +2017,6 @@ def actualizar_cliente(cliente_id):
                 raise PermissionError('No tienes un vendedor asociado')
             payload['vendedor_id'] = vendedor_scope.id
         payload['nit'] = validar_cliente(payload['nit'], payload['razon_social'], cliente.id)
-        if any(c.vendedor_id != payload['vendedor_id'] for c in cliente.contactos):
-            raise ValueError('Desvincule los contactos antes de cambiar el vendedor del cliente.')
         nit = payload['nit']
         if nit:
             existente = ClienteComercial.query.filter(
@@ -2033,6 +2027,9 @@ def actualizar_cliente(cliente_id):
                 return jsonify({'error': 'Ya existe un cliente con ese NIT'}), 409
 
         _validar_pagare_cliente(payload, cliente=cliente)
+
+        from app.clientes_maestro import cambiar_vendedor_cliente
+        cambiar_vendedor_cliente(cliente, payload['vendedor_id'])
 
         for field, value in payload.items():
             setattr(cliente, field, value)

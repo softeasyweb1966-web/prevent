@@ -88,6 +88,7 @@ async function cargarResumenSiigo() {
     const data = await leerRespuestaSiigo(response);
     if (!response.ok) throw new Error(data.error || 'No fue posible consultar la informacion SIIGO.');
     document.getElementById('siigoClientesCount').textContent = data.clientes || 0;
+    document.getElementById('siigoClientesSinVendedor').textContent = `${data.clientes_sin_vendedor || 0} sin vendedor asignado`;
     document.getElementById('siigoCuentasCount').textContent = data.cuentas || 0;
     document.getElementById('siigoComprobantesCount').textContent = data.comprobantes || 0;
     document.getElementById('siigoMovimientosCount').textContent = data.movimientos || 0;
@@ -113,6 +114,7 @@ async function importarArchivoSiigo(tipo, archivo, resultadoId = 'siigoCargaResu
         const response = await fetch(`/api/contable/cargar-${tipo}`, { method: 'POST', body: formData, credentials: 'include' });
         const data = await leerRespuestaSiigo(response);
         if (!response.ok) throw new Error(data.error || 'No fue posible procesar el archivo.');
+        if (tipo === 'clientes' && typeof invalidarClientesComerciales === 'function') invalidarClientesComerciales();
         result.textContent = `${data.mensaje} ${data.creados != null ? `Creados: ${data.creados}. Actualizados: ${data.actualizados}.` : `Comprobantes: ${data.comprobantes}. Movimientos: ${data.movimientos}. Omitidos: ${data.omitidos}.`}`;
         await cargarResumenSiigo();
         if (alCompletar) await alCompletar();

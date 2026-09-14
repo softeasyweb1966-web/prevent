@@ -55,6 +55,11 @@
   <div class="maestros-toolbar">
     <label>Vendedor <select id="filtroVendedorMaestro" onchange="refrescarMaestro()"><option value="">Todos los vendedores disponibles</option></select></label>
     <label>Revisión <select id="filtroRevisionMaestro" onchange="refrescarMaestro()"><option value="">Todos los clientes</option><option value="sin_vendedor">Sin vendedor</option><option value="sin_contacto">Sin contacto</option><option value="sin_paquete">Sin paquete vigente</option><option value="sin_servicios">Sin productos/servicios vigentes</option><option value="revision">Importación por revisar</option></select></label>
+    <span id="importarClientesWrap" style="margin-left:auto; display:none;">
+      <input type="file" id="importarClientesInput" accept=".xlsx" style="display:none;" onchange="importarClientesExcel(this)">
+      <button class="m-btn m-btn-secondary" id="btnImportarClientes" onclick="document.getElementById('importarClientesInput').click()">Importar clientes (Excel)</button>
+      <span id="importarClientesEstado" class="m-hint" style="margin-left:8px;"></span>
+    </span>
   </div>
   <div class="maestros-tabs">
     <button class="maestros-tab active" data-tab="clientes" onclick="maestrosTab('clientes')">Clientes</button>
@@ -239,6 +244,68 @@ function aplicarPermisos(){
   set('btnNuevoCliente', p.clientes && p.clientes.create);
   set('btnNuevoContacto', p.clientes && p.clientes.create);
   set('btnNuevoPaquete', p.paquetes && p.paquetes.create);
+  // La importacion global del maestro es exclusiva del administrador.
+  const imp = document.getElementById('importarClientesWrap');
+  if (imp) imp.style.display = M.esAdmin ? '' : 'none';
+  if (M.esAdmin) consultarEstadoImportacion();
+}
+
+let _pollImportTimer = null;
+async function importarClientesExcel(input){
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (!/\.xlsx$/i.test(file.name)) { mToast('El archivo debe ser .xlsx', false); return; }
+  if (!confirm('Se importará el maestro de clientes desde "' + file.name + '". Se fusiona por identificación (sin duplicados) y conserva lo existente. ¿Continuar?')) return;
+  const btn = document.getElementById('btnImportarClientes');
+  const est = document.getElementById('importarClientesEstado');
+  btn.disabled = true; est.textContent = 'Subiendo archivo...';
+  try {
+    const fd = new FormData();
+    fd.append('archivo', file);
+    const r = await fetch('/api/contable/cargar-clientes', { method:'POST', credentials:'include', body: fd });
+    const data = await r.json().catch(()=>({}));
+    if (!r.ok && r.status !== 202) throw new Error(data.error || 'No se pudo iniciar la importación');
+    est.textContent = 'Importación en proceso... (puede tardar varios minutos)';
+    iniciarPollingImportacion();
+  } catch(e){
+    btn.disabled = false; est.textContent = '';
+    mToast(e.message, false);
+  }
+}
+
+function iniciarPollingImportacion(){
+  if (_pollImportTimer) clearInterval(_pollImportTimer);
+  _pollImportTimer = setInterval(consultarEstadoImportacion, 4000);
+}
+
+async function consultarEstadoImportacion(){
+  const btn = document.getElementById('btnImportarClientes');
+  const est = document.getElementById('importarClientesEstado');
+  if (!est) return;
+  try {
+    const r = await fetch('/api/contable/estado-carga-clientes', { credentials:'include' });
+    const d = await r.json().catch(()=>({}));
+    if (d.estado === 'en_proceso'){
+      if (btn) btn.disabled = true;
+      est.textContent = 'Importación en proceso... (' + (d.archivo||'') + ')';
+      if (!_pollImportTimer) iniciarPollingImportacion();
+    } else if (d.estado === 'completado'){
+      if (_pollImportTimer){ clearInterval(_pollImportTimer); _pollImportTimer = null; }
+      if (btn) btn.disabled = false;
+      const s = d.resumen || {};
+      est.textContent = `Listo: ${s.identificaciones||0} identificaciones (creados ${s.creados||0}, actualizados ${s.actualizados||0}, revisión ${s.revision||0}).`;
+      mToast('Importación de clientes completada sin duplicados.');
+      cargarTodo();
+    } else if (d.estado === 'error'){
+      if (_pollImportTimer){ clearInterval(_pollImportTimer); _pollImportTimer = null; }
+      if (btn) btn.disabled = false;
+      est.textContent = 'Error en la importación.';
+      mToast(d.error || 'Error en la importación de clientes', false);
+    } else {
+      est.textContent = '';
+    }
+  } catch(e){ /* silencioso: reintenta en el proximo tick */ }
 }
 
 function opcionesVendedor(sel){
