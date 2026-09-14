@@ -646,6 +646,12 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     display: none !important;
 }
 
+.siigo-comprobantes-pago { margin-top: 14px; padding-top: 10px; border-top: 1px solid #e2e8f0; }
+.siigo-comprobantes-pago h5 { margin: 0 0 8px; font-size: 14px; }
+.siigo-comprobantes-pago li { margin-bottom: 6px; overflow-wrap: anywhere; }
+.siigo-comprobantes-pago label, .siigo-comprobantes-pago small { display: block; margin: 6px 0; }
+.siigo-comprobantes-pago input { max-width: 100%; }
+
 .siigo-detalle-cartera {
     margin-top: 20px;
     padding: 18px;

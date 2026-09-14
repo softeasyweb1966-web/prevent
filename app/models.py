@@ -658,6 +658,23 @@ class SiigoSeguimientoCartera(db.Model):
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     usuario_nombre = db.Column(db.String(200), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    comprobantes_pago = db.relationship('SiigoComprobantePago', back_populates='seguimiento',
+                                        lazy='selectin', cascade='all, delete-orphan', passive_deletes=True)
+
+
+class SiigoComprobantePago(db.Model):
+    """Soportes de cartera persistentes también cuando se redespliega la web."""
+    __tablename__ = 'siigo_comprobantes_pago'
+    id = db.Column(db.Integer, primary_key=True)
+    seguimiento_id = db.Column(db.Integer, db.ForeignKey('siigo_seguimientos_cartera.id', ondelete='CASCADE'), nullable=False, index=True)
+    nombre = db.Column(db.String(255), nullable=False)
+    mime_type = db.Column(db.String(80), nullable=False)
+    tamano_bytes = db.Column(db.Integer, nullable=False)
+    contenido = db.deferred(db.Column(db.LargeBinary, nullable=False))
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    usuario_nombre = db.Column(db.String(200), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    seguimiento = db.relationship('SiigoSeguimientoCartera', back_populates='comprobantes_pago')
 
 
 class SiigoCuentaContable(db.Model):

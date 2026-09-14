@@ -95,6 +95,18 @@ class MaestroTest(unittest.TestCase):
         for row in rows:sheet.append(row)
         stream=BytesIO();workbook.save(stream);stream.seek(0);return stream
 
+    def esperar_carga_clientes(self):
+        import time
+        limite = time.monotonic() + 15
+        while time.monotonic() < limite:
+            estado = self.http.get('/api/contable/estado-carga-clientes').json
+            if estado['estado'] != 'en_proceso':
+                self.assertEqual(estado['estado'], 'completado', estado)
+                db.session.expire_all()
+                return estado['resumen']
+            time.sleep(0.05)
+        self.fail('La carga no terminó dentro del plazo de prueba.')
+
     def test_cliente_nuevo_asignado_y_visible_en_todos_los_modulos(self):
         self.login(1)
         response=self.http.post('/api/comercial/maestro/clientes',json={'nit':'9010','razon_social':'Nueva empresa'})
@@ -151,12 +163,14 @@ class MaestroTest(unittest.TestCase):
         self.login(0)
         rows=[['Empresa A','9011','Vendedor Excel Uno','Contacto compartido','555'],['Empresa B','9012','Vendedor Excel Uno','Contacto compartido','555']]
         response=self.http.post('/api/contable/cargar-clientes',data={'archivo':(self.excel(rows),'clientes.xlsx')})
-        self.assertEqual(response.status_code,200,response.json)
-        self.assertEqual(response.json['creados'],2)
-        self.assertEqual(response.json['conservados_fuera_archivo'],3)
+        self.assertEqual(response.status_code,202,response.json)
+        resumen = self.esperar_carga_clientes()
+        self.assertEqual(resumen['creados'],2)
+        self.assertEqual(resumen['conservados_fuera_archivo'],3)
         self.assertTrue(db.session.get(ClienteComercial,self.c1.id).activo)
         contacto=ContactoCliente.query.one();self.assertEqual(len(contacto.clientes),2)
         response=self.http.post('/api/contable/cargar-clientes',data={'archivo':(self.excel(rows),'clientes.xlsx')})
+        self.esperar_carga_clientes()
         self.assertEqual(ClienteComercial.query.count(),5)
         self.assertEqual(ContactoCliente.query.count(),1)
         self.assertEqual(Vendedor.query.count(),2)
@@ -246,7 +260,8 @@ class MaestroTest(unittest.TestCase):
         self.login(0)
         self.assertEqual(self.http.get('/api/contable/resumen').json['clientes'], 4)
         response = self.http.post('/api/contable/cargar-clientes', data={'archivo': (BytesIO(contenido), 'anterior.xlsx')})
-        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(response.status_code, 202, response.json)
+        self.esperar_carga_clientes()
         self.assertEqual(recuperada.vendedor_id, self.v2.id)
         self.assertEqual(ClienteComercial.query.count(), 4)
 
@@ -255,6 +270,41 @@ class MaestroTest(unittest.TestCase):
         db.session.commit(); self.login(0)
         self.assertEqual(len(self.http.get('/api/contable/clientes').json['clientes']), 108)
         self.assertEqual(self.http.get('/api/contable/resumen').json['clientes_sin_vendedor'], 106)
+
+    def test_comprobantes_cartera_persisten_y_respetan_propietario(self):
+        from app.models import SiigoSeguimientoCartera, SiigoComprobantePago
+        registro = SiigoSeguimientoCartera(identificacion='9001', cliente_nombre='Empresa Uno',
+            fecha_gestion=date(2026, 9, 13), medio='CORREO', observaciones='Recibo enviado',
+            usuario_id=self.users[1].id, usuario_nombre='Gestor')
+        db.session.add(registro); db.session.commit()
+        path = f'/api/contable/seguimiento-cartera/{registro.id}/comprobantes'
+        self.assertEqual(self.http.post(path).status_code, 401)
+        self.login(1)
+        pdf = b'%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF'
+        response = self.http.post(path, data={'archivos': (BytesIO(pdf), 'pago.pdf')})
+        self.assertEqual(response.status_code, 201, response.json)
+        archivo = response.json['seguimiento']['comprobantes_pago'][0]
+        self.assertEqual(archivo['nombre'], 'pago.pdf')
+        self.assertEqual(SiigoComprobantePago.query.count(), 1)
+        self.assertNotIn('contenido', archivo)
+        ver = self.http.get(archivo['url'])
+        self.assertEqual(ver.status_code, 200)
+        self.assertEqual(ver.data, pdf)
+        self.assertEqual(ver.mimetype, 'application/pdf')
+        self.assertTrue(ver.headers['Content-Disposition'].startswith('inline'))
+        descarga = self.http.get(archivo['url'] + '?descargar=1')
+        self.assertTrue(descarga.headers['Content-Disposition'].startswith('attachment'))
+        self.assertEqual(descarga.data, pdf)
+        self.login(2)
+        self.assertEqual(self.http.get(archivo['url']).status_code, 404)
+        self.assertEqual(self.http.get(archivo['url'] + '?descargar=1').status_code, 404)
+        self.assertEqual(self.http.post(path, data={'archivos': (BytesIO(pdf), 'ajeno.pdf')}).status_code, 404)
+        self.login(1)
+        invalido = self.http.post(path, data={'archivos': [(BytesIO(pdf), 'valido.pdf'), (BytesIO(b'<script>x</script>'), 'falso.pdf')]})
+        self.assertEqual(invalido.status_code, 400)
+        self.assertEqual(SiigoComprobantePago.query.count(), 1)
+        self.assertEqual(self.http.post(path, data={'archivos': (BytesIO(b''), 'vacio.pdf')}).status_code, 400)
+        self.assertEqual(self.http.post(path, data={'archivos': (BytesIO(b'%PDF-' + b'0' * (10 * 1024 * 1024)), 'grande.pdf')}).status_code, 400)
 
 
 if __name__ == '__main__':

@@ -485,9 +485,14 @@ async function consultarFacturasVencidasSiigo(form) {
     }
 }
 
+function comprobantesPagoCarteraSiigo(item) {
+    const archivos = item.comprobantes_pago || [];
+    return `<section class="siigo-comprobantes-pago"><h5>Comprobantes de pago</h5>${archivos.length ? `<ul>${archivos.map(a => `<li>${escapeSiigo(a.nombre)} · ${Math.ceil(a.tamano_bytes / 1024)} KB <a href="${escapeSiigo(a.url)}" target="_blank" rel="noopener">Ver</a> · <a href="${escapeSiigo(a.url)}?descargar=1">Descargar</a></li>`).join('')}</ul>` : '<p>Sin comprobantes adjuntos.</p>'}<label for="siigoAdjuntos${item.id}">Subir comprobantes de pago</label><input id="siigoAdjuntos${item.id}" type="file" data-adjuntos-seguimiento="${item.id}" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple><small>PDF, JPG, PNG o WebP. Hasta 5 archivos, máximo 10 MB por archivo y 15 MB por carga.</small></section>`;
+}
+
 function historialSeguimientoCarteraSiigo(registros) {
     if (!registros.length) return '<p>Este cliente aún no tiene seguimientos registrados.</p>';
-    return registros.map(item => `<article class="siigo-seguimiento-registro"><h4>${escapeSiigo(formatoSiigoFecha(item.fecha_gestion))} · ${escapeSiigo(item.medio)}</h4><p>Registrado por: <strong>${escapeSiigo(item.registrado_por)}</strong>${item.contacto ? ` · Contacto: ${escapeSiigo(item.contacto)}` : ''}</p><p class="siigo-seguimiento-nota">${escapeSiigo(item.observaciones)}</p>${item.fecha_compromiso ? `<p><span class="siigo-semaforo siigo-${item.estado_compromiso}">${estadosCompromisoSiigo[item.estado_compromiso]}</span> Compromiso de pago: ${escapeSiigo(formatoSiigoFecha(item.fecha_compromiso))}${item.valor_compromiso != null ? ` · ${formatoSiigoNumero(item.valor_compromiso)}` : ''}</p>` : ''}${item.fecha_compromiso && !item.compromiso_cumplido_at ? `<button type="button" class="btn btn-secondary" data-cumplir="${item.id}">Marcar cumplido</button>` : ''}${item.compromiso_cumplido_at ? `<p>Cumplimiento registrado por ${escapeSiigo(item.compromiso_cumplido_por)} · ${escapeSiigo(formatoSiigoFecha(item.compromiso_cumplido_at.slice(0, 10)))}</p>` : ''}${item.proximo_seguimiento ? `<p>Próximo seguimiento: ${escapeSiigo(formatoSiigoFecha(item.proximo_seguimiento))}</p>` : ''}</article>`).join('');
+    return registros.map(item => `<article class="siigo-seguimiento-registro"><h4>${escapeSiigo(formatoSiigoFecha(item.fecha_gestion))} · ${escapeSiigo(item.medio)}</h4><p>Registrado por: <strong>${escapeSiigo(item.registrado_por)}</strong>${item.contacto ? ` · Contacto: ${escapeSiigo(item.contacto)}` : ''}</p><p class="siigo-seguimiento-nota">${escapeSiigo(item.observaciones)}</p>${item.fecha_compromiso ? `<p><span class="siigo-semaforo siigo-${item.estado_compromiso}">${estadosCompromisoSiigo[item.estado_compromiso]}</span> Compromiso de pago: ${escapeSiigo(formatoSiigoFecha(item.fecha_compromiso))}${item.valor_compromiso != null ? ` · ${formatoSiigoNumero(item.valor_compromiso)}` : ''}</p>` : ''}${item.fecha_compromiso && !item.compromiso_cumplido_at ? `<button type="button" class="btn btn-secondary" data-cumplir="${item.id}">Marcar cumplido</button>` : ''}${item.compromiso_cumplido_at ? `<p>Cumplimiento registrado por ${escapeSiigo(item.compromiso_cumplido_por)} · ${escapeSiigo(formatoSiigoFecha(item.compromiso_cumplido_at.slice(0, 10)))}</p>` : ''}${item.proximo_seguimiento ? `<p>Próximo seguimiento: ${escapeSiigo(formatoSiigoFecha(item.proximo_seguimiento))}</p>` : ''}${comprobantesPagoCarteraSiigo(item)}</article>`).join('');
 }
 
 const estadosCompromisoSiigo = { vencido: 'Vencido', proximo: 'Próximo a vencer', cumplido: 'Cumplido', pendiente: 'Pendiente', sin_compromiso: 'Sin compromiso' };
@@ -592,9 +597,42 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
             guardar.disabled = false;
         }
     });
+    historial.addEventListener('change', async event => {
+        const input = event.target.closest('[data-adjuntos-seguimiento]');
+        if (!input || !input.files.length || guardando) return;
+        const archivos = [...input.files];
+        if (archivos.length > 5 || archivos.some(a => a.size > 10 * 1024 * 1024) || archivos.reduce((n, a) => n + a.size, 0) > 15 * 1024 * 1024) {
+            estado.textContent = 'Seleccione hasta 5 archivos: máximo 10 MB cada uno y 15 MB en total.';
+            input.value = '';
+            return;
+        }
+        guardando = true;
+        input.disabled = true;
+        estado.textContent = 'Subiendo comprobantes de pago...';
+        try {
+            const datos = new FormData();
+            archivos.forEach(a => datos.append('archivos', a));
+            const response = await fetch(`/api/contable/seguimiento-cartera/${input.dataset.adjuntosSeguimiento}/comprobantes`, {
+                method: 'POST', credentials: 'include', body: datos,
+            });
+            const data = await leerRespuestaSiigo(response);
+            if (!response.ok) throw new Error(data.error || 'No fue posible subir los comprobantes.');
+            registros = registros.map(r => r.id === data.seguimiento.id ? data.seguimiento : r);
+            cliente.seguimientos = registros;
+            historial.innerHTML = historialSeguimientoCarteraSiigo(registros);
+            estado.textContent = 'Comprobantes guardados. Ya puede verlos o descargarlos.';
+        } catch (error) {
+            estado.textContent = error.message;
+        } finally {
+            guardando = false;
+            input.disabled = false;
+            input.value = '';
+        }
+    });
     historial.addEventListener('click', async event => {
         const boton = event.target.closest('[data-cumplir]');
-        if (!boton) return;
+        if (!boton || guardando) return;
+        guardando = true;
         boton.disabled = true;
         estado.textContent = 'Registrando cumplimiento...';
         try {
@@ -612,6 +650,8 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
         } catch (error) {
             estado.textContent = error.message;
             boton.disabled = false;
+        } finally {
+            guardando = false;
         }
     });
     dialogo.showModal();

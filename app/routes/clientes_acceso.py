@@ -55,5 +55,7 @@ def proteger_cargues_globales():
         return
     if vendedor_actual() is None:
         return jsonify(error='El administrador debe asociar tu usuario a un vendedor activo.'), 403
-    if request.method != 'GET' and not request.path.endswith('/seguimiento-cartera'):
+    if request.method != 'GET' and request.endpoint not in {
+        'contable.seguimiento_cartera', 'contable.subir_comprobantes_cartera',
+    }:
         return jsonify(error='La configuración y los cargues globales requieren un administrador.'), 403

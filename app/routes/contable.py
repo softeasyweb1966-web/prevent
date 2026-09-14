@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from flask import jsonify, request, send_file, current_app
 from flask_login import current_user, login_required
 from sqlalchemy import func, or_
+from werkzeug.utils import secure_filename
 
 # Estado en memoria de la importacion de clientes en segundo plano.
 _ESTADO_CARGA_CLIENTES = {}
@@ -26,6 +27,7 @@ from app.models import (
     SiigoCuentaReporte,
     SiigoMovimiento,
     SiigoSeguimientoCartera,
+    SiigoComprobantePago,
     Vendedor,
     db,
 )
@@ -424,6 +426,8 @@ def cargar_clientes():
         from app.routes.comercial import _is_admin_user
         if not _is_admin_user():
             raise PermissionError('La importacion global del maestro requiere un administrador.')
+        if str(request.form.get('reemplazar', '')).strip().lower() in {'1', 'true', 'si', 'yes'}:
+            raise ValueError('El maestro se actualiza conservando clientes y relaciones. El reemplazo destructivo no está permitido.')
 
         with _CARGA_CLIENTES_LOCK:
             if _ESTADO_CARGA_CLIENTES.get('estado') == 'en_proceso':
@@ -822,6 +826,9 @@ def _estado_compromiso(registro, hoy=None):
 def _serializar_seguimiento_cartera(registro):
     return {
         'id': registro.id,
+        'comprobantes_pago': [{'id': a.id, 'nombre': a.nombre, 'tamano_bytes': a.tamano_bytes,
+                              'registrado_por': a.usuario_nombre,
+                              'url': f'/api/contable/seguimiento-cartera/comprobantes/{a.id}'} for a in registro.comprobantes_pago],
         'estado_compromiso': _estado_compromiso(registro),
         'compromiso_cumplido_at': registro.compromiso_cumplido_at.isoformat() + 'Z' if registro.compromiso_cumplido_at else None,
         'compromiso_cumplido_por': registro.compromiso_cumplido_por,
@@ -917,6 +924,72 @@ def seguimiento_cartera():
     except (ValueError, PermissionError) as exc:
         db.session.rollback()
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
+
+
+def _seguimiento_cartera_visible(seguimiento_id):
+    _requiere_ventas()
+    registro = db.session.get(SiigoSeguimientoCartera, seguimiento_id)
+    if registro is None:
+        return None
+    if not es_administrador() and registro.identificacion not in {
+        _nit_cartera(c.nit) for c in clientes_visibles() if c.nit
+    }:
+        return None
+    return registro
+
+
+@contable_bp.route('/seguimiento-cartera/<int:seguimiento_id>/comprobantes', methods=['POST'])
+@login_required
+def subir_comprobantes_cartera(seguimiento_id):
+    try:
+        registro = _seguimiento_cartera_visible(seguimiento_id)
+        if registro is None:
+            return jsonify(error='Seguimiento no encontrado.'), 404
+        archivos = request.files.getlist('archivos')
+        if not 1 <= len(archivos) <= 5:
+            raise ValueError('Seleccione entre 1 y 5 comprobantes de pago.')
+        for archivo in archivos:
+            nombre = secure_filename(archivo.filename or '')
+            contenido = archivo.read(10 * 1024 * 1024 + 1)
+            if not nombre or len(nombre) > 255 or not contenido:
+                raise ValueError('El comprobante debe tener nombre y contenido.')
+            if len(contenido) > 10 * 1024 * 1024:
+                raise ValueError('Cada comprobante puede pesar máximo 10 MB.')
+            extension = nombre.rsplit('.', 1)[-1].lower()
+            mime = None
+            if extension == 'pdf' and contenido.startswith(b'%PDF-'):
+                mime = 'application/pdf'
+            elif extension in {'jpg', 'jpeg'} and contenido.startswith(b'\xff\xd8\xff'):
+                mime = 'image/jpeg'
+            elif extension == 'png' and contenido.startswith(b'\x89PNG\r\n\x1a\n'):
+                mime = 'image/png'
+            elif extension == 'webp' and contenido[:4] == b'RIFF' and contenido[8:12] == b'WEBP':
+                mime = 'image/webp'
+            if mime is None:
+                raise ValueError('Use un comprobante PDF o una imagen JPG, PNG o WebP válida.')
+            db.session.add(SiigoComprobantePago(seguimiento=registro, nombre=nombre,
+                mime_type=mime, tamano_bytes=len(contenido), contenido=contenido,
+                usuario_id=current_user.id, usuario_nombre=current_user.nombre_completo))
+        db.session.commit()
+        return jsonify(seguimiento=_serializar_seguimiento_cartera(registro)), 201
+    except (ValueError, PermissionError) as exc:
+        db.session.rollback()
+        return jsonify(error=str(exc)), 403 if isinstance(exc, PermissionError) else 400
+
+
+@contable_bp.route('/seguimiento-cartera/comprobantes/<int:adjunto_id>', methods=['GET'])
+@login_required
+def ver_comprobante_cartera(adjunto_id):
+    adjunto = db.session.get(SiigoComprobantePago, adjunto_id)
+    if adjunto is None or _seguimiento_cartera_visible(adjunto.seguimiento_id) is None:
+        return jsonify(error='Comprobante no encontrado.'), 404
+    response = send_file(BytesIO(adjunto.contenido), mimetype=adjunto.mime_type,
+                         download_name=adjunto.nombre, as_attachment=request.args.get('descargar') == '1',
+                         max_age=0)
+    response.headers['Cache-Control'] = 'private, no-store'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Content-Security-Policy'] = "sandbox; default-src 'none'"
+    return response
 
 
 def _clientes_facturas_vencidas(cartera_clientes, vendedores, estado_facturas='todos'):
