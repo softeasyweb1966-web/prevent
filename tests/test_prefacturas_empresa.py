@@ -20,6 +20,7 @@ class PrefacturasEmpresaTest(unittest.TestCase):
         self.ctx.push()
         db.create_all()
         self.app.add_url_rule('/generar', view_func=routes.generar_prefacturas.__wrapped__)
+        self.app.add_url_rule('/empresas', view_func=routes.listar_empresas_generacion_prefacturas.__wrapped__)
         self.http = self.app.test_client()
         self.patches = [
             patch.object(routes, '_require_commercial_permission'),
@@ -27,6 +28,7 @@ class PrefacturasEmpresaTest(unittest.TestCase):
             patch.object(routes, '_resolver_vendedor_usuario_actual', return_value=None),
             patch.object(routes, 'exigir_cliente'),
             patch.object(routes, 'current_user', Mock(id=1)),
+            patch.object(routes, 'filtrar_cliente', side_effect=lambda query, columna: query),
         ]
         for p in self.patches:
             p.start()
@@ -78,6 +80,29 @@ class PrefacturasEmpresaTest(unittest.TestCase):
         with patch.object(routes, 'exigir_cliente', side_effect=PermissionError('Sin acceso')):
             self.assertEqual(self.generar('&cliente_id=2').status_code, 403)
         self.assertEqual(PrefacturaComercial.query.count(), 0)
+
+    def test_empresas_solo_con_movimientos_en_periodo(self):
+        db.session.add(ClienteComercial(id=3, nit='3', razon_social='Sin movimientos'))
+        AtencionDiaDetalle.query.filter_by(cliente_id=2).first().fecha_creacion_orden = datetime(2026, 8, 31)
+        db.session.commit()
+        response = self.http.get('/empresas?fecha_desde=2026-09-01&fecha_hasta=2026-09-15')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([c['id'] for c in response.json], [1])
+        response = self.http.get('/empresas?fecha_desde=2026-08-01&fecha_hasta=2026-08-31')
+        self.assertEqual([c['id'] for c in response.json], [2])
+        self.assertEqual(self.http.get('/empresas?fecha_desde=2025-01-01&fecha_hasta=2025-01-31').json, [])
+
+    def test_empresas_rango_invalido(self):
+        for params in ('', '?fecha_desde=2026-09-15&fecha_hasta=2026-09-01',
+                       '?fecha_desde=incorrecta&fecha_hasta=2026-09-01'):
+            self.assertEqual(self.http.get('/empresas' + params).status_code, 400)
+
+    def test_empresas_respetan_scope(self):
+        with patch.object(routes, '_is_admin_user', return_value=False), \
+             patch.object(routes, '_resolver_vendedor_usuario_actual', return_value=Mock(id=1)), \
+             patch.object(routes, '_condicion_scope_atenciones', return_value=AtencionDiaDetalle.cliente_id == 1):
+            response = self.http.get('/empresas?fecha_desde=2026-09-01&fecha_hasta=2026-09-15')
+            self.assertEqual([c['id'] for c in response.json], [1])
 
 
 if __name__ == '__main__':

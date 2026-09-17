@@ -1894,28 +1894,68 @@ function setIngresoInformacionSection(section = 'inicio') {
 // ---------------------------------------------------------------------------
 // PREFACTURAS
 // ---------------------------------------------------------------------------
+let empresasGeneracionPrefacturas = [];
+let solicitudEmpresasPrefacturas = 0;
+let empresasPrefacturasListas = false;
+
+function filtrarEmpresasGeneracionPrefacturas() {
+    const select = document.getElementById('prefacturaEmpresaSelect');
+    const buscador = document.getElementById('prefacturaEmpresaBuscar');
+    if (!select || !buscador) return;
+    const normalizar = valor => String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const texto = normalizar(buscador.value.trim());
+    const selected = select.value;
+    const visibles = empresasGeneracionPrefacturas.filter(cliente =>
+        [cliente.razon_social, cliente.nombre_comercial, cliente.nit].some(valor => normalizar(valor).includes(texto)));
+    select.replaceChildren(new Option(texto ? 'Selecciona una empresa...' : 'Todas las empresas', ''));
+    visibles.forEach(cliente => {
+        const nombre = cliente.razon_social || cliente.nombre_comercial || 'Cliente sin nombre';
+        select.add(new Option(cliente.nit ? `${nombre} (${cliente.nit})` : nombre, String(cliente.id)));
+    });
+    if (visibles.some(cliente => String(cliente.id) === selected)) select.value = selected;
+    // Mostrar las coincidencias mientras se escribe, sin depender de la busqueda nativa del navegador.
+    select.size = texto ? Math.min(6, visibles.length + 1) : 1;
+    document.getElementById('prefacturaEmpresaAyuda').textContent = visibles.length
+        ? `${visibles.length} empresas con movimientos en las fechas seleccionadas.`
+        : 'No hay empresas que coincidan con la busqueda en estas fechas.';
+}
+
 async function cargarEmpresasGeneracionPrefacturas() {
     const select = document.getElementById('prefacturaEmpresaSelect');
-    if (!select) return;
+    const buscador = document.getElementById('prefacturaEmpresaBuscar');
+    const ayuda = document.getElementById('prefacturaEmpresaAyuda');
+    if (!select || !buscador || !ayuda) return;
+    const solicitud = ++solicitudEmpresasPrefacturas;
     const selected = select.value;
+    empresasPrefacturasListas = false;
+    empresasGeneracionPrefacturas = [];
     select.disabled = true;
+    buscador.disabled = true;
+    select.replaceChildren(new Option('Todas las empresas', ''));
+    select.size = 1;
+    const desde = document.getElementById('prefacturaFechaDesde').value;
+    const hasta = document.getElementById('prefacturaFechaHasta').value;
+    if (!desde || !hasta || desde > hasta) {
+        ayuda.textContent = 'Selecciona un periodo o un rango de fechas valido.';
+        return;
+    }
+    ayuda.textContent = 'Cargando empresas con movimientos...';
     try {
-        const response = await fetch('/api/comercial/clientes', { credentials: 'same-origin' });
+        const params = new URLSearchParams({ fecha_desde: desde, fecha_hasta: hasta });
+        const response = await fetch(`/api/comercial/prefacturas/empresas?${params}`, { credentials: 'same-origin' });
         if (!response.ok) throw new Error('No se pudo cargar la lista de empresas');
         const clientes = await response.json();
-        select.replaceChildren(new Option('Todas las empresas', ''));
-        [...(clientes || [])]
-            .sort((a, b) => String(a.razon_social || '').localeCompare(String(b.razon_social || ''), 'es'))
-            .forEach(cliente => {
-                const nombre = cliente.razon_social || cliente.nombre_comercial || 'Cliente sin nombre';
-                select.add(new Option(cliente.nit ? `${nombre} (${cliente.nit})` : nombre, String(cliente.id)));
-            });
+        if (solicitud !== solicitudEmpresasPrefacturas) return;
+        empresasGeneracionPrefacturas = clientes;
+        filtrarEmpresasGeneracionPrefacturas();
         if ([...select.options].some(option => option.value === selected)) select.value = selected;
-    } catch (error) {
-        console.error('Error cargando empresas para generar prefacturas:', error);
-        showError('No se pudieron cargar las empresas. Vuelve a abrir Generar Prefacturas para reintentar.');
-    } finally {
+        empresasPrefacturasListas = true;
         select.disabled = false;
+        buscador.disabled = false;
+    } catch (error) {
+        if (solicitud !== solicitudEmpresasPrefacturas) return;
+        console.error('Error cargando empresas para generar prefacturas:', error);
+        ayuda.textContent = 'No se pudieron cargar las empresas. Vuelve a seleccionar el periodo para reintentar.';
     }
 }
 
@@ -1932,6 +1972,15 @@ async function generarPrefacturas() {
     }
     if (fechaDesde > fechaHasta) {
         if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">&#9888; La fecha inicio no puede ser mayor que la fecha fin.</span>';
+        return;
+    }
+
+    if (!empresasPrefacturasListas) {
+        if (resultado) resultado.textContent = 'Espera a que se carguen las empresas del periodo. Si hubo un error, vuelve a seleccionar el periodo.';
+        return;
+    }
+    if (document.getElementById('prefacturaEmpresaBuscar')?.value.trim() && !document.getElementById('prefacturaEmpresaSelect')?.value) {
+        if (resultado) resultado.textContent = 'Selecciona una empresa de las coincidencias o borra la busqueda para generar todas.';
         return;
     }
 
@@ -3450,7 +3499,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const prefPeriodoSelect = document.getElementById('prefacturaPeriodoSelect');
     if (prefPeriodoSelect && !prefPeriodoSelect.dataset.boundPeriodoCargue) {
-        prefPeriodoSelect.addEventListener('change', () => aplicarPeriodoEnRango('prefacturaPeriodoSelect', 'prefacturaFechaDesde', 'prefacturaFechaHasta'));
+        prefPeriodoSelect.addEventListener('change', () => {
+            aplicarPeriodoEnRango('prefacturaPeriodoSelect', 'prefacturaFechaDesde', 'prefacturaFechaHasta');
+            cargarEmpresasGeneracionPrefacturas();
+        });
         prefPeriodoSelect.dataset.boundPeriodoCargue = 'true';
     }
     const consultaPrefPeriodo = document.getElementById('consultaPrefPeriodo');
@@ -3477,6 +3529,7 @@ document.addEventListener('DOMContentLoaded', () => {
         input.addEventListener('change', () => {
             if (selectId === 'prefacturaPeriodoSelect') {
                 limpiarSeleccionPeriodoSiFechasManual(selectId, 'prefacturaFechaDesde', 'prefacturaFechaHasta');
+                cargarEmpresasGeneracionPrefacturas();
             } else if (selectId === 'consultaPrefPeriodo') {
                 limpiarSeleccionPeriodoSiFechasManual(selectId, 'consultaPrefFechaDesde', 'consultaPrefFechaHasta');
             } else {

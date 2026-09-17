@@ -1456,9 +1456,11 @@
                 </div>
                 <div class="form-group" style="flex:1.4; min-width:220px;">
                     <label for="prefacturaEmpresaSelect">Empresa</label>
+                    <input type="search" id="prefacturaEmpresaBuscar" placeholder="Buscar por cualquier parte del nombre o NIT" aria-label="Buscar empresa" oninput="filtrarEmpresasGeneracionPrefacturas()" autocomplete="off" disabled>
                     <select id="prefacturaEmpresaSelect">
                         <option value="">Todas las empresas</option>
                     </select>
+                    <small id="prefacturaEmpresaAyuda" role="status">Selecciona un periodo o un rango de fechas.</small>
                 </div>
                 <div class="form-group" style="flex:1; min-width:160px;">
                     <label for="prefacturaFechaDesde">Fecha inicio *</label>

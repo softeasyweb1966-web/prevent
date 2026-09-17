@@ -2087,6 +2087,38 @@ def _normalizar_forma_pago(valor):
     return texto.upper().strip()
 
 
+@comercial_bp.route('/prefacturas/empresas', methods=['GET'])
+@login_required
+def listar_empresas_generacion_prefacturas():
+    """Empresas visibles con movimientos dentro del rango seleccionado."""
+    try:
+        _require_commercial_permission(PERMISO_CONSULTA_ATENCIONES)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    try:
+        desde = datetime.strptime(request.args.get('fecha_desde', ''), '%Y-%m-%d')
+        hasta = datetime.strptime(request.args.get('fecha_hasta', ''), '%Y-%m-%d').replace(
+            hour=23, minute=59, second=59, microsecond=999999)
+        if desde > hasta:
+            raise ValueError
+    except ValueError:
+        return jsonify({'error': 'Selecciona un rango de fechas valido'}), 400
+    vendedor = _resolver_vendedor_usuario_actual()
+    if not _is_admin_user() and vendedor is None:
+        return jsonify({'error': 'No tienes un vendedor asociado para generar prefacturas'}), 403
+    movimientos = AtencionDiaDetalle.query.join(AtencionDiaDetalle.cliente).filter(
+        AtencionDiaDetalle.fecha_creacion_orden >= desde,
+        AtencionDiaDetalle.fecha_creacion_orden <= hasta,
+    )
+    if not _is_admin_user():
+        movimientos = movimientos.filter(_condicion_scope_atenciones(vendedor))
+    clientes = filtrar_cliente(ClienteComercial.query, ClienteComercial.id).filter(
+        ClienteComercial.id.in_(movimientos.with_entities(AtencionDiaDetalle.cliente_id))
+    ).order_by(ClienteComercial.razon_social).all()
+    return jsonify([{'id': c.id, 'razon_social': c.razon_social,
+                     'nombre_comercial': c.nombre_comercial, 'nit': c.nit} for c in clientes])
+
+
 @comercial_bp.route('/prefacturas/generar', methods=['GET'])
 @login_required
 def generar_prefacturas():
