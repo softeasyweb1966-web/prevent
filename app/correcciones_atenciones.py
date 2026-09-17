@@ -1,4 +1,4 @@
-"""Excel editable de atenciones: identidad firmada, control de versiones y auditoria."""
+"""Correcciones desde el Excel original de Cargue Atenciones, con revision y auditoria."""
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
@@ -8,23 +8,24 @@ from uuid import uuid4
 
 from flask import current_app, jsonify, request, send_file
 from flask_login import login_required
-from itsdangerous import URLSafeSerializer, URLSafeTimedSerializer, BadSignature
+from itsdangerous import URLSafeTimedSerializer, BadSignature
 from openpyxl import load_workbook, Workbook
-from openpyxl.styles import Font, PatternFill
 from sqlalchemy import or_
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from app.models import db, AtencionDiaDetalle, AuditLog, PrefacturaComercial, Usuario
 from app.routes import comercial_bp
 
-HOJA = 'corregir-atenciones'
 CAMPOS = {
-    'nro_orden': 'Orden', 'fecha_creacion_orden': 'Fecha atencion',
+    'nro_orden': 'Orden', 'nro_factura': 'Factura', 'fecha_factura': 'Fecha factura',
+    'precio': 'Precio', 'forma_pago': 'Forma de pago', 'servicio': 'Examen',
     'nro_identificacion': 'Documento paciente', 'nombre_paciente': 'Paciente',
-    'servicio': 'Examen completo', 'precio': 'Valor examen',
-    'forma_pago': 'Forma de pago', 'estado_orden': 'Estado orden',
+    'acuerdo_comercial': 'Acuerdo comercial', 'empresa_mision': 'Empresa en mision',
+    'sede': 'Sede', 'nombre_vendedor': 'Vendedor', 'fecha_creacion_orden': 'Fecha atencion',
+    'usuario_creacion': 'Usuario creacion', 'estado_orden': 'Estado orden',
+    'fecha_anulacion': 'Fecha anulacion', 'cliente_id': 'Empresa vinculada', 'vendedor_id': 'Vendedor vinculado',
 }
-ENCABEZADOS = ['ID atencion', *CAMPOS.values(), 'Control (no modificar)']
+CAMPOS_EXCEL = list(CAMPOS)[:16]
 
 
 def snapshot(reg):
@@ -37,69 +38,8 @@ def snapshot(reg):
     return {c.name: valor(getattr(reg, c.name)) for c in reg.__table__.columns}
 
 
-def firma():
-    return URLSafeSerializer(current_app.config['SECRET_KEY'], salt='correccion-atencion-v1')
-
-
 def revision():
-    return URLSafeTimedSerializer(current_app.config['SECRET_KEY'], salt='revision-correcciones-v1')
-
-
-def agregar_hoja_correcciones(wb, registros, desde, hasta):
-    ws = wb.create_sheet(HOJA)
-    ws.append(ENCABEZADOS)
-    for reg in sorted({r.id: r for r in registros}.values(), key=lambda r: r.id):
-        original = snapshot(reg)
-        control = firma().dumps({'original': original, 'desde': desde.strftime('%Y-%m-%d'),
-                                 'hasta': hasta.strftime('%Y-%m-%d')})
-        ws.append([reg.id, *[getattr(reg, campo) for campo in CAMPOS], control])
-        for cell in ws[ws.max_row]:
-            if isinstance(cell.value, str):
-                cell.data_type = 's'
-        ws.cell(ws.max_row, 3).number_format = 'yyyy-mm-dd hh:mm:ss'
-        ws.cell(ws.max_row, 4).number_format = '@'
-        ws.cell(ws.max_row, 7).number_format = '#,##0.00'
-    ws.freeze_panes = 'D2'
-    ws.auto_filter.ref = ws.dimensions
-    for cell in ws[1]:
-        cell.font = Font(bold=True, color='FFFFFF')
-        cell.fill = PatternFill('solid', fgColor='1F4E79')
-    for col, width in {'A': 14, 'B': 18, 'C': 23, 'D': 23, 'E': 38, 'F': 55,
-                       'G': 18, 'H': 20, 'I': 20}.items():
-        ws.column_dimensions[col].width = width
-    ws.column_dimensions['J'].hidden = True
-
-
-def _leer_valor(campo, celda):
-    if celda.data_type == 'f':
-        raise ValueError('Usa valores, no formulas, en las celdas corregidas')
-    valor = celda.value
-    if campo == 'fecha_creacion_orden':
-        if isinstance(valor, datetime):
-            return valor
-        for formato in ('%Y-%m-%d', '%d/%m/%Y', '%Y-%m-%d %H:%M:%S'):
-            try:
-                return datetime.strptime(str(valor).strip(), formato)
-            except ValueError:
-                pass
-        raise ValueError('Fecha invalida; usa una fecha de Excel o DD/MM/AAAA')
-    if campo == 'precio':
-        try:
-            numero = Decimal(str(valor))
-            if not numero.is_finite() or numero < 0 or numero >= Decimal('10000000000000'):
-                raise ValueError
-            if numero != numero.quantize(Decimal('.01')):
-                raise ValueError
-            return numero.quantize(Decimal('.01'))
-        except (ValueError, InvalidOperation):
-            raise ValueError('Valor invalido; debe ser un numero no negativo con hasta dos decimales')
-    if isinstance(valor, float) and valor.is_integer():
-        valor = int(valor)
-    texto = str(valor).strip() if valor is not None else ''
-    maximo = AtencionDiaDetalle.__table__.columns[campo].type.length
-    if not texto or len(texto) > maximo:
-        raise ValueError(f'{CAMPOS[campo]} es obligatorio y admite hasta {maximo} caracteres')
-    return texto
+    return URLSafeTimedSerializer(current_app.config['SECRET_KEY'], salt='revision-correcciones-v2')
 
 
 def _comprobar_editable(reg, scope, fecha=None):
@@ -121,86 +61,105 @@ def _comprobar_editable(reg, scope, fecha=None):
 
 def _leer_archivos(archivos, scope, bloquear=False):
     from app.routes import cargue_atenciones as ca
+    from types import SimpleNamespace
+    try:
+        desde = datetime.strptime(request.form.get('periodo_desde', ''), '%Y-%m-%d')
+        hasta = datetime.strptime(request.form.get('periodo_hasta', ''), '%Y-%m-%d').replace(hour=23, minute=59, second=59, microsecond=999999)
+        if desde > hasta:
+            raise ValueError
+    except ValueError:
+        raise ValueError('Selecciona el periodo de las atenciones que vas a corregir')
     cambios, vistos, huellas = [], set(), []
+    clientes = ca._construir_lookup_clientes()
+    vendedores = ca._construir_lookup_vendedores()
     for archivo in archivos:
         nombre = (archivo.filename or '').replace('\\', '/').split('/')[-1]
-        if not nombre.lower().endswith('.xlsx'):
-            raise ValueError('Solo se aceptan archivos Excel .xlsx')
         contenido = archivo.read(20 * 1024 * 1024 + 1)
         if len(contenido) > 20 * 1024 * 1024:
             raise ValueError(f'{nombre}: el archivo supera 20 MB')
         huellas.append([nombre, sha256(contenido).hexdigest()])
-        try:
-            wb = load_workbook(BytesIO(contenido), read_only=True, data_only=False)
-        except Exception:
-            raise ValueError(f'{nombre}: no se pudo leer el Excel')
-        try:
-            if HOJA not in wb.sheetnames:
-                raise ValueError(f'{nombre}: genera nuevamente el Excel para incluir la hoja {HOJA}')
-            ws = wb[HOJA]
-            filas = ws.iter_rows()
-            if [c.value for c in next(filas, [])] != ENCABEZADOS:
-                raise ValueError(f'{nombre}: no modifiques los encabezados de {HOJA}')
-            for numero, fila in enumerate(filas, 2):
-                if numero > 50001:
-                    raise ValueError(f'{nombre}: demasiadas filas; maximo 50000')
-                if all(c.value is None for c in fila):
+        filas = ca._leer_excel_atenciones(contenido, nombre)
+        # Validar el mismo encabezado y aliases que usa Cargue Atenciones.
+        ca._extraer_registros_excel(filas[:1])
+        if len(filas) > 50001:
+            raise ValueError(f'{nombre}: maximo 50000 filas por archivo')
+        for numero, fila in enumerate(filas[1:], 2):
+            if not fila or all(v in (None, '') for v in fila):
+                continue
+            try:
+                registro = ca._extraer_registros_excel([filas[0], fila])[0]
+                valores = {}
+                for campo, encabezado in zip(CAMPOS_EXCEL, ca.COLUMNAS_ESPERADAS):
+                    valor = registro.get(encabezado)
+                    if campo.startswith('fecha_'):
+                        parsed = ca._parse_fecha(valor)
+                        if valor not in (None, '') and parsed is None:
+                            raise ValueError(f'{CAMPOS[campo]} no es una fecha valida')
+                        valores[campo] = parsed
+                    elif campo == 'precio':
+                        parsed = ca._parse_precio(valor)
+                        if parsed is None or not parsed.is_finite() or parsed < 0 or parsed >= Decimal('10000000000000') or parsed != parsed.quantize(Decimal('.01')):
+                            raise ValueError('Precio invalido; usa un valor no negativo con hasta dos decimales')
+                        valores[campo] = parsed.quantize(Decimal('.01'))
+                    else:
+                        if isinstance(valor, float) and valor.is_integer():
+                            valor = int(valor)
+                        valores[campo] = ca._normalizar(valor)
+                        limite = AtencionDiaDetalle.__table__.columns[campo].type.length
+                        if valores[campo] and len(valores[campo]) > limite:
+                            raise ValueError(f'{CAMPOS[campo]} admite hasta {limite} caracteres')
+                for campo in ('nro_orden', 'servicio', 'nro_identificacion', 'nombre_paciente', 'fecha_creacion_orden'):
+                    if not valores[campo]:
+                        raise ValueError(f'{CAMPOS[campo]} es obligatorio')
+                if not desde <= valores['fecha_creacion_orden'] <= hasta:
+                    raise ValueError('La fecha de atencion esta fuera del periodo seleccionado')
+                query = AtencionDiaDetalle.query.filter(
+                    AtencionDiaDetalle.nro_orden == valores['nro_orden'],
+                    AtencionDiaDetalle.fecha_creacion_orden >= desde,
+                    AtencionDiaDetalle.fecha_creacion_orden <= hasta)
+                if not ca._is_admin_user():
+                    query = query.filter(ca._condicion_scope_atenciones(scope))
+                candidatos = (query.with_for_update() if bloquear else query).all()
+                exactos = [r for r in candidatos if r.servicio == valores['servicio'] and r.nro_identificacion == valores['nro_identificacion']]
+                # Si se corrige documento o examen, el otro dato debe identificar una sola fila.
+                posibles = exactos or [r for r in candidatos if r.servicio == valores['servicio'] or r.nro_identificacion == valores['nro_identificacion']]
+                if len(posibles) != 1:
+                    raise ValueError('No se encontro una atencion unica por orden, examen y documento. Revisa la coincidencia en Consulta Atenciones; no se crean registros nuevos')
+                reg = posibles[0]
+                ca._asegurar_acceso_registro_atencion(reg, scope)
+                if reg.id in vistos:
+                    raise ValueError('La misma atencion aparece mas de una vez en los archivos')
+                vistos.add(reg.id)
+                original = snapshot(reg)
+                if (valores['estado_orden'] or '').upper() == 'ANULADA' and valores['fecha_anulacion'] is None:
+                    valores['fecha_anulacion'] = reg.fecha_anulacion or valores['fecha_creacion_orden']
+                empresa_anterior = reg.cliente.razon_social if reg.cliente else reg.acuerdo_comercial or reg.empresa_mision or 'SIN_EMPRESA'
+                # Reasociar empresa/vendedor solo cuando se corrigen sus columnas.
+                if valores['acuerdo_comercial'] != reg.acuerdo_comercial or valores['empresa_mision'] != reg.empresa_mision:
+                    cliente = ca._cliente_desde_registro(registro, clientes)
+                    if cliente is None:
+                        raise ValueError('El acuerdo comercial no identifica una empresa configurada de forma unica')
+                    ca.exigir_cliente(cliente.id)
+                    valores['cliente_id'] = cliente.id
+                    valores['vendedor_id'] = cliente.vendedor_id
+                if valores['nombre_vendedor'] != reg.nombre_vendedor and 'cliente_id' not in valores:
+                    vendedor = reg.cliente.vendedor if reg.cliente else ca._vendedor_desde_registro(registro, vendedores)
+                    if vendedor is None and valores['nombre_vendedor']:
+                        raise ValueError('El vendedor no se pudo identificar')
+                    valores['vendedor_id'] = vendedor.id if vendedor else None
+                cambios_fila = {campo: valor for campo, valor in valores.items() if valor != getattr(reg, campo)}
+                if not cambios_fila:
                     continue
-                try:
-                    firmado = firma().loads(str(fila[9].value))
-                    original = firmado['original']
-                    reg_id = original['id']
-                    if str(fila[0].value) != str(reg_id):
-                        raise ValueError('No modifiques el ID de la atencion')
-                    if reg_id in vistos:
-                        raise ValueError('La misma atencion aparece mas de una vez en los archivos')
-                    vistos.add(reg_id)
-                    query = AtencionDiaDetalle.query.filter_by(id=reg_id)
-                    reg = (query.with_for_update() if bloquear else query).first()
-                    if reg is None:
-                        raise ValueError('La atencion original ya no existe')
-                    ca._asegurar_acceso_registro_atencion(reg, scope)
-                    valores = {}
-                    for i, campo in enumerate(CAMPOS, 1):
-                        # Celdas sin cambios conservan incluso nulos y formatos historicos.
-                        previo = original[campo]
-                        bruto = fila[i].value
-                        if campo == 'fecha_creacion_orden' and isinstance(bruto, datetime) and previo:
-                            if abs((bruto - datetime.fromisoformat(previo)).total_seconds()) < .001:
-                                continue  # Excel conserva milisegundos, no todos los microsegundos.
-                        comparable = bruto.isoformat() if isinstance(bruto, datetime) else str(bruto) if bruto is not None else None
-                        if campo == 'precio' and bruto is not None and previo is not None:
-                            try:
-                                if Decimal(str(bruto)) == Decimal(previo):
-                                    continue
-                            except InvalidOperation:
-                                pass
-                        if comparable == previo or (bruto is None and previo == ''):
-                            continue
-                        valores[campo] = _leer_valor(campo, fila[i])
-                    if not valores:
-                        continue
-                    if snapshot(reg) != original:
-                        raise ValueError('La atencion cambio desde la descarga; genera un Excel nuevo')
-                    _comprobar_editable(reg, scope)
-                    fecha = valores.get('fecha_creacion_orden', reg.fecha_creacion_orden)
-                    if not firmado['desde'] <= fecha.strftime('%Y-%m-%d') <= firmado['hasta']:
-                        raise ValueError('La fecha corregida debe permanecer dentro del periodo del archivo')
-                    _comprobar_editable(reg, scope, fecha)
-                    if 'forma_pago' in valores:
-                        valores['forma_pago'] = ca._normalizar_forma_pago(valores['forma_pago'])
-                        if valores['forma_pago'] not in ('CREDITO', 'EFECTIVO', 'CONTADO', 'PARTICULAR', 'PARTICULARES'):
-                            raise ValueError('Forma de pago no admitida para prefacturas')
-                    if 'estado_orden' in valores:
-                        valores['estado_orden'] = valores['estado_orden'].upper()
-                        if valores['estado_orden'] not in ('ACTIVA', 'ANULADA'):
-                            raise ValueError('Para corregir el estado usa ACTIVA o ANULADA')
-                    cambios.append((reg, valores, original, nombre, firmado))
-                except (ValueError, BadSignature) as exc:
-                    mensaje = 'El control del registro no es valido; genera un Excel nuevo' if isinstance(exc, BadSignature) else str(exc)
-                    raise ValueError(f'{nombre}, fila {numero}: {mensaje}')
-        finally:
-            wb.close()
+                _comprobar_editable(reg, scope)
+                destino = SimpleNamespace(**{c.name: getattr(reg, c.name) for c in reg.__table__.columns})
+                for campo, valor in cambios_fila.items():
+                    setattr(destino, campo, valor)
+                _comprobar_editable(destino, scope, destino.fecha_creacion_orden)
+                cambios.append((reg, cambios_fila, original, nombre, {
+                    'desde': desde.strftime('%Y-%m-%d'), 'hasta': hasta.strftime('%Y-%m-%d'),
+                    'empresa_anterior': empresa_anterior}))
+            except (ValueError, InvalidOperation) as exc:
+                raise ValueError(f'{nombre}, fila {numero}: {exc}')
     return cambios, huellas
 
 
@@ -210,7 +169,7 @@ def _resumen(cambios):
         for campo, valor in valores.items():
             salida.append({'atencion_id': reg.id, 'empresa': reg.cliente.razon_social if reg.cliente else reg.acuerdo_comercial,
                            'archivo': archivo, 'campo': CAMPOS[campo], 'antes': original[campo],
-                           'despues': valor.isoformat() if isinstance(valor, datetime) else str(valor)})
+                           'despues': valor.isoformat() if isinstance(valor, datetime) else str(valor) if valor is not None else None})
     return salida
 
 
@@ -219,11 +178,11 @@ def _actualizar_borradores(cambios):
     from app.routes import cargue_atenciones as ca
     catalogo = ca._construir_lookup_catalogo()
     revisadas = set()
-    for reg, _, original, _, _ in cambios:
+    for reg, _, original, _, contexto in cambios:
         empresa = reg.cliente.razon_social if reg.cliente else reg.acuerdo_comercial or reg.empresa_mision or 'SIN_EMPRESA'
         fechas = [datetime.fromisoformat(original['fecha_creacion_orden']), reg.fecha_creacion_orden]
         prefs = PrefacturaComercial.query.filter(
-            PrefacturaComercial.nombre_empresa == empresa, PrefacturaComercial.estado == 'BORRADOR',
+            PrefacturaComercial.nombre_empresa.in_([empresa, contexto['empresa_anterior']]), PrefacturaComercial.estado == 'BORRADOR',
             PrefacturaComercial.origen == 'ATENCIONES',
             PrefacturaComercial.fecha_desde <= max(fechas), PrefacturaComercial.fecha_hasta >= min(fechas),
         ).with_for_update().all()
@@ -231,23 +190,24 @@ def _actualizar_borradores(cambios):
             if pref.id in revisadas:
                 continue
             revisadas.add(pref.id)
+            empresa_pref = pref.nombre_empresa
             duplicadas = PrefacturaComercial.query.filter_by(
-                nombre_empresa=empresa, fecha_desde=pref.fecha_desde, fecha_hasta=pref.fecha_hasta,
+                nombre_empresa=empresa_pref, fecha_desde=pref.fecha_desde, fecha_hasta=pref.fecha_hasta,
                 origen='ATENCIONES').count()
             if duplicadas > 1:
                 raise ValueError(f'{empresa}: hay varias prefacturas del mismo periodo; revisalas antes de corregir')
             query = AtencionDiaDetalle.query.filter(
                 AtencionDiaDetalle.fecha_creacion_orden >= pref.fecha_desde,
                 AtencionDiaDetalle.fecha_creacion_orden <= pref.fecha_hasta)
-            if reg.cliente_id is not None:
-                query = query.filter(AtencionDiaDetalle.cliente_id == reg.cliente_id)
+            if pref.cliente_id is not None:
+                query = query.filter(AtencionDiaDetalle.cliente_id == pref.cliente_id)
             else:
                 query = query.filter(AtencionDiaDetalle.cliente_id.is_(None))
             elegibles, formas = [], set()
             for fila in query.all():
                 nombre = fila.cliente.razon_social if fila.cliente else fila.acuerdo_comercial or fila.empresa_mision or 'SIN_EMPRESA'
                 pago = ca._normalizar_forma_pago(fila.forma_pago)
-                if nombre != empresa or (fila.estado_orden or '').strip().upper() == 'ANULADA':
+                if nombre != empresa_pref or (fila.estado_orden or '').strip().upper() == 'ANULADA':
                     continue
                 if pago not in ('CREDITO', 'CONTADO', 'EFECTIVO', 'PARTICULAR', 'PARTICULARES'):
                     continue
@@ -278,7 +238,7 @@ def cargar_correcciones_excel():
         cambios, huellas = _leer_archivos(archivos, scope, bloquear=aplicar)
         resumen = _resumen(cambios)
         sello = {'usuario': ca.current_user.id, 'archivos': huellas,
-                 'cambios': sha256(json.dumps(resumen, sort_keys=True).encode()).hexdigest()}
+                 'cambios': sha256(json.dumps({'resumen': resumen, 'originales': [c[2] for c in cambios], 'periodo': [request.form.get('periodo_desde'), request.form.get('periodo_hasta')]}, sort_keys=True).encode()).hexdigest()}
         if not aplicar:
             return jsonify(cambios=resumen, atenciones=len(cambios), token=revision().dumps(sello))
         try:
@@ -292,9 +252,9 @@ def cargar_correcciones_excel():
             ca._desvincular_prefacturas_de_atencion(reg)
             for campo, valor in valores.items():
                 setattr(reg, campo, valor)
-            if 'estado_orden' in valores:
-                reg.fecha_anulacion = datetime.utcnow() if reg.estado_orden == 'ANULADA' else None
             db.session.flush()
+            if 'cliente_id' in valores:
+                db.session.expire(reg, ['cliente'])
             ca._sincronizar_cruce_prefacturas_con_atencion(reg)
             nuevo = snapshot(reg)
             empresa = reg.cliente.razon_social if reg.cliente else reg.acuerdo_comercial or reg.empresa_mision or 'SIN_EMPRESA'
@@ -303,6 +263,8 @@ def cargar_correcciones_excel():
             db.session.add(AuditLog(usuario_id=ca.current_user.id, tabla=AtencionDiaDetalle.__tablename__,
                                    registro_id=reg.id, accion='CORRECCION_EXCEL', datos_anteriores=original,
                                    datos_nuevos=nuevo, ip_address=request.remote_addr))
+            if firmado['empresa_anterior'] != empresa:
+                periodos[(firmado['empresa_anterior'], firmado['desde'], firmado['hasta'])] = {'empresa': firmado['empresa_anterior'], 'cliente_id': original['cliente_id'], 'fecha_desde': firmado['desde'], 'fecha_hasta': firmado['hasta']}
             key = (empresa, firmado['desde'], firmado['hasta'])
             periodos[key] = {'empresa': empresa, 'cliente_id': reg.cliente_id,
                             'fecha_desde': firmado['desde'], 'fecha_hasta': firmado['hasta']}

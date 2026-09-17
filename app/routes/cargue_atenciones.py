@@ -1956,9 +1956,6 @@ def regenerar_prefactura_empresa():
     ws_pf.column_dimensions['A'].width = 70; ws_pf.column_dimensions['B'].width = 18
     ws_pf.column_dimensions['C'].width = 16; ws_pf.column_dimensions['D'].width = 16
 
-    from app.correcciones_atenciones import agregar_hoja_correcciones
-    agregar_hoja_correcciones(wb, regs_bd, fecha_desde, fecha_hasta)
-
     # Actualizar prefactura BORRADOR en BD
     pref = PrefacturaComercial.query.filter_by(
         nombre_empresa=empresa_nombre,
@@ -2444,8 +2441,6 @@ def generar_prefacturas():
         ws_pf.column_dimensions['C'].width = 16
         ws_pf.column_dimensions['D'].width = 16
 
-        from app.correcciones_atenciones import agregar_hoja_correcciones
-        agregar_hoja_correcciones(wb, [reg for _, regs in secciones for reg in regs], fecha_desde, fecha_hasta)
         return wb
 
     # Generar un archivo por empresa con el prefijo correcto

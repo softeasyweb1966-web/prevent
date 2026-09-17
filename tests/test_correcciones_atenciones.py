@@ -6,7 +6,7 @@ from unittest import TestCase
 from unittest.mock import patch
 from zipfile import ZipFile
 
-from openpyxl import load_workbook
+from openpyxl import load_workbook, Workbook
 
 import test_prefacturas_empresa as base
 from app import correcciones_atenciones as correcciones
@@ -28,8 +28,15 @@ class CorreccionesTest(TestCase):
         ca.current_user.usuario = 'operador.prueba'
         response = self.f.generar()
         self.assertEqual(response.status_code, 200)
-        with ZipFile(BytesIO(response.data)) as z:
-            self.archivos = [(nombre, z.read(nombre)) for nombre in z.namelist() if nombre.startswith('cred-')]
+        self.archivos = [self.excel_original(i) for i in (1, 2)]
+
+    def excel_original(self, cliente_id):
+        wb = Workbook(); ws = wb.active
+        ws.append(list(ca.COLUMNAS_ESPERADAS_CANONICAS))
+        for reg in AtencionDiaDetalle.query.filter_by(cliente_id=cliente_id).order_by(AtencionDiaDetalle.id):
+            ws.append([getattr(reg, campo) for campo in correcciones.CAMPOS_EXCEL])
+        buf = BytesIO(); wb.save(buf)
+        return f'Atenciones-{cliente_id}.xlsx', buf.getvalue()
 
     def tearDown(self):
         for p in reversed(self.patches):
@@ -39,8 +46,8 @@ class CorreccionesTest(TestCase):
     def modificar(self, index=0, cambios=None):
         nombre, contenido = self.archivos[index]
         wb = load_workbook(BytesIO(contenido))
-        ws = wb[correcciones.HOJA]
-        for celda, valor in (cambios or {'E2': 'Paciente corregido', 'G2': 350}).items():
+        ws = wb.active
+        for celda, valor in (cambios or {'H2': 'Paciente corregido', 'D2': 350}).items():
             ws[celda] = valor
         buf = BytesIO()
         wb.save(buf)
@@ -48,13 +55,13 @@ class CorreccionesTest(TestCase):
         return nombre, buf.getvalue()
 
     def cargar(self, archivos, token=None):
-        data = {'archivos': [(BytesIO(contenido), nombre) for nombre, contenido in archivos]}
+        data = {'periodo_desde': '2026-09-01', 'periodo_hasta': '2026-09-15', 'archivos': [(BytesIO(contenido), nombre) for nombre, contenido in archivos]}
         if token:
             data.update(accion='aplicar', token=token)
         return self.f.http.post('/corregir', data=data, content_type='multipart/form-data')
 
     def test_revisar_aplicar_informe_y_regenerar(self):
-        archivos = [self.modificar(), self.modificar(1, {'D2': '009999', 'F2': 'Consulta corregida'})]
+        archivos = [self.modificar(), self.modificar(1, {'G2': '009999', 'H2': 'Paciente dos corregido'})]
         response = self.cargar(archivos)
         self.assertEqual(response.status_code, 200, response.json)
         self.assertEqual(response.json['atenciones'], 2)
@@ -83,7 +90,7 @@ class CorreccionesTest(TestCase):
             wb = load_workbook(BytesIO(z.read(z.namelist()[0])))
             self.assertEqual(wb['relacion-pacientes']['C4'].value, 'Paciente corregido')
             self.assertEqual(wb['relacion-pacientes']['E4'].value, 350)
-            self.assertEqual(wb[correcciones.HOJA].max_row, 2)
+            self.assertNotIn('corregir-atenciones', wb.sheetnames)
 
     def test_excel_sin_cambios(self):
         response = self.cargar(self.archivos)
@@ -91,7 +98,7 @@ class CorreccionesTest(TestCase):
         self.assertEqual(response.json['atenciones'], 0)
 
     def test_lote_invalido_no_modifica_ninguna_atencion(self):
-        response = self.cargar([self.modificar(), self.modificar(1, {'G2': -1})])
+        response = self.cargar([self.modificar(), self.modificar(1, {'D2': -1})])
         self.assertEqual(response.status_code, 400)
         self.assertIn('fila 2', response.json['error'])
         self.assertEqual(AuditLog.query.count(), 0)
@@ -105,11 +112,11 @@ class CorreccionesTest(TestCase):
         db.session.commit()
         response = self.cargar([archivo], preview['token'])
         self.assertEqual(response.status_code, 400)
-        self.assertIn('cambio desde', response.json['error'])
+        self.assertIn('cambiaron', response.json['error'])
         self.assertEqual(AuditLog.query.count(), 0)
 
     def test_rechaza_id_alterado_formula_y_fuera_de_periodo(self):
-        for cambios in ({'A2': 2}, {'G2': '=100+50'}, {'C2': datetime(2026, 10, 1)}, {'J2': 'falso'}):
+        for cambios in ({'A2': '999'}, {'D2': '=100+50'}, {'M2': datetime(2026, 10, 1)}, {'D2': -3}):
             response = self.cargar([self.modificar(cambios=cambios)])
             self.assertEqual(response.status_code, 400, response.json)
         self.assertEqual(AuditLog.query.count(), 0)
@@ -117,16 +124,16 @@ class CorreccionesTest(TestCase):
     def test_rechaza_duplicados_y_archivo_sin_hoja(self):
         archivo = self.modificar()
         self.assertEqual(self.cargar([archivo, archivo]).status_code, 400)
-        wb = load_workbook(BytesIO(archivo[1]))
-        del wb[correcciones.HOJA]
-        buf = BytesIO(); wb.save(buf)
-        response = self.cargar([(archivo[0], buf.getvalue())])
+        prefactura = self.f.generar('&cliente_id=1')
+        with ZipFile(BytesIO(prefactura.data)) as z:
+            nombre = next(n for n in z.namelist() if n.startswith('cred-'))
+            response = self.cargar([(nombre, z.read(nombre))])
         self.assertEqual(response.status_code, 400)
-        self.assertIn('genera nuevamente', response.json['error'])
+        self.assertIn('Columnas requeridas', response.json['error'])
 
     def test_rechaza_cambios_no_revisados(self):
         token = self.cargar([self.modificar()]).json['token']
-        response = self.cargar([self.modificar(cambios={'G2': 500})], token)
+        response = self.cargar([self.modificar(cambios={'D2': 500})], token)
         self.assertEqual(response.status_code, 400)
         self.assertEqual(AuditLog.query.count(), 0)
 
@@ -147,7 +154,7 @@ class CorreccionesTest(TestCase):
         self.assertEqual(AuditLog.query.count(), 0)
 
     def test_anulacion_y_cambio_forma_pago_actualizan_totales(self):
-        archivos = [self.modificar(cambios={'I2': 'ANULADA'}), self.modificar(1, {'H2': 'EFECTIVO'})]
+        archivos = [self.modificar(cambios={'O2': 'ANULADA'}), self.modificar(1, {'E2': 'EFECTIVO'})]
         token = self.cargar(archivos).json['token']
         response = self.cargar(archivos, token)
         self.assertEqual(response.status_code, 200, response.json)
@@ -176,13 +183,8 @@ class CorreccionesTest(TestCase):
             precio=50, forma_pago='CREDITO', estado_orden='ACTIVA', archivo_origen='test.xlsx'))
         db.session.commit()
         response = self.f.generar('&cliente_id=1')
-        with ZipFile(BytesIO(response.data)) as z:
-            nombre = next(n for n in z.namelist() if n.startswith('cred-'))
-            self.archivos = [(nombre, z.read(nombre))]
-        wb = load_workbook(BytesIO(self.archivos[0][1]))
-        self.assertEqual(wb[correcciones.HOJA].max_row, 3)
-        self.assertEqual(wb['relacion-pacientes']['E4'].value, 150)
-        archivo = self.modificar(cambios={'G2': 120})
+        self.archivos = [self.excel_original(1)]
+        archivo = self.modificar(cambios={'D2': 120})
         token = self.cargar([archivo]).json['token']
         self.assertEqual(self.cargar([archivo], token).status_code, 200)
         self.assertEqual(db.session.get(AtencionDiaDetalle, 1).precio, Decimal(120))
@@ -210,3 +212,43 @@ class CorreccionesTest(TestCase):
             self.assertEqual(response.status_code, 200, response.json)
             self.assertEqual(response.json['total'], 1)
             self.assertTrue(all(f['empresa'] == 'Empresa 1' for f in response.json['filas']))
+
+    def test_cambio_empresa_actualiza_ambas_prefacturas_y_auditoria(self):
+        archivo = self.modificar(cambios={'I2': 'Empresa 2'})
+        preview = self.cargar([archivo])
+        self.assertEqual(preview.status_code, 200, preview.json)
+        response = self.cargar([archivo], preview.json['token'])
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(db.session.get(AtencionDiaDetalle, 1).cliente_id, 2)
+        self.assertEqual(PrefacturaComercial.query.filter_by(cliente_id=1).one().valor_total, 0)
+        self.assertEqual(PrefacturaComercial.query.filter_by(cliente_id=2).one().valor_total, 300)
+        self.assertEqual(len(response.json['periodos']), 2)
+        log = AuditLog.query.one()
+        self.assertEqual(log.datos_anteriores['cliente_id'], 1)
+        self.assertEqual(log.datos_nuevos['cliente_id'], 2)
+
+    def test_coincidencia_ambigua_no_modifica_ninguna_fila(self):
+        reg = db.session.get(AtencionDiaDetalle, 1)
+        db.session.add(AtencionDiaDetalle(cargue_id=reg.cargue_id, cliente_id=1,
+            nro_orden=reg.nro_orden, servicio=reg.servicio, nro_identificacion=reg.nro_identificacion,
+            fecha_creacion_orden=reg.fecha_creacion_orden, precio=80, estado_gestion='CARGADA'))
+        db.session.commit()
+        response = self.cargar([self.modificar()])
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('atencion unica', response.json['error'])
+        self.assertEqual(AuditLog.query.count(), 0)
+
+    def test_factura_sede_y_fechas_del_formato_original_se_auditan(self):
+        archivo = self.modificar(cambios={'B2': 'FAC-123', 'C2': datetime(2026, 9, 5), 'K2': 'Sede Norte'})
+        token = self.cargar([archivo]).json['token']
+        self.assertEqual(self.cargar([archivo], token).status_code, 200)
+        self.assertEqual(db.session.get(AtencionDiaDetalle, 1).nro_factura, 'FAC-123')
+        self.assertEqual(len(self.f.http.get('/informe').json['filas']), 3)
+        self.assertEqual(self.cargar([archivo]).json['atenciones'], 0)
+
+    def test_repetir_excel_anulado_no_borra_fecha_ni_duplica_auditoria(self):
+        archivo = self.modificar(cambios={'O2': 'ANULADA'})
+        token = self.cargar([archivo]).json['token']
+        self.assertEqual(self.cargar([archivo], token).status_code, 200)
+        self.assertEqual(self.cargar([archivo]).json['atenciones'], 0)
+        self.assertEqual(AuditLog.query.count(), 1)

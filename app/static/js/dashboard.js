@@ -1677,6 +1677,7 @@ async function actualizarSelectoresPeriodosComercial(forceReload = false) {
     try {
         await cargarPeriodosCargueComercial(forceReload);
         llenarSelectPeriodoCargue('prefacturaPeriodoSelect', 'Seleccione un periodo...');
+        llenarSelectPeriodoCargue('correccionesPeriodo', 'Seleccione un periodo...');
         llenarSelectPeriodoCargue('consultaPrefPeriodo', 'Todos');
         llenarSelectPeriodoCargue('cargueAtencionesDiaFiltroPeriodo', 'Todos');
     } catch (error) {
@@ -1877,7 +1878,7 @@ function setIngresoInformacionSection(section = 'inicio') {
         return;
     }
 
-    if (normalized === 'prefacturas' || normalized === 'consulta_prefacturas') {
+    if (normalized === 'prefacturas' || normalized === 'consulta_prefacturas' || normalized === 'correcciones') {
         actualizarSelectoresPeriodosComercial();
     }
     if (normalized === 'prefacturas') {

@@ -2,6 +2,13 @@ let correccionesToken = '';
 let correccionesPagina = 1;
 let correccionesOcupado = false;
 
+function abrirCorreccionesDesdeCargue() {
+    document.getElementById('correccionesPeriodoDesde').value = document.getElementById('cargueAtencionesDiaPeriodoDesde').value;
+    document.getElementById('correccionesPeriodoHasta').value = document.getElementById('cargueAtencionesDiaPeriodoHasta').value;
+    invalidarRevisionCorrecciones();
+    setIngresoInformacionSection('correcciones');
+}
+
 function invalidarRevisionCorrecciones() {
     correccionesToken = '';
     document.getElementById('correccionesAplicar').disabled = true;
@@ -58,7 +65,15 @@ async function enviarCorreccionesExcel(aplicar) {
         return;
     }
     if (aplicar && !correccionesToken) return;
+    const desde = document.getElementById('correccionesPeriodoDesde').value;
+    const hasta = document.getElementById('correccionesPeriodoHasta').value;
+    if (!desde || !hasta || desde > hasta) {
+        mensaje.textContent = 'Selecciona un periodo valido para las atenciones que vas a corregir.';
+        return;
+    }
     const datos = new FormData();
+    datos.append('periodo_desde', desde);
+    datos.append('periodo_hasta', hasta);
     [...input.files].forEach(archivo => datos.append('archivos', archivo));
     datos.append('accion', aplicar ? 'aplicar' : 'revisar');
     if (aplicar) datos.append('token', correccionesToken);
@@ -78,7 +93,7 @@ async function enviarCorreccionesExcel(aplicar) {
             tablaCorrecciones('correccionesVista', data.cambios);
             mensaje.textContent = data.atenciones
                 ? `${data.atenciones} atenciones por corregir. Revisa el antes y después y pulsa Aplicar cambios revisados.`
-                : 'No hay cambios en la hoja corregir-atenciones. Las otras hojas no se importan.';
+                : 'No hay diferencias entre el Excel de Cargue Atenciones y las atenciones guardadas.';
         } else {
             correccionesToken = '';
             input.value = '';
@@ -94,7 +109,9 @@ async function enviarCorreccionesExcel(aplicar) {
                     boton.disabled = true;
                     try {
                         const params = new URLSearchParams({ empresa: periodo.empresa, fecha_desde: periodo.fecha_desde, fecha_hasta: periodo.fecha_hasta });
-                        await descargarArchivoCorrecciones(`/api/comercial/prefacturas/regenerar-empresa?${params}`, 'Prefacturas-corregidas.zip');
+                        const endpoint = periodo.cliente_id ? 'generar' : 'regenerar-empresa';
+                        if (periodo.cliente_id) params.set('cliente_id', periodo.cliente_id);
+                        await descargarArchivoCorrecciones(`/api/comercial/prefacturas/${endpoint}?${params}`, 'Prefacturas-corregidas.zip');
                     } catch (error) {
                         mensaje.textContent = `Las correcciones están guardadas. ${error.message}`;
                     } finally { boton.disabled = false; }
