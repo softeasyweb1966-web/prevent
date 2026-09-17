@@ -101,6 +101,7 @@
 
   <section class="maestros-panel" id="panel-grupos"><p class="m-hint">Expande un vendedor y un contacto para consultar sus empresas. Las empresas sin contacto se reúnen en un solo grupo por vendedor.</p><div id="gruposEmpresas"></div></section>
   <section class="maestros-panel" id="panel-servicios">
+    <div class="maestros-toolbar"><button type="button" id="btnAnalisisHistorico" class="m-btn m-btn-secondary" onclick="abrirAnalisisHistorico()" hidden>Generar relaciones desde histórico (Excel)</button></div>
     <div class="maestros-toolbar"><label>Empresa <select id="serviciosCliente" onchange="renderServiciosMaestro()"></select></label><button id="btnNuevaTarifa" class="m-btn m-btn-primary" onclick="abrirTarifaMaestro()">Asignar producto/servicio</button></div>
     <div id="serviciosEmpresaDetalle"></div>
   </section>
@@ -151,6 +152,16 @@
   <div class="m-head"><h2 id="tituloVerEmpresa" tabindex="-1">Empresa</h2><button type="button" class="m-btn m-btn-secondary" onclick="cerrarModal('modalVerEmpresa')" aria-label="Cerrar ficha">Cerrar</button></div>
   <div id="accionesVerEmpresa" class="m-modal-actions"></div>
   <dl id="detalleVerEmpresa" class="empresa-ficha"></dl>
+</div></div>
+<div class="m-modal" id="modalAnalisisHistorico" role="dialog" aria-modal="true" aria-labelledby="tituloAnalisisHistorico"><div class="m-modal-card">
+  <h2 id="tituloAnalisisHistorico">Analizar servicios y paquetes</h2>
+  <p class="m-hint">Descarga una propuesta para revisar. En la hoja PAQUETES podrás completar «Nombre paquete». Esta operación no crea ni modifica relaciones.</p>
+  <form onsubmit="descargarAnalisisHistorico(event)">
+    <div class="m-row"><div class="m-field"><label for="analisisDesde">Fecha inicial</label><input type="date" id="analisisDesde" value="2026-01-01" required></div><div class="m-field"><label for="analisisHasta">Fecha final</label><input type="date" id="analisisHasta" required></div></div>
+    <div class="m-field"><label for="analisisCliente">Empresa</label><select id="analisisCliente"></select></div>
+    <p id="estadoAnalisisHistorico" role="status"></p>
+    <div class="m-modal-actions"><button type="button" class="m-btn m-btn-secondary" onclick="cerrarModal('modalAnalisisHistorico')">Cerrar</button><button id="btnDescargarAnalisisHistorico" class="m-btn m-btn-primary" type="submit">Descargar Excel</button></div>
+  </form>
 </div></div>
 <!-- MODAL CLIENTE -->
 <div class="m-modal" id="modalCliente"><div class="m-modal-card">

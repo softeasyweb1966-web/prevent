@@ -5,11 +5,47 @@ function inicializarFiltrosMaestro() {
     M.vendedores.map(v=>`<option value="${v.id}">${esc(v.nombre)}</option>`).join('');
   document.getElementById('filtroVendedorMaestro').disabled = !M.esAdmin;
   document.getElementById('btnNuevaTarifa').hidden = !M.permisos.tarifas?.create;
+  document.getElementById('btnAnalisisHistorico').hidden = !(M.permisos.clientes?.read && M.permisos.tarifas?.read && M.permisos.paquetes?.read);
   if (M.esAdmin && !document.getElementById('conciliacionMaestro')) {
     const panel = document.createElement('section'); panel.id='conciliacionMaestro';
     panel.innerHTML='<h3>Atenciones pendientes de vincular</h3><button type="button" class="m-btn m-btn-secondary" onclick="conciliarAtencionesMaestro(false)">Revisar coincidencias</button> <button type="button" id="aplicarConciliacionMaestro" hidden class="m-btn m-btn-primary" onclick="conciliarAtencionesMaestro(true)">Vincular coincidencias únicas</button><p id="resultadoConciliacionMaestro" role="status"></p>';
     document.getElementById('maestroResumen').after(panel);
   }
+}
+
+function abrirAnalisisHistorico() {
+  const hoy = new Date().toLocaleDateString('sv-SE', {timeZone:'America/Bogota'});
+  const hasta = document.getElementById('analisisHasta');
+  hasta.value = hasta.value || hoy; hasta.max = hoy;
+  document.getElementById('analisisDesde').max = hoy;
+  document.getElementById('analisisCliente').innerHTML = '<option value="">Todos los clientes disponibles</option>' +
+    M.clientes.map(c=>`<option value="${c.id}">${esc(c.razon_social)} · ${esc(c.nit)}</option>`).join('');
+  document.getElementById('estadoAnalisisHistorico').textContent = '';
+  document.getElementById('modalAnalisisHistorico').classList.add('active');
+}
+
+async function descargarAnalisisHistorico(event) {
+  event.preventDefault();
+  const desde = document.getElementById('analisisDesde').value;
+  const hasta = document.getElementById('analisisHasta').value;
+  const estado = document.getElementById('estadoAnalisisHistorico');
+  if (desde > hasta) { estado.textContent = 'La fecha inicial debe ser anterior o igual a la final.'; return; }
+  const boton = document.getElementById('btnDescargarAnalisisHistorico');
+  boton.disabled = true; estado.textContent = 'Analizando atenciones y preparando el Excel…';
+  try {
+    const params = new URLSearchParams({fecha_desde:desde, fecha_hasta:hasta});
+    const cliente = document.getElementById('analisisCliente').value;
+    if (cliente) params.set('cliente_id', cliente);
+    const response = await fetch(`/api/comercial/tarifas/analisis-historico.xlsx?${params}`, {credentials:'include'});
+    if (!response.ok) { const data = await response.json().catch(()=>({})); throw new Error(data.error || 'No se pudo generar el análisis.'); }
+    const url = URL.createObjectURL(await response.blob());
+    const enlace = document.createElement('a'); enlace.href = url;
+    enlace.download = `Analisis-relaciones-${desde}-${hasta}.xlsx`;
+    document.body.appendChild(enlace); enlace.click(); enlace.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+    estado.textContent = 'Excel generado. Completa Nombre paquete en la hoja PAQUETES. La reimportación se habilitará en una fase posterior.';
+  } catch (e) { estado.textContent = e.message; }
+  finally { boton.disabled = false; }
 }
 
 async function conciliarAtencionesMaestro(aplicar) {

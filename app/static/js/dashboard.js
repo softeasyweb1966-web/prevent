@@ -1878,6 +1878,9 @@ function setIngresoInformacionSection(section = 'inicio') {
     if (normalized === 'prefacturas' || normalized === 'consulta_prefacturas') {
         actualizarSelectoresPeriodosComercial();
     }
+    if (normalized === 'prefacturas') {
+        cargarEmpresasGeneracionPrefacturas();
+    }
 
     if (normalized === 'consulta') {
         actualizarSelectoresPeriodosComercial();
@@ -1891,6 +1894,31 @@ function setIngresoInformacionSection(section = 'inicio') {
 // ---------------------------------------------------------------------------
 // PREFACTURAS
 // ---------------------------------------------------------------------------
+async function cargarEmpresasGeneracionPrefacturas() {
+    const select = document.getElementById('prefacturaEmpresaSelect');
+    if (!select) return;
+    const selected = select.value;
+    select.disabled = true;
+    try {
+        const response = await fetch('/api/comercial/clientes', { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('No se pudo cargar la lista de empresas');
+        const clientes = await response.json();
+        select.replaceChildren(new Option('Todas las empresas', ''));
+        [...(clientes || [])]
+            .sort((a, b) => String(a.razon_social || '').localeCompare(String(b.razon_social || ''), 'es'))
+            .forEach(cliente => {
+                const nombre = cliente.razon_social || cliente.nombre_comercial || 'Cliente sin nombre';
+                select.add(new Option(cliente.nit ? `${nombre} (${cliente.nit})` : nombre, String(cliente.id)));
+            });
+        if ([...select.options].some(option => option.value === selected)) select.value = selected;
+    } catch (error) {
+        console.error('Error cargando empresas para generar prefacturas:', error);
+        showError('No se pudieron cargar las empresas. Vuelve a abrir Generar Prefacturas para reintentar.');
+    } finally {
+        select.disabled = false;
+    }
+}
+
 async function generarPrefacturas() {
     const fechaDesde = (document.getElementById('prefacturaFechaDesde') || {}).value || '';
     const fechaHasta = (document.getElementById('prefacturaFechaHasta') || {}).value || '';
@@ -1913,6 +1941,8 @@ async function generarPrefacturas() {
 
     try {
         const params = new URLSearchParams({ fecha_desde: fechaDesde, fecha_hasta: fechaHasta });
+        const clienteId = document.getElementById('prefacturaEmpresaSelect')?.value || '';
+        if (clienteId) params.set('cliente_id', clienteId);
 
         const response = await fetch(`/api/comercial/prefacturas/generar?${params}`, {
             method: 'GET',

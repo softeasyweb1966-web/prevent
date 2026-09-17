@@ -2119,6 +2119,22 @@ def generar_prefacturas():
     except ValueError:
         return jsonify({'error': 'Formato de fecha invalido. Use YYYY-MM-DD'}), 400
 
+    cliente_id_str = request.args.get('cliente_id', '').strip()
+    cliente_id = None
+    if cliente_id_str:
+        try:
+            cliente_id = int(cliente_id_str)
+            if cliente_id <= 0:
+                raise ValueError
+        except ValueError:
+            return jsonify({'error': 'Empresa invalida'}), 400
+        try:
+            exigir_cliente(cliente_id)
+        except PermissionError as exc:
+            return jsonify({'error': str(exc)}), 403
+        if db.session.get(ClienteComercial, cliente_id) is None:
+            return jsonify({'error': 'La empresa seleccionada no existe'}), 404
+
     vendedor_scope = _resolver_vendedor_usuario_actual()
     if not _is_admin_user() and vendedor_scope is None:
         return jsonify({'error': 'No tienes un vendedor asociado para generar prefacturas'}), 403
@@ -2137,6 +2153,9 @@ def generar_prefacturas():
 
     if not _is_admin_user():
         query = query.filter(_condicion_scope_atenciones(vendedor_scope))
+
+    if cliente_id is not None:
+        query = query.filter(AtencionDiaDetalle.cliente_id == cliente_id)
 
     todos = query.order_by(
         AtencionDiaDetalle.cliente_id.asc().nullslast(),

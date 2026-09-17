@@ -109,6 +109,20 @@ def main():
             assert page.locator('#tbodyClientes tr').count() == 50
             page.locator('#filtroRevisionMaestro').select_option('')
             page.locator('[data-tab=servicios]').click()
+            page.locator('#btnAnalisisHistorico').click()
+            expect(page.locator('#analisisDesde')).to_have_value('2026-01-01')
+            page.locator('#analisisHasta').fill('2026-02-28')
+            page.locator('#analisisCliente').select_option(str(fixture.c1.id))
+            with page.expect_download() as descarga:
+                page.locator('#btnDescargarAnalisisHistorico').click()
+            from openpyxl import load_workbook
+            archivo = descarga.value
+            assert archivo.failure() is None
+            with open(archivo.path(), 'rb') as contenido:
+                libro = load_workbook(contenido)
+            assert libro['PAQUETES']['C1'].value == 'Nombre paquete'
+            assert '_CONTROL' in libro.sheetnames
+            page.locator('#modalAnalisisHistorico').get_by_role('button', name='Cerrar', exact=True).click()
             page.locator('#serviciosCliente').select_option(str(fixture.c1.id))
             page.locator('#btnNuevaTarifa').click()
             page.locator('#tarifaMaestroItem').select_option(str(item_id))

@@ -1818,6 +1818,36 @@ def eliminar_catalogo_comercial(item_id):
         return jsonify({'error': 'Error al eliminar item comercial'}), 500
 
 
+@comercial_bp.route('/tarifas/analisis-historico.xlsx', methods=['GET'])
+@login_required
+def exportar_analisis_historico():
+    """Descarga una propuesta verificable sin escribir datos comerciales."""
+    from datetime import timedelta, timezone
+    from app.analisis_historico import generar_excel_historico
+    try:
+        for entidad in ('clientes', 'tarifas', 'atenciones', 'paquetes'):
+            _require_commercial_permission(entidad, 'read')
+        desde = datetime.strptime(request.args.get('fecha_desde', ''), '%Y-%m-%d')
+        hasta = datetime.strptime(request.args.get('fecha_hasta', ''), '%Y-%m-%d')
+        hoy = datetime.now(timezone(timedelta(hours=-5))).date()
+        if hasta < desde or hasta.date() > hoy:
+            raise ValueError('El rango debe ser válido y terminar como máximo hoy.')
+        cliente_raw = request.args.get('cliente_id', '').strip()
+        cliente_id = int(cliente_raw) if cliente_raw else None
+        clave = current_app.config.get('ANALISIS_EXPORT_SIGNING_KEY') or current_app.config['SECRET_KEY']
+        if not clave:
+            raise ValueError('Falta la clave de firma de la instancia.')
+        archivo = generar_excel_historico(desde, hasta + timedelta(days=1), cliente_id,
+            _resolver_vendedor_usuario_actual(), _is_admin_user(), current_user, clave)
+        return send_file(archivo, as_attachment=True,
+            download_name=f'Analisis-relaciones-{desde:%Y%m%d}-{hasta:%Y%m%d}.xlsx',
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    except PermissionError as exc:
+        return jsonify(error=str(exc)), 403
+    except (ValueError, TypeError) as exc:
+        return jsonify(error=str(exc)), 400
+
+
 @comercial_bp.route('/tarifas', methods=['GET'])
 @login_required
 def get_tarifas_comerciales():
