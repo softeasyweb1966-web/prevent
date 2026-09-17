@@ -1826,6 +1826,7 @@ function setIngresoInformacionSection(section = 'inicio') {
         catalogo: ['ingresoInfoCatalogoPanel'],
         cargue_atenciones: ['ingresoInfoCarguePanel', 'ingresoInfoHistorialPanel'],
         prefacturas: ['ingresoInfoPrefacturasPanel'],
+        correcciones: ['ingresoInfoCorreccionesPanel'],
         consulta_prefacturas: ['ingresoInfoConsultaPrefacturasPanel'],
         cartera: ['ingresoInfoCarteraPanel'],
         consulta: ['ingresoInfoConsultaPanel']
@@ -1835,6 +1836,7 @@ function setIngresoInformacionSection(section = 'inicio') {
         catalogo: 'ingresoInfoNavCatalogo',
         cargue_atenciones: 'ingresoInfoNavCargueAtenciones',
         prefacturas: 'ingresoInfoNavPrefacturas',
+        correcciones: 'ingresoInfoNavCorrecciones',
         consulta_prefacturas: 'ingresoInfoNavConsultaPrefacturas',
         cartera: 'ingresoInfoNavCartera',
         consulta: 'ingresoInfoNavConsulta'

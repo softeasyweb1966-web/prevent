@@ -14,7 +14,7 @@ from app.routes import cargue_atenciones as routes
 class PrefacturasEmpresaTest(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
-        self.app.config.update(TESTING=True, SQLALCHEMY_DATABASE_URI='sqlite://')
+        self.app.config.update(TESTING=True, SECRET_KEY='test-correcciones', SQLALCHEMY_DATABASE_URI='sqlite://')
         db.init_app(self.app)
         self.ctx = self.app.app_context()
         self.ctx.push()

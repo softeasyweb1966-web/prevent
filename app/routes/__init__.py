@@ -24,3 +24,4 @@ from app.routes import auth, dashboard, usuarios, comercial, contable, cargue_at
 
 
 from app.routes import clientes_acceso
+from app import correcciones_atenciones

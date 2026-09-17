@@ -1273,6 +1273,9 @@
             <button type="button" class="btn btn-secondary" id="ingresoInfoNavConsultaPrefacturas" onclick="setIngresoInformacionSection('consulta_prefacturas')">
                 <span class="btn-label">Consulta Prefacturas</span>
             </button>
+            <button type="button" class="btn btn-secondary" id="ingresoInfoNavCorrecciones" onclick="setIngresoInformacionSection('correcciones')">
+                <span class="btn-label">Sábanas corregidas</span>
+            </button>
             <button type="button" class="btn btn-secondary" id="ingresoInfoNavCartera" onclick="setIngresoInformacionSection('cartera')">
                 <span class="btn-label">Cartera</span>
             </button>
@@ -1477,6 +1480,38 @@
                 </div>
             </div>
             <div id="prefacturasResultado" style="margin-top:10px; color:#555;"></div>
+        </div>
+        <div id="ingresoInfoCorreccionesPanel" class="recent-section ingreso-info-panel" style="display:none; margin-bottom:16px;">
+            <h3>Cargar sábanas corregidas</h3>
+            <p>En los Excel del ZIP, edita la hoja <strong>corregir-atenciones</strong>: una fila por examen, con su valor individual. Puedes corregir orden, fecha, documento, paciente, examen, valor, forma de pago y estado. Los cambios se guardan en las atenciones originales y quedan en el historial.</p>
+            <p>Conserva el ID y los encabezados. Para retirar una atención usa el estado <strong>ANULADA</strong>; borrar una fila del Excel no elimina la atención. No se crean atenciones nuevas desde estos archivos. Las fechas deben permanecer dentro del periodo. Si tu Excel no tiene esta hoja, genera uno nuevo.</p>
+            <div class="form-group">
+                <label for="correccionesArchivos">Excel corregidos (hasta 20 archivos)</label>
+                <input id="correccionesArchivos" type="file" accept=".xlsx" multiple onchange="invalidarRevisionCorrecciones()">
+            </div>
+            <div class="button-group">
+                <button type="button" class="btn btn-secondary" id="correccionesRevisar" onclick="enviarCorreccionesExcel(false)">Revisar cambios</button>
+                <button type="button" class="btn btn-primary" id="correccionesAplicar" onclick="enviarCorreccionesExcel(true)" disabled>Aplicar cambios revisados</button>
+            </div>
+            <p id="correccionesMensaje" role="status"></p>
+            <div id="correccionesVista" style="overflow:auto; max-height:420px;"></div>
+            <div id="correccionesDescargas" class="button-group"></div>
+            <hr>
+            <h3>Historial: antes y después</h3>
+            <div class="form-row">
+                <div class="form-group"><label for="correccionesDesde">Fecha de cambio desde</label><input type="date" id="correccionesDesde"></div>
+                <div class="form-group"><label for="correccionesHasta">Fecha de cambio hasta</label><input type="date" id="correccionesHasta"></div>
+            </div>
+            <div class="button-group">
+                <button type="button" class="btn btn-secondary" onclick="consultarInformeCorrecciones(1)">Consultar historial</button>
+                <button type="button" class="btn btn-secondary" onclick="descargarInformeCorrecciones()">Descargar informe Excel</button>
+            </div>
+            <p id="correccionesInformeMensaje" role="status"></p>
+            <div id="correccionesInforme" style="overflow:auto; max-height:480px;"></div>
+            <div class="button-group">
+                <button type="button" class="btn btn-secondary" id="correccionesAnterior" onclick="consultarInformeCorrecciones(correccionesPagina - 1)" disabled>Anterior</button>
+                <button type="button" class="btn btn-secondary" id="correccionesSiguiente" onclick="consultarInformeCorrecciones(correccionesPagina + 1)" disabled>Siguiente</button>
+            </div>
         </div>
         <!-- CONSULTAR PREFACTURAS -->
         <div id="ingresoInfoConsultaPrefacturasPanel" class="recent-section ingreso-info-panel" style="display:none; margin-bottom:16px;">
@@ -2881,6 +2916,7 @@
 
 <script id="rolePermissionOptions" type="application/json">{{ role_permission_options | tojson }}</script>
 <script src="{{ asset_url('js/dashboard.js') }}"></script>
+<script src="{{ asset_url('js/correcciones_atenciones.js') }}"></script>
 <script src="{{ asset_url('js/contable.js') }}"></script>
 {% endblock %}
 
