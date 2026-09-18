@@ -401,6 +401,48 @@ class CarteraACTest(unittest.TestCase):
         self.documento('FV', 3, '2026-01-01', [{'identificacion': '9.001-2', 'detalle': 'FV-2-3', 'debito': Decimal('10')}])
         self.assertEqual(len(http.get('/api/contable/seguimiento-cartera?identificacion=9.001-2').json['seguimientos']), 2)
 
+    def test_seguimiento_agrupado_por_responsable_crea_registro_por_empresa(self):
+        vendedor = Vendedor(nombre='Vendedora cartera')
+        db.session.add(vendedor)
+        db.session.flush()
+        db.session.add_all([
+            ClienteComercial(razon_social='Empresa grupo A', nit='9001', vendedor=vendedor,
+                             responsable='Responsable Grupo', telefono_responsable='3001112222'),
+            ClienteComercial(razon_social='Empresa grupo B', nit='9002', vendedor=vendedor,
+                             responsable='Responsable Grupo', telefono_responsable='3001112222'),
+        ])
+        db.session.commit()
+        def limpiar_maestro_grupo():
+            db.session.query(ClienteComercial).filter(ClienteComercial.nit.in_(['9001', '9002'])).delete(synchronize_session=False)
+            db.session.query(Vendedor).filter_by(nombre='Vendedora cartera').delete()
+            db.session.commit()
+        self.addCleanup(limpiar_maestro_grupo)
+        self.factura_y_recibo()
+        self.documento('FV', 2, '2026-01-01', [{'identificacion': '9002', 'nombre_tercero': 'Empresa grupo B',
+                                                'detalle': 'FV-2-2', 'debito': Decimal('10')}])
+        usuario = self.usuario_seguimiento()
+        http = self.app.test_client()
+        with http.session_transaction() as sesion:
+            sesion['_user_id'] = str(usuario.id)
+            sesion['_fresh'] = True
+        respuesta = http.post('/api/contable/seguimiento-cartera', json={
+            'identificacion': '9001',
+            'alcance': 'grupo',
+            'identificaciones_grupo': ['9001', '9002'],
+            'fecha_gestion': '2026-01-15',
+            'medio': ['CORREO', 'WHATSAPP'],
+            'contacto': 'Responsable Grupo',
+            'observaciones': 'Compromiso agrupado.',
+            'fecha_compromiso': '2026-01-20',
+            'valor_compromiso': '1.000,50',
+        })
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertEqual(len(respuesta.json['seguimientos']), 2)
+        self.assertEqual(SiigoSeguimientoCartera.query.filter_by(identificacion='9001').count(), 1)
+        self.assertEqual(SiigoSeguimientoCartera.query.filter_by(identificacion='9002').count(), 1)
+        self.assertEqual(respuesta.json['seguimiento']['medio'], 'CORREO, WHATSAPP')
+        self.assertEqual(respuesta.json['seguimiento']['valor_compromiso'], 1000.5)
+
     def test_seguimiento_valida_entradas_sin_guardar_registros_invalidos(self):
         self.factura_y_recibo()
         usuario = self.usuario_seguimiento()

@@ -118,8 +118,11 @@ def _normalizar_encabezado(value):
 def _decimal(value):
     if value in (None, ''):
         return Decimal('0')
+    texto = str(value).strip()
+    if ',' in texto:
+        texto = texto.replace('.', '').replace(',', '.')
     try:
-        return Decimal(str(value).replace(',', '.'))
+        return Decimal(texto)
     except InvalidOperation as exc:
         raise ValueError(f'Valor monetario inválido: {value}') from exc
 
@@ -826,6 +829,7 @@ def _estado_compromiso(registro, hoy=None):
 def _serializar_seguimiento_cartera(registro):
     return {
         'id': registro.id,
+        'identificacion': registro.identificacion,
         'comprobantes_pago': [{'id': a.id, 'nombre': a.nombre, 'tamano_bytes': a.tamano_bytes,
                               'registrado_por': a.usuario_nombre,
                               'url': f'/api/contable/seguimiento-cartera/comprobantes/{a.id}'} for a in registro.comprobantes_pago],
@@ -842,6 +846,31 @@ def _serializar_seguimiento_cartera(registro):
         'registrado_por': registro.usuario_nombre,
         'created_at': registro.created_at.isoformat() + 'Z',
     }
+
+
+def _clientes_agrupados_por_responsable(clientes):
+    grupos = {}
+    for cliente in clientes:
+        clave = _nit_cartera(cliente.nit)
+        responsable = _texto(cliente.responsable)
+        if not clave or not responsable:
+            continue
+        grupo_clave = _normalizar(responsable)
+        grupos.setdefault(grupo_clave, {
+            'responsable': responsable,
+            'telefono_responsable': cliente.telefono_responsable,
+            'empresas': [],
+        })['empresas'].append({
+            'identificacion': clave,
+            'cliente': cliente.razon_social,
+            'vendedor': cliente.vendedor.nombre if cliente.vendedor else 'Sin asignar',
+        })
+    resultado = {}
+    for grupo in grupos.values():
+        grupo['empresas'].sort(key=lambda item: (_normalizar(item['cliente']), item['identificacion']))
+        for empresa in grupo['empresas']:
+            resultado[empresa['identificacion']] = grupo
+    return resultado
 
 
 @contable_bp.route('/seguimiento-cartera', methods=['GET', 'POST', 'PATCH'])
@@ -888,9 +917,13 @@ def seguimiento_cartera():
         fecha_gestion = _fecha(datos.get('fecha_gestion') or hoy)
         if fecha_gestion > hoy:
             raise ValueError('La fecha de gestión no puede ser futura.')
-        medio = _texto(datos.get('medio')).upper()
-        if medio not in {'LLAMADA', 'WHATSAPP', 'CORREO', 'VISITA', 'OTRO'}:
+        medio_raw = datos.get('medio')
+        medios = medio_raw if isinstance(medio_raw, list) else re.split(r'[,;]+', _texto(medio_raw))
+        medios = [_texto(item).upper() for item in medios if _texto(item)]
+        medios_validos = {'LLAMADA', 'WHATSAPP', 'CORREO', 'VISITA', 'OTRO'}
+        if not medios or any(medio not in medios_validos for medio in medios):
             raise ValueError('Seleccione el medio de contacto.')
+        medio = ', '.join(dict.fromkeys(medios))
         observaciones = _texto(datos.get('observaciones'))
         if not observaciones or len(observaciones) > 5000:
             raise ValueError('Describa la gestión realizada, con un máximo de 5000 caracteres.')
@@ -911,16 +944,44 @@ def seguimiento_cartera():
                 raise ValueError('El valor del compromiso admite hasta dos decimales.')
             if not fechas['fecha_compromiso']:
                 raise ValueError('Indique la fecha del compromiso de pago.')
-        registro = SiigoSeguimientoCartera(
-            identificacion=clave, cliente_nombre=cliente.nombre_tercero or 'Sin nombre',
-            fecha_gestion=fecha_gestion, medio=medio, contacto=contacto or None,
-            observaciones=observaciones, valor_compromiso=valor,
-            usuario_id=current_user.id, usuario_nombre=current_user.nombre_completo,
-            **fechas,
-        )
-        db.session.add(registro)
+        identificaciones = [clave]
+        if datos.get('alcance') == 'grupo':
+            solicitadas = {_nit_cartera(item) for item in (datos.get('identificaciones_grupo') or [])}
+            solicitadas.discard('')
+            clientes_maestro = _clientes_informe()
+            grupos = _clientes_agrupados_por_responsable(clientes_maestro)
+            grupo = grupos.get(clave)
+            permitidas = {empresa['identificacion'] for empresa in grupo['empresas']} if grupo else {clave}
+            identificaciones = sorted(solicitadas & permitidas)
+            if clave not in identificaciones:
+                identificaciones.insert(0, clave)
+            if len(identificaciones) < 2:
+                raise ValueError('El responsable no tiene otras empresas visibles para registrar un compromiso agrupado.')
+        nombres_cliente = {
+            _nit_cartera(row.identificacion): row.nombre_tercero
+            for row in db.session.query(SiigoMovimiento.identificacion, func.max(SiigoMovimiento.nombre_tercero).label('nombre_tercero'))
+            .join(SiigoComprobante)
+            .filter(_alcance_movimiento(), SiigoMovimiento.identificacion.in_(identificaciones),
+                    SiigoComprobante.tipo_documento == 'FV', SiigoMovimiento.codigo_contable == '13050501')
+            .group_by(SiigoMovimiento.identificacion).all()
+        }
+        registros = []
+        for identificacion_registro in identificaciones:
+            registro = SiigoSeguimientoCartera(
+                identificacion=identificacion_registro,
+                cliente_nombre=nombres_cliente.get(identificacion_registro) or ('Sin nombre' if identificacion_registro == clave else identificacion_registro),
+                fecha_gestion=fecha_gestion, medio=medio, contacto=contacto or None,
+                observaciones=observaciones, valor_compromiso=valor,
+                usuario_id=current_user.id, usuario_nombre=current_user.nombre_completo,
+                **fechas,
+            )
+            registros.append(registro)
+            db.session.add(registro)
         db.session.commit()
-        return jsonify({'seguimiento': _serializar_seguimiento_cartera(registro)}), 201
+        return jsonify({
+            'seguimiento': _serializar_seguimiento_cartera(registros[0]),
+            'seguimientos': [_serializar_seguimiento_cartera(item) for item in registros],
+        }), 201
     except (ValueError, PermissionError) as exc:
         db.session.rollback()
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
@@ -1331,24 +1392,24 @@ def cartera_dinamica():
                 resultado.append(registro)
             return resultado
 
-        vendedores_maestro = {identificacion(c.nit): c.vendedor.nombre if c.vendedor else 'Sin asignar' for c in _clientes_informe() if c.nit}
+        clientes_maestro_informe = _clientes_informe()
+        vendedores_maestro = {identificacion(c.nit): c.vendedor.nombre if c.vendedor else 'Sin asignar' for c in clientes_maestro_informe if c.nit}
         for registro_cliente in cartera_por_cliente.values():
             registro_cliente['vendedor'] = vendedores_maestro.get(identificacion(registro_cliente['identificacion']), 'Sin asignar')
 
         if request.args.get('informe') == 'vencidas':
             vendedores_por_nit = {}
-            for nit, vendedor in db.session.query(ClienteComercial.nit, Vendedor.nombre).join(
-                Vendedor, ClienteComercial.vendedor_id == Vendedor.id,
-            ).all():
-                clave = _nit_cartera(nit)
+            for cliente_maestro in clientes_maestro_informe:
+                clave = _nit_cartera(cliente_maestro.nit)
                 if clave:
-                    vendedores_por_nit.setdefault(clave, set()).add(vendedor)
+                    vendedores_por_nit.setdefault(clave, set()).add(cliente_maestro.vendedor.nombre if cliente_maestro.vendedor else 'Sin asignar')
             vendedores = {
                 nit: next(iter(nombres)) if len(nombres) == 1 else 'Asignación por revisar'
                 for nit, nombres in vendedores_por_nit.items()
             }
             estado_facturas = request.args.get('estado_facturas') or ('por_vencer' if request.args.get('solo_por_vencer') == '1' else 'todos')
             clientes = _clientes_facturas_vencidas(cartera_por_cliente.values(), vendedores, estado_facturas)
+            agrupaciones = _clientes_agrupados_por_responsable(clientes_maestro_informe)
             claves = {_nit_cartera(c['identificacion']) for c in clientes}
             seguimientos = {}
             if claves:
@@ -1356,6 +1417,7 @@ def cartera_dinamica():
                     seguimientos.setdefault(registro.identificacion, []).append(_serializar_seguimiento_cartera(registro))
             for cliente in clientes:
                 cliente['seguimientos'] = seguimientos.get(_nit_cartera(cliente['identificacion']), [])
+                cliente['agrupacion_responsable'] = agrupaciones.get(_nit_cartera(cliente['identificacion']))
             if request.args.get('formato') == 'xlsx':
                 return _excel_facturas_vencidas(clientes, fecha_corte, movimientos_sin_asignar)
             return jsonify({

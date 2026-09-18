@@ -468,6 +468,8 @@ body.body-siigo-cartera-focus .main-content {
 
 body.body-siigo-vencidas-activo .top-bar,
 body.body-siigo-vencidas-activo #ventasView > .module-header,
+body.body-siigo-vencidas-activo #comercialHomeHeader,
+body.body-siigo-vencidas-activo #comercialInicioPanel,
 body.body-siigo-vencidas-activo #ventasView > .stats-grid,
 body.body-siigo-vencidas-activo #siigoVigenciaComprobantes,
 body.body-siigo-vencidas-activo #siigoVentasNavegacion,
@@ -589,12 +591,14 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
 }
 
 .siigo-seguimiento-dialogo {
-    width: min(900px, calc(100vw - 32px));
-    max-height: 90vh;
+    width: 100vw;
+    max-width: none;
+    height: 100vh;
+    max-height: none;
     box-sizing: border-box;
     overflow-y: auto;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
+    border: 0;
+    border-radius: 0;
     padding: 24px;
     color: #1f2937;
 }
@@ -608,6 +612,40 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     align-items: center;
     justify-content: space-between;
     gap: 16px;
+}
+
+.siigo-responsable-grupo,
+.siigo-estado-cuenta {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    margin: 12px 0;
+    background: #f8fafc;
+}
+
+.siigo-responsable-grupo h3 {
+    margin: 0 0 6px;
+    font-size: 16px;
+}
+
+.siigo-responsable-empresas {
+    margin: 8px 0 0;
+    padding-left: 18px;
+}
+
+.siigo-estado-cuenta summary {
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.siigo-seguimiento-dialogo select[multiple] {
+    min-height: 130px;
+}
+
+.siigo-seguimiento-comunicacion {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 .siigo-seguimiento-registro {

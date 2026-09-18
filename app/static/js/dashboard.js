@@ -496,6 +496,7 @@ function hasComercialSectionPermission(section) {
         vendedores: () => hasAnyComercialPermission('vendedores'),
         examenes: () => hasAnyCatalogoPermission(),
         clientes: () => hasAnyComercialPermission('clientes'),
+        cartera: () => hasRolePermission('menu_ventas') || hasRolePermission('menu_comercial'),
         gestion_informacion: () => canManageComercial('atenciones', 'read') || canManageComercial('atenciones', 'create'),
         caja: () => canManageComercial('atenciones', 'read') || canManageComercial('atenciones', 'create'),
         registro_atenciones: () => canManageComercial('atenciones', 'read') || canManageComercial('atenciones', 'create'),
@@ -516,6 +517,7 @@ function syncComercialPermissionUI() {
     setComercialElementsVisibility('#comercialNavVendedores', hasComercialSectionPermission('vendedores'));
     setComercialElementsVisibility('#comercialNavExamenes', hasComercialSectionPermission('examenes'));
     setComercialElementsVisibility('#comercialNavClientes', hasComercialSectionPermission('clientes'));
+    setComercialElementsVisibility('#comercialNavCartera', hasComercialSectionPermission('cartera'));
     setComercialElementsVisibility('#accesoMaestroClientes', canManageComercial('clientes', 'read')); 
     setComercialElementsVisibility('#comercialNavCargue', hasComercialSectionPermission('gestion_informacion'));
     setComercialElementsVisibility('#comercialNavCaja', hasComercialSectionPermission('caja'));
@@ -543,6 +545,9 @@ function syncComercialPermissionUI() {
         switchComercialSection('inicio');
     }
     if (window._comercialSeccionActual === 'clientes' && !canManageComercial('clientes', 'read')) {
+        switchComercialSection('inicio');
+    }
+    if (window._comercialSeccionActual === 'cartera' && !hasComercialSectionPermission('cartera')) {
         switchComercialSection('inicio');
     }
 }
@@ -1271,6 +1276,18 @@ async function switchComercialSection(sectionName = 'inicio', options = {}) {
             }
         } else if (panelMes) {
             panelMes.style.display = 'block';
+        }
+        if (focus && config.focusId) {
+            window.setTimeout(() => focusModuleSection(config.focusId), 120);
+        }
+        return;
+    }
+
+    if (normalizedSection === 'cartera') {
+        try {
+            await config.load();
+        } catch (error) {
+            console.error('Error cargando seccion de cartera comercial:', error);
         }
         if (focus && config.focusId) {
             window.setTimeout(() => focusModuleSection(config.focusId), 120);
@@ -4504,6 +4521,15 @@ const COMERCIAL_SECTION_CONFIG = {
             estado: formatearEstadoCliente(obtenerEstadoCliente(item))
         }),
         edit: id => editarClienteComercial(id)
+    },
+    cartera: {
+        panels: ['comercialCarteraSection'],
+        focusId: 'comercialCarteraPanel',
+        load: () => {
+            if (typeof abrirGestionCarteraComercial === 'function') {
+                abrirGestionCarteraComercial();
+            }
+        }
     },
     mes: {
         panels: [],
