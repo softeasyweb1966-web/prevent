@@ -59,7 +59,10 @@ function markSidebarModuleActive(moduleName, section = '') {
     document.querySelectorAll('.menu-item').forEach(item => item.classList.remove('active'));
     document.querySelectorAll('.menu-subitem').forEach(item => item.classList.remove('active'));
 
-    const item = document.querySelector(`.menu-item[data-module="${moduleName}"]`);
+    const selector = section
+        ? `.menu-item[data-module="${moduleName}"][data-section="${section}"]`
+        : `.menu-item[data-module="${moduleName}"]:not([data-section])`;
+    const item = document.querySelector(selector) || document.querySelector(`.menu-item[data-module="${moduleName}"]`);
     if (item) item.classList.add('active');
 }
 
@@ -877,7 +880,7 @@ function switchModule(moduleName) {
         return;
     }
 
-    markSidebarModuleActive(moduleName, '');
+    markSidebarModuleActive(moduleName, moduleName === 'comercial' ? (window._comercialSeccionActual || '') : '');
     if (moduleName !== 'ventas' && typeof mostrarFiltrosVencidasSiigo === 'function') {
         mostrarFiltrosVencidasSiigo();
         actualizarModoCarteraSiigo(false);
@@ -890,7 +893,9 @@ function switchModule(moduleName) {
     const userMenu = document.querySelector('.user-menu');
     let displayName;
     if (moduleName === 'comercial') {
-        displayName = window._comercialSeccionActual === 'vendedores'
+        displayName = window._comercialSeccionActual === 'cartera'
+            ? 'Gestión de Cartera'
+            : window._comercialSeccionActual === 'vendedores'
             ? 'Vendedores'
             : 'Registro Atenciones';
     } else if (moduleName === 'gestion_informacion') {
