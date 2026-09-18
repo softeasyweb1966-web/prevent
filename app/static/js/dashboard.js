@@ -5026,7 +5026,7 @@ async function loadUsuarios() {
                     </td>
                     <td>
                         ${!esEasy ? `<button class="action-btn action-btn-edit" onclick="editUsuario(${user.id})">Editar</button>` : ''}
-                        ${!esEasy ? `<button class="action-btn" onclick='resetUsuarioPassword(${user.id}, ${JSON.stringify(user.usuario || "")})'>Restablecer clave</button>` : ''}
+                        ${!esEasy ? `<button class="action-btn" onclick='asignarUsuarioPassword(${user.id}, ${JSON.stringify(user.usuario || "")})'>Asignar clave</button>` : ''}
                         <button class="action-btn action-btn-edit" onclick="editPermisosExtraUsuario(${user.id}, ${JSON.stringify(user.usuario || '')})">Permisos extra</button>
                         ${!esEasy && user.usuario !== 'admin' ? `<button class="action-btn action-btn-delete" onclick='deleteUsuario(${user.id}, ${JSON.stringify(user.usuario || '')})'>Desactivar</button>` : ''}
                     </td>
@@ -5194,44 +5194,43 @@ async function deleteUsuario(id, username) {
     }
 }
 
-async function resetUsuarioPassword(id, username) {
-    if (!confirm(`Se generara una nueva clave temporal para ${username}. La clave anterior dejara de funcionar. Desea continuar?`)) {
+async function asignarUsuarioPassword(id, username) {
+    const nuevaPassword = window.prompt(`Digite la nueva clave para ${username}. Minimo 6 caracteres:`);
+    if (nuevaPassword === null) {
+        return;
+    }
+    if (nuevaPassword.length < 6) {
+        return showError('La nueva clave debe tener al menos 6 caracteres');
+    }
+
+    const confirmacion = window.prompt(`Confirme la nueva clave para ${username}:`);
+    if (confirmacion === null) {
+        return;
+    }
+    if (confirmacion !== nuevaPassword) {
+        return showError('Las claves no coinciden');
+    }
+
+    if (!confirm(`Se asignara una nueva clave a ${username}. La clave anterior dejara de funcionar. Desea continuar?`)) {
         return;
     }
 
     try {
-        const response = await fetch(`/api/usuarios/${id}/reset-password`, {
+        const response = await fetch(`/api/usuarios/${id}/cambiar-password`, {
             method: 'POST',
-            credentials: 'include'
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ nueva_password: nuevaPassword })
         });
         const data = await response.json();
         if (!response.ok) {
-            return showError(data.error || 'Error al restablecer la clave');
+            return showError(data.error || 'Error al asignar la clave');
         }
 
-        const passwordTemporal = data.password_temporal || '';
-        let copied = false;
-
-        if (passwordTemporal && navigator.clipboard?.writeText) {
-            try {
-                await navigator.clipboard.writeText(passwordTemporal);
-                copied = true;
-            } catch (error) {
-                console.warn('No se pudo copiar la clave temporal al portapapeles:', error);
-            }
-        }
-
-        if (passwordTemporal) {
-            const promptMessage = copied
-                ? `Clave temporal de ${username}. Ya quedo copiada al portapapeles:`
-                : `Clave temporal de ${username}. Copiela y compartala con el usuario:`;
-            window.prompt(promptMessage, passwordTemporal);
-        }
-
-        showSuccess(copied ? 'Clave temporal generada y copiada.' : 'Clave temporal generada.');
+        showSuccess(`Clave asignada para ${username}.`);
     } catch (error) {
-        console.error('Error restableciendo clave:', error);
-        showError('Error de conexion al restablecer la clave');
+        console.error('Error asignando clave:', error);
+        showError('Error de conexion al asignar la clave');
     }
 }
 
@@ -5283,16 +5282,36 @@ function _renderPermisosExtraModal(username, selectedIds = new Set()) {
         commercialGroups[key].push(o);
     });
 
-    const renderOption = o => `
+    const idPorNombre = new Map(
+        menuOptionsData
+            .filter(o => o.permiso_id && (o.permiso_nombre || o.permiso))
+            .map(o => [String(o.permiso_nombre || o.permiso), String(o.permiso_id)])
+    );
+    const nombresPermisoDe = option => {
+        const names = Array.isArray(option.permission_names) ? option.permission_names : [];
+        return names.length ? names.map(String) : [String(option.permiso_nombre || option.permiso || '')].filter(Boolean);
+    };
+    const idsRelacionadosDe = option => nombresPermisoDe(option)
+        .map(name => idPorNombre.get(name))
+        .filter(Boolean);
+    const estaSeleccionado = option => {
+        const propios = [String(option.permiso_id), ...idsRelacionadosDe(option)].filter(Boolean);
+        return propios.some(id => selectedIds.has(id));
+    };
+    const renderOption = o => {
+        const relatedIds = idsRelacionadosDe(o);
+        return `
         <label class="role-menu-option">
             <input type="checkbox" name="permiso_extra" value="${o.permiso_id}"
-                ${selectedIds.has(String(o.permiso_id)) ? 'checked' : ''}>
+                data-related-permission-ids="${escapeHtml(JSON.stringify(relatedIds))}"
+                ${estaSeleccionado(o) ? 'checked' : ''}>
             <div>
                 <strong>${escapeHtml(o.nombre || o.group || 'Permiso')}</strong>
                 <span>${escapeHtml(o.descripcion || '')}</span>
             </div>
         </label>
     `;
+    };
 
     container.innerHTML = `
         <p class="form-help" style="margin-bottom:12px;">
@@ -5319,7 +5338,18 @@ async function guardarPermisosExtra() {
     if (!_permisosExtraModalUsuarioId) return;
 
     const checkboxes = document.querySelectorAll('#permisosExtraContainer input[name="permiso_extra"]:checked');
-    const permiso_ids = Array.from(checkboxes).map(cb => Number(cb.value));
+    const permisoIdsSet = new Set();
+    Array.from(checkboxes).forEach(cb => {
+        if (cb.value) permisoIdsSet.add(Number(cb.value));
+        try {
+            JSON.parse(cb.dataset.relatedPermissionIds || '[]').forEach(id => {
+                if (id) permisoIdsSet.add(Number(id));
+            });
+        } catch (error) {
+            console.warn('No se pudieron expandir permisos relacionados:', error);
+        }
+    });
+    const permiso_ids = Array.from(permisoIdsSet);
 
     try {
         const response = await fetch(`/api/usuarios/${_permisosExtraModalUsuarioId}/permisos-extra`, {

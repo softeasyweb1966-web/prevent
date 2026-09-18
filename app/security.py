@@ -193,6 +193,19 @@ def get_allowed_menu_modules_for_role(role) -> list[str]:
     return modules
 
 
+def get_allowed_menu_modules_for_user(usuario) -> list[str]:
+    if usuario is None:
+        return []
+    permission_names = get_permission_names_for_user(usuario)
+    if '*' in permission_names:
+        return [definition['module'] for definition in MENU_OPTION_DEFINITIONS]
+    modules = []
+    for definition in MENU_OPTION_DEFINITIONS:
+        if definition['permiso'] in permission_names:
+            modules.append(definition['module'])
+    return modules
+
+
 def get_permission_names_for_role(role) -> set[str]:
     if role is None:
         return set()

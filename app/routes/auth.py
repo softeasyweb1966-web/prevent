@@ -3,6 +3,7 @@ from app.routes import auth_bp
 from app.models import db, Usuario, Empresa
 from app.security import (
     get_allowed_menu_modules_for_role,
+    get_allowed_menu_modules_for_user,
     get_permission_names_for_role,
     get_permission_names_for_user,
 )
@@ -27,7 +28,7 @@ def _build_user_session_payload(usuario):
         from app.security import MENU_OPTION_DEFINITIONS
         menu_modules = [d['module'] for d in MENU_OPTION_DEFINITIONS]
     else:
-        menu_modules = get_allowed_menu_modules_for_role(usuario.role)
+        menu_modules = get_allowed_menu_modules_for_user(usuario)
 
     # Vendedor vinculado (login propio del vendedor). Permite al frontend
     # resolver automaticamente su alcance y ocultar el selector de vendedor.
