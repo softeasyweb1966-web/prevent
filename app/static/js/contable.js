@@ -760,6 +760,48 @@ async function cargarChatCarteraSiigo(dialogo, cliente, vendedorId = '') {
     }
 }
 
+async function enviarRespuestaChatCarteraSiigo(dialogo, chatForm, recargar) {
+    const estadoChat = dialogo.querySelector('[data-chat-estado]');
+    const datos = Object.fromEntries(new FormData(chatForm));
+    if (chatForm._chatSubmitter?.name === 'decision') datos.decision = chatForm._chatSubmitter.value;
+    estadoChat.textContent = 'Enviando mensaje...';
+    try {
+        const response = await fetch(`/api/contable/chat-cartera/${chatForm.dataset.chatResponder}/mensajes`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(datos),
+        });
+        const data = await leerRespuestaSiigo(response);
+        if (!response.ok) throw new Error(data.error || 'No fue posible enviar el mensaje.');
+        chatForm.reset();
+        await recargar();
+        estadoChat.textContent = 'Mensaje guardado.';
+    } catch (error) {
+        estadoChat.textContent = error.message;
+    } finally {
+        chatForm._chatSubmitter = null;
+    }
+}
+
+function vincularRespuestasChatCarteraSiigo(dialogo, recargar) {
+    const historial = dialogo.querySelector('[data-chat-historial]');
+    if (!historial || historial.dataset.respuestasVinculadas) return;
+    historial.dataset.respuestasVinculadas = '1';
+    historial.addEventListener('click', event => {
+        const boton = event.target.closest('[data-chat-responder] button[type="submit"]');
+        if (!boton) return;
+        const chatForm = boton.closest('[data-chat-responder]');
+        if (chatForm) chatForm._chatSubmitter = boton;
+    });
+    historial.addEventListener('submit', async event => {
+        const chatForm = event.target.closest('[data-chat-responder]');
+        if (!chatForm) return;
+        event.preventDefault();
+        await enviarRespuestaChatCarteraSiigo(dialogo, chatForm, recargar);
+    });
+}
+
 function abrirChatVendedorCarteraSiigo(panel) {
     const vendedorId = panel?._filtroVendedorCartera || '';
     const dialogo = document.createElement('dialog');
@@ -788,25 +830,7 @@ function abrirChatVendedorCarteraSiigo(panel) {
             estadoChat.textContent = 'Conversacion creada.';
         } catch (error) { estadoChat.textContent = error.message; }
     });
-    dialogo.querySelector('[data-chat-historial]')?.addEventListener('submit', async event => {
-        const chatForm = event.target.closest('[data-chat-responder]');
-        if (!chatForm) return;
-        event.preventDefault();
-        const datos = Object.fromEntries(new FormData(chatForm));
-        if (event.submitter?.name === 'decision') datos.decision = event.submitter.value;
-        const estadoChat = dialogo.querySelector('[data-chat-estado]');
-        estadoChat.textContent = 'Enviando mensaje...';
-        try {
-            const response = await fetch(`/api/contable/chat-cartera/${chatForm.dataset.chatResponder}/mensajes`, {
-                method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(datos),
-            });
-            const data = await leerRespuestaSiigo(response);
-            if (!response.ok) throw new Error(data.error || 'No fue posible enviar el mensaje.');
-            await cargarChatCarteraSiigo(dialogo, null, vendedorId);
-            estadoChat.textContent = 'Mensaje guardado.';
-        } catch (error) { estadoChat.textContent = error.message; }
-    });
+    vincularRespuestasChatCarteraSiigo(dialogo, () => cargarChatCarteraSiigo(dialogo, null, vendedorId));
     dialogo.showModal();
 }
 
@@ -1025,30 +1049,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
             estadoChat.textContent = error.message;
         }
     });
-    dialogo.querySelector('[data-chat-historial]')?.addEventListener('submit', async event => {
-        const chatForm = event.target.closest('[data-chat-responder]');
-        if (!chatForm) return;
-        event.preventDefault();
-        const submitter = event.submitter;
-        const estadoChat = dialogo.querySelector('[data-chat-estado]');
-        const datos = Object.fromEntries(new FormData(chatForm));
-        if (submitter?.name === 'decision') datos.decision = submitter.value;
-        estadoChat.textContent = 'Enviando mensaje...';
-        try {
-            const response = await fetch(`/api/contable/chat-cartera/${chatForm.dataset.chatResponder}/mensajes`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(datos),
-            });
-            const data = await leerRespuestaSiigo(response);
-            if (!response.ok) throw new Error(data.error || 'No fue posible enviar el mensaje.');
-            await cargarChatCarteraSiigo(dialogo, cliente);
-            estadoChat.textContent = 'Mensaje guardado.';
-        } catch (error) {
-            estadoChat.textContent = error.message;
-        }
-    });
+    vincularRespuestasChatCarteraSiigo(dialogo, () => cargarChatCarteraSiigo(dialogo, cliente));
     form.addEventListener('submit', async event => {
         event.preventDefault();
         if (guardando || !form.reportValidity()) return;
