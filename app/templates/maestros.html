@@ -80,7 +80,7 @@
   <p>Un solo maestro para Atenciones, Ventas y Vendedores.</p>
   <div id="maestroResumen" role="status"></div>
   <div class="maestros-toolbar">
-    <label>Vendedor <select id="filtroVendedorMaestro" onchange="refrescarMaestro()"><option value="">Todos los vendedores disponibles</option></select></label>
+    <label>Vendedor <select id="filtroVendedorMaestro" onchange="cambiarVendedorMaestro()"><option value="">Todos los vendedores disponibles</option></select></label>
     <label>Revisión <select id="filtroRevisionMaestro" onchange="refrescarMaestro()"><option value="">Todos los clientes</option><option value="sin_vendedor">Sin vendedor</option><option value="sin_contacto">Sin contacto</option><option value="sin_paquete">Sin paquete vigente</option><option value="sin_servicios">Sin productos/servicios vigentes</option><option value="revision">Importación por revisar</option></select></label>
     <span id="importarClientesWrap" style="margin-left:auto; display:none;">
       <input type="file" id="importarClientesInput" accept=".xlsx" style="display:none;" onchange="importarClientesExcel(this)">

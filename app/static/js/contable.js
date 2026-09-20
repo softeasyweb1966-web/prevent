@@ -454,7 +454,7 @@ function agregarAccionesClientesCarteraSiigo(panel) {
         if (typeof mostrarAgregarClienteComercial === 'function') {
             mostrarAgregarClienteComercial();
         } else {
-            window.location.href = '/api/comercial/maestros#clientes';
+            window.location.href = urlMaestroClientesCarteraSiigo();
         }
     });
 
@@ -464,7 +464,7 @@ function agregarAccionesClientesCarteraSiigo(panel) {
     maestro.dataset.carteraMaestroClientes = '1';
     maestro.textContent = 'Maestro de clientes';
     maestro.addEventListener('click', () => {
-        window.location.href = '/api/comercial/maestros#clientes';
+        window.location.href = urlMaestroClientesCarteraSiigo();
     });
 
     acciones.insertBefore(nuevo, volver);
@@ -480,6 +480,15 @@ function actualizarAccionesClientesCarteraSiigo(panel = document.getElementById(
     const maestro = panel.querySelector('[data-cartera-maestro-clientes]');
     if (nuevo) nuevo.style.display = puedeCrear ? '' : 'none';
     if (maestro) maestro.style.display = puedeLeer ? '' : 'none';
+}
+
+function urlMaestroClientesCarteraSiigo(panel = document.getElementById('siigoFacturasVencidasPanel')) {
+    const params = new URLSearchParams();
+    if (panel?._filtroVendedorCartera) {
+        params.set('vendedor_id', panel._filtroVendedorCartera);
+    }
+    const query = params.toString();
+    return `/api/comercial/maestros${query ? `?${query}` : ''}#clientes`;
 }
 
 // Solo un Administrador puede elegir ver un vendedor puntual o todos; un vendedor siempre ve lo suyo.

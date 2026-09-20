@@ -3,6 +3,7 @@ function inicializarFiltrosMaestro() {
   document.getElementById('filtroVendedorMaestro').innerHTML =
     (M.esAdmin ? '<option value="">Todos los vendedores disponibles</option>' : '') +
     M.vendedores.map(v=>`<option value="${v.id}">${esc(v.nombre)}</option>`).join('');
+  aplicarVendedorMaestroDesdeUrl();
   document.getElementById('filtroVendedorMaestro').disabled = !M.esAdmin;
   document.getElementById('btnNuevaTarifa').hidden = !M.permisos.tarifas?.create;
   document.getElementById('btnAnalisisHistorico').hidden = !(M.permisos.clientes?.read && M.permisos.tarifas?.read && M.permisos.paquetes?.read);
@@ -22,6 +23,23 @@ function abrirAnalisisHistorico() {
     M.clientes.map(c=>`<option value="${c.id}">${esc(c.razon_social)} · ${esc(c.nit)}</option>`).join('');
   document.getElementById('estadoAnalisisHistorico').textContent = '';
   document.getElementById('modalAnalisisHistorico').classList.add('active');
+}
+
+function aplicarVendedorMaestroDesdeUrl() {
+  const vendedorId = new URLSearchParams(location.search).get('vendedor_id');
+  const select = document.getElementById('filtroVendedorMaestro');
+  if (vendedorId && [...select.options].some(option => option.value === vendedorId)) {
+    select.value = vendedorId;
+  }
+}
+
+function cambiarVendedorMaestro() {
+  const select = document.getElementById('filtroVendedorMaestro');
+  const url = new URL(location.href);
+  if (select.value) url.searchParams.set('vendedor_id', select.value);
+  else url.searchParams.delete('vendedor_id');
+  history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+  refrescarMaestro();
 }
 
 async function descargarAnalisisHistorico(event) {
