@@ -686,6 +686,45 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
 .siigo-cumplido { color: #166534; background: #dcfce7; }
 .siigo-pendiente, .siigo-con_seguimiento { color: #1e40af; background: #dbeafe; }
 .siigo-sin_seguimiento, .siigo-sin_compromiso { color: #475569; background: #e2e8f0; }
+.siigo-sin_gestion { color: #475569; background: #e2e8f0; }
+.siigo-no_localizado { color: #991b1b; background: #fee2e2; }
+.siigo-en_proceso { color: #854d0e; background: #fef08a; }
+.siigo-con_compromiso { color: #166534; background: #dcfce7; }
+
+.siigo-cartera-inicio {
+    padding: 18px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.siigo-cartera-alertas {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+}
+
+.siigo-alerta-card,
+.siigo-alerta-cartera {
+    border: 1px solid currentColor;
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    text-align: left;
+}
+
+.siigo-alerta-card strong {
+    display: block;
+    font-size: 28px;
+    line-height: 1;
+}
+
+.siigo-alerta-card span {
+    display: block;
+    margin-top: 6px;
+    font-weight: 700;
+}
 
 .siigo-seguimiento-dialogo [hidden] {
     display: none !important;

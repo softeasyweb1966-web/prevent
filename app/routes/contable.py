@@ -830,10 +830,14 @@ def _estado_compromiso(registro, hoy=None):
     return 'vencido' if dias < 0 else 'proximo' if dias <= 3 else 'pendiente'
 
 
+ESTADOS_GESTION_CARTERA = {'SIN_GESTION', 'NO_LOCALIZADO', 'EN_PROCESO', 'CON_COMPROMISO'}
+
+
 def _serializar_seguimiento_cartera(registro):
     return {
         'id': registro.id,
         'identificacion': registro.identificacion,
+        'estado_gestion': registro.estado_gestion,
         'comprobantes_pago': [{'id': a.id, 'nombre': a.nombre, 'tamano_bytes': a.tamano_bytes,
                               'registrado_por': a.usuario_nombre,
                               'url': f'/api/contable/seguimiento-cartera/comprobantes/{a.id}'} for a in registro.comprobantes_pago],
@@ -934,6 +938,9 @@ def seguimiento_cartera():
         contacto = _texto(datos.get('contacto'))
         if len(contacto) > 200:
             raise ValueError('El contacto no puede superar 200 caracteres.')
+        estado_gestion = _texto(datos.get('estado_gestion')).upper()
+        if estado_gestion not in ESTADOS_GESTION_CARTERA:
+            raise ValueError('Seleccione el estado del seguimiento de cartera.')
         fechas = {}
         for campo in ('fecha_compromiso', 'proximo_seguimiento'):
             fechas[campo] = _fecha(datos[campo]) if datos.get(campo) else None
@@ -948,6 +955,8 @@ def seguimiento_cartera():
                 raise ValueError('El valor del compromiso admite hasta dos decimales.')
             if not fechas['fecha_compromiso']:
                 raise ValueError('Indique la fecha del compromiso de pago.')
+        if estado_gestion == 'CON_COMPROMISO' and (not fechas['fecha_compromiso'] or valor is None):
+            raise ValueError('Para el estado Con compromiso indique fecha y valor del compromiso.')
         identificaciones = [clave]
         if datos.get('alcance') == 'grupo':
             solicitadas = {_nit_cartera(item) for item in (datos.get('identificaciones_grupo') or [])}
@@ -974,7 +983,7 @@ def seguimiento_cartera():
             registro = SiigoSeguimientoCartera(
                 identificacion=identificacion_registro,
                 cliente_nombre=nombres_cliente.get(identificacion_registro) or ('Sin nombre' if identificacion_registro == clave else identificacion_registro),
-                fecha_gestion=fecha_gestion, medio=medio, contacto=contacto or None,
+                fecha_gestion=fecha_gestion, medio=medio, estado_gestion=estado_gestion, contacto=contacto or None,
                 observaciones=observaciones, valor_compromiso=valor,
                 usuario_id=current_user.id, usuario_nombre=current_user.nombre_completo,
                 **fechas,

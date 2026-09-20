@@ -649,6 +649,7 @@ class SiigoSeguimientoCartera(db.Model):
     cliente_nombre = db.Column(db.String(255), nullable=False)
     fecha_gestion = db.Column(db.Date, nullable=False)
     medio = db.Column(db.String(20), nullable=False)
+    estado_gestion = db.Column(db.String(30), nullable=False, default='EN_PROCESO')
     contacto = db.Column(db.String(200))
     observaciones = db.Column(db.Text, nullable=False)
     fecha_compromiso = db.Column(db.Date)

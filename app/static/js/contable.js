@@ -411,12 +411,57 @@ function abrirGestionCarteraComercial() {
     const destino = document.getElementById('comercialCarteraPanel');
     const panel = crearPanelFacturasVencidasSiigo();
     panel.dataset.origen = 'comercial-cartera';
+    asegurarInicioGestionCarteraSiigo(panel);
     const volver = panel.querySelector('[data-vencidas-informes]');
     if (volver) volver.textContent = 'Regresar al menú principal';
     if (destino && panel.parentElement !== destino) {
         destino.replaceChildren(panel);
     }
-    mostrarFiltrosVencidasSiigo(true);
+    mostrarInicioGestionCarteraSiigo(panel);
+}
+
+function asegurarInicioGestionCarteraSiigo(panel) {
+    if (panel.querySelector('[data-cartera-inicio]')) return;
+    panel.insertAdjacentHTML('afterbegin', `<section data-cartera-inicio class="siigo-cartera-inicio"><div><h3>Gestión de cartera</h3><p class="form-help">Alertas de cartera según el estado del último seguimiento visible para tu rol.</p></div><div class="siigo-cartera-alertas" data-cartera-alertas></div><div class="button-group"><button type="button" class="btn btn-primary" data-ver-cartera>Ver cartera</button><button type="button" class="btn btn-secondary" data-cartera-volver>Regresar al menú principal</button></div><p data-cartera-estado role="status"></p></section>`);
+    panel.querySelector('[data-ver-cartera]').addEventListener('click', () => {
+        panel._filtroAlertaCartera = '';
+        panel.querySelector('[data-cartera-inicio]').hidden = true;
+        mostrarFiltrosVencidasSiigo(true);
+    });
+    panel.querySelector('[data-cartera-volver]').addEventListener('click', regresarMenuPrincipalCarteraSiigo);
+}
+
+function mostrarInicioGestionCarteraSiigo(panel) {
+    mostrarFiltrosVencidasSiigo(false);
+    panel.querySelector('[data-cartera-inicio]').hidden = false;
+    panel.querySelector('[data-vencidas-filtros]').hidden = true;
+    cargarAlertasInicioCarteraSiigo(panel);
+}
+
+async function cargarAlertasInicioCarteraSiigo(panel) {
+    const estado = panel.querySelector('[data-cartera-estado]');
+    const alertas = panel.querySelector('[data-cartera-alertas]');
+    const fecha = panel.querySelector('#siigoVencidasCorte')?.value || new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
+    estado.textContent = 'Calculando alertas...';
+    try {
+        const params = new URLSearchParams({ informe: 'vencidas', fecha_corte: fecha, estado_facturas: 'todos' });
+        const response = await fetch(`/api/contable/cartera-dinamica?${params}`, { credentials: 'include' });
+        const data = await leerRespuestaSiigo(response);
+        if (!response.ok) throw new Error(data.error || 'No fue posible calcular las alertas.');
+        panel._datosVencidas = data;
+        alertas.innerHTML = ordenEstadosGestionCarteraSiigo.map(estadoClave => `<button type="button" class="siigo-alerta-card siigo-${estadoClave}" data-alerta-inicio="${estadoClave}"><strong>${(data.clientes || []).filter(cliente => estadoClienteCarteraSiigo(cliente) === estadoClave).length}</strong><span>${estadosGestionCarteraSiigo[estadoClave]}</span></button>`).join('');
+        alertas.querySelectorAll('[data-alerta-inicio]').forEach(boton => {
+            boton.addEventListener('click', () => {
+                panel._filtroAlertaCartera = boton.dataset.alertaInicio;
+                panel.querySelector('[data-cartera-inicio]').hidden = true;
+                mostrarFiltrosVencidasSiigo(true);
+                panel.querySelector('form')?.requestSubmit();
+            });
+        });
+        estado.textContent = '';
+    } catch (error) {
+        estado.textContent = error.message;
+    }
 }
 
 function regresarMenuPrincipalCarteraSiigo() {
@@ -499,7 +544,10 @@ async function consultarFacturasVencidasSiigo(form) {
         panel.querySelector('[data-vencidas-meta]').textContent = `Fecha de corte: ${formatoSiigoFecha(data.fecha_corte)} | ${estadoFacturas}${nombre ? ` · Cliente: ${nombre}` : ''}`;
         const resultado = panel.querySelector('.siigo-vencidas-datos');
         panel._datosVencidas = data;
-        resultado.innerHTML = tablaFacturasVencidasSiigo(data);
+        const dataTabla = panel._filtroAlertaCartera
+            ? { ...data, clientes: (data.clientes || []).map((cliente, indiceOriginal) => ({ ...cliente, _indiceOriginal: indiceOriginal })).filter(cliente => estadoClienteCarteraSiigo(cliente) === panel._filtroAlertaCartera) }
+            : data;
+        resultado.innerHTML = tablaFacturasVencidasSiigo(dataTabla);
         actualizarAlertasCarteraSiigo(panel);
         resultado.querySelectorAll('[data-siigo-seguimiento]').forEach(boton => {
             boton.addEventListener('click', () => abrirSeguimientoCarteraSiigo(data.clientes[Number(boton.dataset.siigoSeguimiento)]));
@@ -541,6 +589,10 @@ function accionesComunicacionCompromisoSiigo(item, cliente) {
 
 function agregarAccionesComunicacionCompromisoSiigo(contenedor, registros, cliente) {
     contenedor.querySelectorAll('.siigo-seguimiento-registro').forEach((article, index) => {
+        if (!article.querySelector('.siigo-estado-gestion-historial')) {
+            const estado = normalizarEstadoGestionCarteraSiigo(registros[index]?.estado_gestion || (registros[index]?.fecha_compromiso ? 'con_compromiso' : 'en_proceso'));
+            article.querySelector('h4')?.insertAdjacentHTML('afterend', `<p class="siigo-estado-gestion-historial"><span class="siigo-semaforo siigo-${estado}">${estadosGestionCarteraSiigo[estado] || 'Sin Gestión'}</span></p>`);
+        }
         if (article.querySelector('.siigo-seguimiento-comunicacion')) return;
         const html = accionesComunicacionCompromisoSiigo(registros[index], cliente);
         if (html) article.insertAdjacentHTML('beforeend', html);
@@ -554,9 +606,24 @@ function historialSeguimientoCarteraSiigo(registros, cliente = null) {
 
 const estadosCompromisoSiigo = { vencido: 'Vencido', proximo: 'Próximo a vencer', cumplido: 'Cumplido', pendiente: 'Pendiente', sin_compromiso: 'Sin compromiso' };
 
+const estadosGestionCarteraSiigo = {
+    sin_gestion: 'Sin Gestión',
+    no_localizado: 'No localizado',
+    en_proceso: 'En proceso',
+    con_compromiso: 'Con compromiso',
+};
+const ordenEstadosGestionCarteraSiigo = ['sin_gestion', 'no_localizado', 'en_proceso', 'con_compromiso'];
+
+function normalizarEstadoGestionCarteraSiigo(valor) {
+    return String(valor || '').toLowerCase();
+}
+
 function estadoClienteCarteraSiigo(cliente) {
     const registros = cliente.seguimientos || [];
-    return ['vencido', 'proximo', 'pendiente', 'cumplido'].find(estado => registros.some(r => r.estado_compromiso === estado)) || (registros.length ? 'con_seguimiento' : 'sin_seguimiento');
+    if (!registros.length) return 'sin_gestion';
+    const ultimo = registros[0] || {};
+    if (ultimo.estado_gestion) return normalizarEstadoGestionCarteraSiigo(ultimo.estado_gestion);
+    return ultimo.fecha_compromiso ? 'con_compromiso' : 'en_proceso';
 }
 
 function empresasResponsableCarteraSiigo(cliente) {
@@ -585,15 +652,21 @@ function estadoCuentaClienteCarteraSiigo(cliente) {
 
 function actualizarAlertasCarteraSiigo(panel) {
     const clientes = panel._datosVencidas?.clientes || [];
-    const registros = clientes.flatMap(c => c.seguimientos || []);
-    panel.querySelector('[data-alertas-cartera]').innerHTML = ['vencido', 'proximo', 'cumplido'].map(estado => `<span class="siigo-semaforo siigo-${estado}">${estadosCompromisoSiigo[estado]}: ${registros.filter(r => r.estado_compromiso === estado).length}</span>`).join(' ') + '<br><small>Compromisos a hoy: amarillo hasta 3 días; azul con seguimiento o compromiso posterior; gris sin seguimiento.</small>';
+    panel.querySelector('[data-alertas-cartera]').innerHTML = ordenEstadosGestionCarteraSiigo.map(estado => `<button type="button" class="siigo-alerta-cartera siigo-${estado}" data-alerta-cartera="${estado}">${estadosGestionCarteraSiigo[estado]}: ${clientes.filter(c => estadoClienteCarteraSiigo(c) === estado).length}</button>`).join(' ');
     panel.querySelectorAll('[data-siigo-seguimiento]').forEach(boton => {
         const cliente = clientes[Number(boton.dataset.siigoSeguimiento)];
         const estado = estadoClienteCarteraSiigo(cliente);
         boton.className = `siigo-seguimiento-icono siigo-${estado}`;
-        const etiqueta = `Seguimiento de cartera: ${estadosCompromisoSiigo[estado] || (estado === 'con_seguimiento' ? 'Con seguimiento' : 'Sin seguimiento')}`;
+        const etiqueta = `Seguimiento de cartera: ${estadosGestionCarteraSiigo[estado] || 'Sin Gestión'}`;
         boton.title = etiqueta;
         boton.setAttribute('aria-label', etiqueta);
+    });
+    panel.querySelectorAll('[data-alerta-cartera]').forEach(boton => {
+        boton.addEventListener('click', () => {
+            panel._filtroAlertaCartera = boton.dataset.alertaCartera;
+            const form = panel.querySelector('form');
+            if (form) consultarFacturasVencidasSiigo(form);
+        });
     });
 }
 
@@ -608,6 +681,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     document.body.appendChild(dialogo);
     dialogo.querySelector('.form-help').insertAdjacentHTML('beforebegin', estadoCuentaClienteCarteraSiigo(cliente));
     const form = dialogo.querySelector('form');
+    form.querySelector('h3').insertAdjacentHTML('afterend', `<div class="form-group"><label for="siigoGestionEstado">Estado del seguimiento *</label><select id="siigoGestionEstado" name="estado_gestion" required><option value="">Seleccione</option><option value="SIN_GESTION">Sin Gestión</option><option value="NO_LOCALIZADO">No localizado</option><option value="EN_PROCESO">En proceso</option><option value="CON_COMPROMISO">Con compromiso</option></select></div>`);
     const estado = dialogo.querySelector('[data-estado]');
     const historial = dialogo.querySelector('[data-historial]');
     const nuevo = dialogo.querySelector('[data-nuevo]');
@@ -626,6 +700,19 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     valorCompromiso.type = 'text';
     valorCompromiso.inputMode = 'decimal';
     valorCompromiso.placeholder = '0';
+    const compromisoWraps = [form.elements.fecha_compromiso.closest('.form-group'), form.elements.valor_compromiso.closest('.form-group')];
+    const actualizarCamposCompromiso = () => {
+        const conCompromiso = form.elements.estado_gestion.value === 'CON_COMPROMISO';
+        compromisoWraps.forEach(grupo => { if (grupo) grupo.hidden = !conCompromiso; });
+        form.elements.fecha_compromiso.required = conCompromiso;
+        form.elements.valor_compromiso.required = conCompromiso;
+        if (!conCompromiso) {
+            form.elements.fecha_compromiso.value = '';
+            form.elements.valor_compromiso.value = '';
+        }
+    };
+    form.elements.estado_gestion.addEventListener('change', actualizarCamposCompromiso);
+    actualizarCamposCompromiso();
     valorCompromiso.addEventListener('input', () => {
         const limpio = valorCompromiso.value.replace(/[^\d,]/g, '');
         const partes = limpio.split(',');
@@ -637,6 +724,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     const cancelarNuevo = () => {
         if (guardando) return;
         form.reset();
+        actualizarCamposCompromiso();
         form.hidden = true;
         nuevo.hidden = false;
         nuevo.focus();
@@ -797,7 +885,7 @@ function movimientosSinAsignarSiigo(movimientos) {
 
 function tablaFacturasVencidasSiigo(data) {
     const clientesOriginales = data.clientes || [];
-    const clientes = clientesOriginales.map((cliente, indiceOriginal) => ({ cliente, indiceOriginal })).sort((a, b) => {
+    const clientes = clientesOriginales.map((cliente, indiceOriginal) => ({ cliente, indiceOriginal: cliente._indiceOriginal ?? indiceOriginal })).sort((a, b) => {
         const responsableA = a.cliente.agrupacion_responsable?.responsable || 'Sin responsable';
         const responsableB = b.cliente.agrupacion_responsable?.responsable || 'Sin responsable';
         return responsableA.localeCompare(responsableB, 'es') || (a.cliente.cliente || '').localeCompare(b.cliente.cliente || '', 'es');
@@ -818,10 +906,10 @@ function tablaFacturasVencidasSiigo(data) {
         const detalle = cliente.facturas.map(factura => `<td>${escapeSiigo(factura.referencia)}</td><td>${factura.dias_vencido > 0 ? `Vencida hace ${factura.dias_vencido} días` : factura.dias_vencido === 0 ? 'Vence hoy' : `Por vencer en ${-factura.dias_vencido} días`}</td><td>${detalleCrucesFacturaSiigo(factura)}</td>`).join('');
         const vacias = '<td></td><td></td><td></td>'.repeat(cantidad - cliente.facturas.length);
         const seguimiento = cliente.identificacion
-            ? `<button type="button" class="siigo-seguimiento-icono siigo-${estadoClienteCarteraSiigo(cliente)}" data-siigo-seguimiento="${indiceOriginal}" title="Seguimiento de cartera: ${estadosCompromisoSiigo[estadoClienteCarteraSiigo(cliente)] || (cliente.seguimientos?.length ? 'Con seguimiento' : 'Sin seguimiento')}" aria-label="Seguimiento de cartera: ${estadosCompromisoSiigo[estadoClienteCarteraSiigo(cliente)] || (cliente.seguimientos?.length ? 'Con seguimiento' : 'Sin seguimiento')}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11a8 8 0 0 1-8 8H6l-4 3V11a9 9 0 0 1 19 0Z"/><path d="M7 9h10M7 13h7"/></svg></button>`
+            ? `<button type="button" class="siigo-seguimiento-icono siigo-${estadoClienteCarteraSiigo(cliente)}" data-siigo-seguimiento="${indiceOriginal}" title="Seguimiento de cartera: ${estadosGestionCarteraSiigo[estadoClienteCarteraSiigo(cliente)] || 'Sin Gestión'}" aria-label="Seguimiento de cartera: ${estadosGestionCarteraSiigo[estadoClienteCarteraSiigo(cliente)] || 'Sin Gestión'}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11a8 8 0 0 1-8 8H6l-4 3V11a9 9 0 0 1 19 0Z"/><path d="M7 9h10M7 13h7"/></svg></button>`
             : '<span class="form-help">Sin identificación para seguimiento</span>';
         const estadoSeguimiento = estadoClienteCarteraSiigo(cliente);
-        return `${encabezadoResponsable}<tr><td>${escapeSiigo(cliente.vendedor)}</td><td>${escapeSiigo(cliente.cliente)}</td><td>${cliente.cantidad_facturas}</td><td>${formatoSiigoNumero(cliente.total_cliente)}</td><td><span class="siigo-semaforo siigo-${estadoSeguimiento}">${estadosCompromisoSiigo[estadoSeguimiento] || (estadoSeguimiento === 'con_seguimiento' ? 'Con seguimiento' : 'Sin seguimiento')}</span></td><td>${seguimiento}</td>${detalle}${vacias}</tr>`;
+        return `${encabezadoResponsable}<tr><td>${escapeSiigo(cliente.vendedor)}</td><td>${escapeSiigo(cliente.cliente)}</td><td>${cliente.cantidad_facturas}</td><td>${formatoSiigoNumero(cliente.total_cliente)}</td><td><span class="siigo-semaforo siigo-${estadoSeguimiento}">${estadosGestionCarteraSiigo[estadoSeguimiento] || 'Sin Gestión'}</span></td><td>${seguimiento}</td>${detalle}${vacias}</tr>`;
     }).join('');
     return `<div class="siigo-tabla-con-encabezado-fijo" tabindex="0" role="region" aria-label="Seguimiento de cartera"><table class="data-table"><thead><tr><th>Vendedor</th><th>Cliente</th><th>Cantidad</th><th>Valor total cliente</th><th>Estado del seguimiento</th><th>Seguimiento</th>${encabezados}</tr></thead><tbody>${filas}</tbody></table></div>`;
 }
@@ -1060,7 +1148,11 @@ async function agregarFiltrosMaestroSiigo(form) {
         const response = await fetch('/api/contable/filtros-clientes', {credentials:'include'});
         const data = await leerRespuestaSiigo(response);
         if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los filtros.');
-        if (data.es_administrador) vendedor.add(new Option('Sin asignar', 'sin_asignar'));
+        if (data.es_administrador) {
+            vendedor.add(new Option('Sin asignar', 'sin_asignar'));
+        } else {
+            labelV.hidden = true;
+        }
         data.vendedores.forEach(v=>vendedor.add(new Option(v.nombre, v.id)));
         const cargarContactos = () => {
             contacto.replaceChildren(new Option('Todos los disponibles',''));
