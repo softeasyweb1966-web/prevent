@@ -48,7 +48,11 @@ function applySidebarAccess() {
 
     menuItems.forEach(item => {
         const moduleName = item.dataset.module;
-        const visible = !moduleName || isAdminUser || allowedModules.includes(moduleName) ||
+        const sectionName = item.dataset.section;
+        const visible = !moduleName || isAdminUser ||
+            (moduleName === 'comercial' && sectionName === 'cartera' && hasComercialSectionPermission('cartera')) ||
+            (moduleName === 'comercial' && !sectionName && hasRolePermission('menu_comercial')) ||
+            (moduleName !== 'comercial' && allowedModules.includes(moduleName)) ||
             (moduleName === 'tablas' && canManageComercial('clientes', 'read'));
         const container = item.closest('li') || item;
         container.style.display = visible ? '' : 'none';
@@ -499,7 +503,7 @@ function hasComercialSectionPermission(section) {
         vendedores: () => hasAnyComercialPermission('vendedores'),
         examenes: () => hasAnyCatalogoPermission(),
         clientes: () => hasAnyComercialPermission('clientes'),
-        cartera: () => hasRolePermission('menu_ventas') || hasRolePermission('menu_comercial'),
+        cartera: () => hasRolePermission('menu_cartera') || hasRolePermission('menu_ventas') || hasRolePermission('menu_comercial'),
         gestion_informacion: () => canManageComercial('atenciones', 'read') || canManageComercial('atenciones', 'create'),
         caja: () => canManageComercial('atenciones', 'read') || canManageComercial('atenciones', 'create'),
         registro_atenciones: () => canManageComercial('atenciones', 'read') || canManageComercial('atenciones', 'create'),
@@ -5073,9 +5077,9 @@ async function loadUsuarios() {
     }
 }
 
-async function loadMenuOptions() {
+async function loadMenuOptions(options = {}) {
     const embeddedOptions = loadEmbeddedRoleMenuOptions();
-    if (embeddedOptions.length) {
+    if (!options.forceApi && embeddedOptions.length) {
         menuOptionsData = embeddedOptions;
         return;
     }
@@ -5275,8 +5279,10 @@ let _permisosExtraModalUsuarioId = null;
 async function editPermisosExtraUsuario(id, username) {
     _permisosExtraModalUsuarioId = id;
 
-    if (!menuOptionsData.length) {
-        await loadMenuOptions();
+    const opcionesIncompletas = !menuOptionsData.length || menuOptionsData.some(option => !option.permiso_id);
+    if (opcionesIncompletas) {
+        menuOptionsData = [];
+        await loadMenuOptions({ forceApi: true });
     }
 
     try {
@@ -5308,7 +5314,8 @@ function _renderPermisosExtraModal(username, selectedIds = new Set()) {
     }
 
     // Agrupar igual que en el modal de roles
-    const menuOptions = menuOptionsData.filter(o => o.category !== 'comercial');
+    const menuOptions = menuOptionsData.filter(o => o.category === 'menu');
+    const commercialSections = menuOptionsData.filter(o => o.category === 'comercial_section');
     const commercialGroups = {};
     menuOptionsData.filter(o => o.category === 'comercial').forEach(o => {
         const key = o.group || 'Comercial';
@@ -5355,6 +5362,10 @@ function _renderPermisosExtraModal(username, selectedIds = new Set()) {
         <div style="margin-bottom:14px;">
             <h4 style="margin:0 0 8px 0;">Menú lateral</h4>
             <div class="role-menu-grid">${menuOptions.map(renderOption).join('')}</div>
+        </div>
+        <div style="margin-bottom:14px;">
+            <h4 style="margin:0 0 8px 0;">Subopciones</h4>
+            <div class="role-menu-grid">${commercialSections.map(renderOption).join('')}</div>
         </div>
         <div>
             <h4 style="margin:0 0 8px 0;">Permisos comerciales</h4>

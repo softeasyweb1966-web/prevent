@@ -33,6 +33,15 @@ MENU_OPTION_DEFINITIONS = [
         'orden': 40,
     },
     {
+        'module': 'comercial',
+        'section': 'cartera',
+        'permiso': 'menu_cartera',
+        'nombre': 'Gestion de Cartera',
+        'descripcion': 'Acceso al modulo Gestion de Cartera',
+        'orden': 45,
+        'permission_names': ['menu_cartera', 'comercial_section_cartera', 'comercial_clientes_read'],
+    },
+    {
         'module': 'informes',
         'permiso': 'menu_informes',
         'nombre': 'Informes',
@@ -150,6 +159,7 @@ COMMERCIAL_SECTION_DEFINITIONS = [
     _commercial_section_definition('mes', 'Mes', 'Acceso a la pestana Mes', 2050),
     _commercial_section_definition('comisiones', 'Comisiones', 'Acceso a la pestana Comisiones', 2060, 'comisiones', include_validate=True),
     _commercial_section_definition('inicio', 'Inicio', 'Acceso a la pestana Inicio', 2070),
+    _commercial_section_definition('cartera', 'Gestion de Cartera', 'Acceso a la pestana Gestion de Cartera', 2080, 'clientes'),
 ]
 
 

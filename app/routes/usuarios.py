@@ -651,6 +651,19 @@ def get_menu_options():
             for permiso in Permiso.query.all()
             if permiso.nombre
         }
+        faltantes = [
+            definition for definition in ROLE_PERMISSION_DEFINITIONS
+            if definition['permiso'] not in permisos
+        ]
+        for definition in faltantes:
+            permiso = Permiso(
+                nombre=definition['permiso'],
+                descripcion=definition.get('descripcion') or definition.get('nombre'),
+            )
+            db.session.add(permiso)
+            permisos[permiso.nombre] = permiso
+        if faltantes:
+            db.session.commit()
         data = [
             _serialize_menu_option(definition, permisos.get(definition['permiso']))
             for definition in ROLE_PERMISSION_DEFINITIONS
