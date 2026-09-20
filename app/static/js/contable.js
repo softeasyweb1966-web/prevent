@@ -444,8 +444,9 @@ async function cargarSelectorVendedorCarteraInicio(panel) {
         const response = await fetch('/api/contable/filtros-clientes', { credentials: 'include' });
         const data = await leerRespuestaSiigo(response);
         if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los vendedores.');
+        panel._vendedoresCartera = data.vendedores || [];
         if (!data.es_administrador) return;
-        (data.vendedores || []).forEach(v => select.add(new Option(v.nombre, v.id)));
+        panel._vendedoresCartera.forEach(v => select.add(new Option(v.nombre, v.id)));
         caja.hidden = false;
         select.addEventListener('change', () => {
             panel._filtroVendedorCartera = select.value;
@@ -456,11 +457,26 @@ async function cargarSelectorVendedorCarteraInicio(panel) {
     }
 }
 
+function nombreVendedorCarteraSiigo(panel) {
+    const id = panel._filtroVendedorCartera;
+    if (!id) return 'Todos los vendedores';
+    const vendedor = (panel._vendedoresCartera || []).find(v => String(v.id) === String(id));
+    return vendedor ? vendedor.nombre : 'Vendedor seleccionado';
+}
+
 function aplicarFiltroVendedorCarteraInicio(panel) {
     const vendedorSelect = panel.querySelector('form')?.elements?.namedItem('vendedor_id');
-    if (!vendedorSelect) return;
-    vendedorSelect.value = panel._filtroVendedorCartera || '';
-    vendedorSelect.dispatchEvent(new Event('change'));
+    if (vendedorSelect) {
+        vendedorSelect.value = panel._filtroVendedorCartera || '';
+        vendedorSelect.dispatchEvent(new Event('change'));
+        // Ya se eligió en la pantalla de inicio; aquí solo se muestra, no se repite el selector.
+        vendedorSelect.closest('label')?.setAttribute('hidden', '');
+    }
+    const titulo = panel.querySelector('[data-vencidas-filtros] h3');
+    if (titulo) {
+        titulo.querySelector('.siigo-cartera-vendedor-actual')?.remove();
+        titulo.insertAdjacentHTML('beforeend', ` <span class="siigo-cartera-vendedor-actual">· ${escapeSiigo(nombreVendedorCarteraSiigo(panel))}</span>`);
+    }
 }
 
 function mostrarInicioGestionCarteraSiigo(panel) {
