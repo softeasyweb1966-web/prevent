@@ -698,6 +698,11 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     background: #fff;
 }
 
+.siigo-cartera-inicio [data-cartera-vendedor-caja] {
+    max-width: 280px;
+    margin-bottom: 12px;
+}
+
 .siigo-cartera-alertas {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

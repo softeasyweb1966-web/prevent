@@ -422,13 +422,42 @@ function abrirGestionCarteraComercial() {
 
 function asegurarInicioGestionCarteraSiigo(panel) {
     if (panel.querySelector('[data-cartera-inicio]')) return;
-    panel.insertAdjacentHTML('afterbegin', `<section data-cartera-inicio class="siigo-cartera-inicio"><div><h3>Gestión de cartera</h3><p class="form-help">Alertas de cartera según el estado del último seguimiento visible para tu rol.</p></div><div class="siigo-cartera-alertas" data-cartera-alertas></div><div class="button-group"><button type="button" class="btn btn-primary" data-ver-cartera>Ver cartera</button><button type="button" class="btn btn-secondary" data-cartera-volver>Regresar al menú principal</button></div><p data-cartera-estado role="status"></p></section>`);
+    panel.insertAdjacentHTML('afterbegin', `<section data-cartera-inicio class="siigo-cartera-inicio"><div><h3>Gestión de cartera</h3><p class="form-help">Alertas de cartera según el estado del último seguimiento visible para tu rol.</p></div><div class="form-group" data-cartera-vendedor-caja hidden><label for="siigoCarteraInicioVendedor">Ver cartera de</label><select id="siigoCarteraInicioVendedor" data-cartera-vendedor><option value="">Todos los vendedores</option></select></div><div class="siigo-cartera-alertas" data-cartera-alertas></div><div class="button-group"><button type="button" class="btn btn-primary" data-ver-cartera>Ver cartera</button><button type="button" class="btn btn-secondary" data-cartera-volver>Regresar al menú principal</button></div><p data-cartera-estado role="status"></p></section>`);
+    cargarSelectorVendedorCarteraInicio(panel);
     panel.querySelector('[data-ver-cartera]').addEventListener('click', () => {
         panel._filtroAlertaCartera = '';
         panel.querySelector('[data-cartera-inicio]').hidden = true;
         mostrarFiltrosVencidasSiigo(true);
+        aplicarFiltroVendedorCarteraInicio(panel);
     });
     panel.querySelector('[data-cartera-volver]').addEventListener('click', regresarMenuPrincipalCarteraSiigo);
+}
+
+// Solo un Administrador puede elegir ver un vendedor puntual o todos; un vendedor siempre ve lo suyo.
+async function cargarSelectorVendedorCarteraInicio(panel) {
+    const caja = panel.querySelector('[data-cartera-vendedor-caja]');
+    const select = panel.querySelector('[data-cartera-vendedor]');
+    try {
+        const response = await fetch('/api/contable/filtros-clientes', { credentials: 'include' });
+        const data = await leerRespuestaSiigo(response);
+        if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los vendedores.');
+        if (!data.es_administrador) return;
+        (data.vendedores || []).forEach(v => select.add(new Option(v.nombre, v.id)));
+        caja.hidden = false;
+        select.addEventListener('change', () => {
+            panel._filtroVendedorCartera = select.value;
+            cargarAlertasInicioCarteraSiigo(panel);
+        });
+    } catch (error) {
+        console.error('Error cargando vendedores para Gestión de cartera:', error);
+    }
+}
+
+function aplicarFiltroVendedorCarteraInicio(panel) {
+    const vendedorSelect = panel.querySelector('form')?.elements?.namedItem('vendedor_id');
+    if (!vendedorSelect) return;
+    vendedorSelect.value = panel._filtroVendedorCartera || '';
+    vendedorSelect.dispatchEvent(new Event('change'));
 }
 
 function mostrarInicioGestionCarteraSiigo(panel) {
@@ -445,6 +474,7 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
     estado.textContent = 'Calculando alertas...';
     try {
         const params = new URLSearchParams({ informe: 'vencidas', fecha_corte: fecha, estado_facturas: 'todos' });
+        if (panel._filtroVendedorCartera) params.set('vendedor_id', panel._filtroVendedorCartera);
         const response = await fetch(`/api/contable/cartera-dinamica?${params}`, { credentials: 'include' });
         const data = await leerRespuestaSiigo(response);
         if (!response.ok) throw new Error(data.error || 'No fue posible calcular las alertas.');
@@ -455,6 +485,7 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
                 panel._filtroAlertaCartera = boton.dataset.alertaInicio;
                 panel.querySelector('[data-cartera-inicio]').hidden = true;
                 mostrarFiltrosVencidasSiigo(true);
+                aplicarFiltroVendedorCarteraInicio(panel);
                 panel.querySelector('form')?.requestSubmit();
             });
         });
