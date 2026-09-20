@@ -413,7 +413,10 @@ function abrirGestionCarteraComercial() {
     panel.dataset.origen = 'comercial-cartera';
     asegurarInicioGestionCarteraSiigo(panel);
     const volver = panel.querySelector('[data-vencidas-informes]');
-    if (volver) volver.textContent = 'Regresar al menú principal';
+    if (volver) {
+        volver.textContent = 'Regresar al menú principal';
+        volver.classList.replace('btn-secondary', 'btn-primary');
+    }
     if (destino && panel.parentElement !== destino) {
         destino.replaceChildren(panel);
     }

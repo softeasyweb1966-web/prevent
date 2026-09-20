@@ -479,14 +479,42 @@ body.body-siigo-vencidas-activo #siigoInformesNavegacion {
 
 .siigo-vencidas-filtros {
     display: grid;
-    grid-template-columns: minmax(180px, 240px) minmax(240px, 420px) auto;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     align-items: end;
     gap: 16px;
-    max-width: 920px;
+    max-width: 1100px;
     margin-top: 20px;
 }
 
 .siigo-vencidas-filtros .form-group { margin: 0; }
+
+/* El selector de Vendedor/Contacto se agrega dinámicamente envuelto en .form-row; */
+/* con display:contents sus labels quedan como celdas propias del grid, alineadas con el resto. */
+.siigo-vencidas-filtros .form-row {
+    display: contents;
+}
+
+.siigo-vencidas-filtros .form-row label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: var(--text-dark);
+}
+
+.siigo-vencidas-filtros .form-row select {
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-family: inherit;
+}
+
+.siigo-vencidas-filtros button[type="submit"] {
+    grid-column: 1 / -1;
+    justify-self: start;
+}
 
 #siigoFacturasVencidasPanel .btn {
     width: auto;
