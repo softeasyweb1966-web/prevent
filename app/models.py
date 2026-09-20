@@ -679,6 +679,49 @@ class SiigoComprobantePago(db.Model):
     seguimiento = db.relationship('SiigoSeguimientoCartera', back_populates='comprobantes_pago')
 
 
+class ChatCarteraHilo(db.Model):
+    """Conversaciones internas de cartera entre administrador y vendedor."""
+    __tablename__ = 'chat_cartera_hilos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tipo = db.Column(db.String(40), nullable=False, index=True)
+    estado = db.Column(db.String(30), nullable=False, default='ABIERTO', index=True)
+    asunto = db.Column(db.String(200), nullable=False)
+    cliente_id = db.Column(db.Integer, db.ForeignKey('clientes_comerciales.id'), index=True)
+    identificacion = db.Column(db.String(50), index=True)
+    cliente_nombre = db.Column(db.String(255))
+    vendedor_id = db.Column(db.Integer, db.ForeignKey('vendedores.id'), nullable=False, index=True)
+    creado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False, index=True)
+    autorizado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    autorizado_at = db.Column(db.DateTime)
+    cerrado_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    cliente = db.relationship('ClienteComercial', backref=db.backref('chats_cartera', lazy='dynamic'))
+    vendedor = db.relationship('Vendedor', backref=db.backref('chats_cartera', lazy='dynamic'))
+    creado_por = db.relationship('Usuario', foreign_keys=[creado_por_id])
+    autorizado_por = db.relationship('Usuario', foreign_keys=[autorizado_por_id])
+    mensajes = db.relationship('ChatCarteraMensaje', back_populates='hilo', lazy='selectin',
+                               cascade='all, delete-orphan', passive_deletes=True)
+
+
+class ChatCarteraMensaje(db.Model):
+    """Mensajes de un hilo interno de cartera."""
+    __tablename__ = 'chat_cartera_mensajes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    hilo_id = db.Column(db.Integer, db.ForeignKey('chat_cartera_hilos.id', ondelete='CASCADE'), nullable=False, index=True)
+    remitente_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False, index=True)
+    remitente_nombre = db.Column(db.String(200), nullable=False)
+    mensaje = db.Column(db.Text, nullable=False)
+    decision = db.Column(db.String(30), index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    hilo = db.relationship('ChatCarteraHilo', back_populates='mensajes')
+    remitente = db.relationship('Usuario')
+
+
 class SiigoCuentaContable(db.Model):
     """Catálogo de consulta de cuentas contables proveniente de SIIGO."""
     __tablename__ = 'siigo_cuentas_contables'

@@ -467,8 +467,16 @@ function agregarAccionesClientesCarteraSiigo(panel) {
         window.location.href = urlMaestroClientesCarteraSiigo();
     });
 
+    const chat = document.createElement('button');
+    chat.type = 'button';
+    chat.className = 'btn btn-secondary';
+    chat.dataset.carteraChatVendedor = '1';
+    chat.textContent = 'Chat vendedor';
+    chat.addEventListener('click', () => abrirChatVendedorCarteraSiigo(panel));
+
     acciones.insertBefore(nuevo, volver);
     acciones.insertBefore(maestro, volver);
+    acciones.insertBefore(chat, volver);
     actualizarAccionesClientesCarteraSiigo(panel);
 }
 
@@ -478,8 +486,10 @@ function actualizarAccionesClientesCarteraSiigo(panel = document.getElementById(
     const puedeLeer = typeof canManageComercial === 'function' && canManageComercial('clientes', 'read');
     const nuevo = panel.querySelector('[data-cartera-nuevo-cliente]');
     const maestro = panel.querySelector('[data-cartera-maestro-clientes]');
+    const chat = panel.querySelector('[data-cartera-chat-vendedor]');
     if (nuevo) nuevo.style.display = puedeCrear ? '' : 'none';
     if (maestro) maestro.style.display = puedeLeer ? '' : 'none';
+    if (chat) chat.style.display = puedeLeer ? '' : 'none';
 }
 
 function urlMaestroClientesCarteraSiigo(panel = document.getElementById('siigoFacturasVencidasPanel')) {
@@ -711,6 +721,92 @@ function historialSeguimientoCarteraSiigo(registros, cliente = null) {
     return registros.map(item => `<article class="siigo-seguimiento-registro" data-seguimiento-id="${item.id}">${item.fecha_compromiso ? `<label class="siigo-seguimiento-seleccion"><input type="radio" name="siigoSeguimientoSeleccion" value="${item.id}"> Seleccionar este compromiso</label>` : ''}<h4>${escapeSiigo(formatoSiigoFecha(item.fecha_gestion))} · ${escapeSiigo(item.medio)}</h4><p>Registrado por: <strong>${escapeSiigo(item.registrado_por)}</strong>${item.contacto ? ` · Contacto: ${escapeSiigo(item.contacto)}` : ''}</p><p class="siigo-seguimiento-nota">${escapeSiigo(item.observaciones)}</p>${item.fecha_compromiso ? `<p><span class="siigo-semaforo siigo-${item.estado_compromiso}">${estadosCompromisoSiigo[item.estado_compromiso]}</span> Compromiso de pago: ${escapeSiigo(formatoSiigoFecha(item.fecha_compromiso))}${item.valor_compromiso != null ? ` · ${formatoSiigoNumero(item.valor_compromiso)}` : ''}</p>` : ''}${item.compromiso_cumplido_at ? `<p>Cumplimiento registrado por ${escapeSiigo(item.compromiso_cumplido_por)} · ${escapeSiigo(formatoSiigoFecha(item.compromiso_cumplido_at.slice(0, 10)))}</p>` : ''}${item.proximo_seguimiento ? `<p>Próximo seguimiento: ${escapeSiigo(formatoSiigoFecha(item.proximo_seguimiento))}</p>` : ''}${comprobantesPagoCarteraSiigo(item)}</article>`).join('');
 }
 
+function etiquetaTipoChatCarteraSiigo(tipo) {
+    return {
+        AUTORIZACION_ARREGLO: 'Autorizacion de arreglo',
+        SOLICITUD_INFO: 'Solicitud de informacion',
+        GENERAL: 'General',
+    }[tipo] || tipo || 'General';
+}
+
+function renderChatCarteraSiigo(hilos) {
+    if (!hilos.length) return '<p class="form-help">Aun no hay conversaciones internas para este contexto.</p>';
+    return hilos.map(hilo => `<article class="siigo-seguimiento-registro" data-chat-hilo="${hilo.id}"><h4>${escapeSiigo(hilo.asunto)} <span class="siigo-semaforo siigo-${String(hilo.estado || '').toLowerCase()}">${escapeSiigo(hilo.estado)}</span></h4><p>${escapeSiigo(etiquetaTipoChatCarteraSiigo(hilo.tipo))} · Vendedor: ${escapeSiigo(hilo.vendedor_nombre || '')}</p><div>${(hilo.mensajes || []).map(m => `<p class="siigo-seguimiento-nota"><strong>${escapeSiigo(m.remitente_nombre)}</strong> · ${escapeSiigo(formatoSiigoFecha((m.created_at || '').slice(0, 10)))}${m.decision ? ` · ${escapeSiigo(m.decision)}` : ''}<br>${escapeSiigo(m.mensaje)}</p>`).join('')}</div>${hilo.estado === 'ABIERTO' ? `<form data-chat-responder="${hilo.id}"><div class="form-group"><label>Responder</label><textarea name="mensaje" rows="2" maxlength="5000" required></textarea></div><div class="button-group"><button type="submit" class="btn btn-primary">Enviar respuesta</button><button type="submit" class="btn btn-secondary" name="decision" value="AUTORIZADO">Autorizar</button><button type="submit" class="btn btn-secondary" name="decision" value="RECHAZADO">Rechazar</button><button type="submit" class="btn btn-secondary" name="decision" value="CERRADO">Cerrar</button></div></form>` : ''}</article>`).join('');
+}
+
+function bloqueChatCarteraSiigo(cliente) {
+    return `<section class="siigo-chat-cartera"><h3>Chat interno de cartera</h3><p class="form-help">Conversaciones guardadas entre vendedor y administrador. Si hay cliente, quedan relacionadas con esta gestion.</p><form data-chat-nuevo><div class="form-row"><div class="form-group"><label>Tipo</label><select name="tipo" required><option value="AUTORIZACION_ARREGLO">Autorizacion de arreglo</option><option value="SOLICITUD_INFO">Solicitud de informacion</option><option value="GENERAL">General</option></select></div><div class="form-group"><label>Asunto</label><input name="asunto" maxlength="200" required value="${escapeSiigo(cliente?.cliente ? `Gestion ${cliente.cliente}` : 'Gestion de cartera')}"></div></div><div class="form-group"><label>Mensaje</label><textarea name="mensaje" rows="3" maxlength="5000" required></textarea></div><div class="button-group"><button type="submit" class="btn btn-primary">Crear conversacion</button></div></form><p data-chat-estado role="status"></p><div data-chat-historial></div></section>`;
+}
+
+async function cargarChatCarteraSiigo(dialogo, cliente, vendedorId = '') {
+    const estado = dialogo.querySelector('[data-chat-estado]');
+    const historial = dialogo.querySelector('[data-chat-historial]');
+    if (!estado || !historial) return;
+    estado.textContent = 'Consultando conversaciones...';
+    try {
+        const params = new URLSearchParams();
+        if (cliente?.identificacion) params.set('identificacion', cliente.identificacion);
+        else if (vendedorId) params.set('vendedor_id', vendedorId);
+        const response = await fetch(`/api/contable/chat-cartera?${params}`, { credentials: 'include' });
+        const data = await leerRespuestaSiigo(response);
+        if (!response.ok) throw new Error(data.error || 'No fue posible consultar el chat.');
+        historial.innerHTML = renderChatCarteraSiigo(data.hilos || []);
+        estado.textContent = '';
+    } catch (error) {
+        estado.textContent = error.message;
+    }
+}
+
+function abrirChatVendedorCarteraSiigo(panel) {
+    const vendedorId = panel?._filtroVendedorCartera || '';
+    const dialogo = document.createElement('dialog');
+    dialogo.className = 'siigo-seguimiento-dialogo';
+    dialogo.innerHTML = `<div class="siigo-seguimiento-cabecera"><h2>Chat de cartera del vendedor</h2></div><div class="button-group"><button type="button" class="btn btn-primary" data-cerrar>Cerrar</button></div>${bloqueChatCarteraSiigo(null)}`;
+    document.body.appendChild(dialogo);
+    dialogo.querySelector('[data-cerrar]').addEventListener('click', () => dialogo.close());
+    dialogo.addEventListener('close', () => dialogo.remove(), { once: true });
+    cargarChatCarteraSiigo(dialogo, null, vendedorId);
+    dialogo.querySelector('[data-chat-nuevo]')?.addEventListener('submit', async event => {
+        event.preventDefault();
+        const chatForm = event.currentTarget;
+        const estadoChat = dialogo.querySelector('[data-chat-estado]');
+        const datos = Object.fromEntries(new FormData(chatForm));
+        if (vendedorId) datos.vendedor_id = vendedorId;
+        estadoChat.textContent = 'Guardando conversacion...';
+        try {
+            const response = await fetch('/api/contable/chat-cartera', {
+                method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const data = await leerRespuestaSiigo(response);
+            if (!response.ok) throw new Error(data.error || 'No fue posible guardar la conversacion.');
+            chatForm.reset();
+            await cargarChatCarteraSiigo(dialogo, null, vendedorId);
+            estadoChat.textContent = 'Conversacion creada.';
+        } catch (error) { estadoChat.textContent = error.message; }
+    });
+    dialogo.querySelector('[data-chat-historial]')?.addEventListener('submit', async event => {
+        const chatForm = event.target.closest('[data-chat-responder]');
+        if (!chatForm) return;
+        event.preventDefault();
+        const datos = Object.fromEntries(new FormData(chatForm));
+        if (event.submitter?.name === 'decision') datos.decision = event.submitter.value;
+        const estadoChat = dialogo.querySelector('[data-chat-estado]');
+        estadoChat.textContent = 'Enviando mensaje...';
+        try {
+            const response = await fetch(`/api/contable/chat-cartera/${chatForm.dataset.chatResponder}/mensajes`, {
+                method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const data = await leerRespuestaSiigo(response);
+            if (!response.ok) throw new Error(data.error || 'No fue posible enviar el mensaje.');
+            await cargarChatCarteraSiigo(dialogo, null, vendedorId);
+            estadoChat.textContent = 'Mensaje guardado.';
+        } catch (error) { estadoChat.textContent = error.message; }
+    });
+    dialogo.showModal();
+}
+
 const estadosCompromisoSiigo = { vencido: 'Vencido', proximo: 'Próximo a vencer', cumplido: 'Cumplido', pendiente: 'Pendiente', sin_compromiso: 'Sin compromiso' };
 
 const estadosGestionCarteraSiigo = {
@@ -787,6 +883,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     dialogo.innerHTML = `<div class="siigo-seguimiento-cabecera"><h2 id="siigoSeguimientoTitulo">Seguimiento de cartera</h2></div><div class="button-group siigo-seguimiento-toolbar"><button type="button" class="btn btn-primary" data-cerrar>Regresar</button><button type="button" class="btn btn-primary" data-nuevo disabled>Nuevo seguimiento</button><button type="button" class="btn btn-primary" data-marcar-cumplido disabled>Marcar cumplido</button><button type="button" class="btn btn-primary" data-enviar-correo disabled>Enviar por correo</button><button type="button" class="btn btn-primary" data-enviar-whatsapp disabled>Enviar por WhatsApp</button></div><p><strong>${escapeSiigo(cliente.cliente)}</strong> · ${escapeSiigo(cliente.identificacion)}<br>Vendedor: ${escapeSiigo(cliente.vendedor)}</p>${resumenResponsableCarteraSiigo(cliente)}<p class="form-help">Historial completo del cliente, independiente de la fecha de corte del informe.</p><p data-estado role="status" aria-live="polite"></p><button type="button" class="btn btn-primary" data-reintentar hidden>Reintentar consulta</button><form hidden><h3>Nuevo seguimiento</h3>${opcionesAlcance}<div class="form-row"><div class="form-group"><label for="siigoGestionFecha">Fecha de gestión *</label><input id="siigoGestionFecha" name="fecha_gestion" type="date" required value="${hoy}" max="${hoy}"></div><div class="form-group"><label for="siigoGestionMedio">Medio de contacto *</label><select id="siigoGestionMedio" name="medio" required><option value="">Seleccione</option><option value="LLAMADA">Llamada</option><option value="WHATSAPP">WhatsApp</option><option value="CORREO">Correo</option><option value="VISITA">Visita</option><option value="OTRO">Otro</option></select></div></div><div class="form-group"><label for="siigoGestionContacto">Persona contactada</label><input id="siigoGestionContacto" name="contacto" maxlength="200"></div><div class="form-group"><label for="siigoGestionNota">Gestión realizada y acuerdos *</label><textarea id="siigoGestionNota" name="observaciones" rows="4" maxlength="5000" required></textarea></div><div class="form-row"><div class="form-group"><label for="siigoGestionCompromiso">Fecha compromiso de pago</label><input id="siigoGestionCompromiso" name="fecha_compromiso" type="date"></div><div class="form-group"><label for="siigoGestionValor">Valor compromiso (COP)</label><input id="siigoGestionValor" name="valor_compromiso" type="number" min="0.01" step="0.01"></div><div class="form-group"><label for="siigoGestionProximo">Próximo seguimiento</label><input id="siigoGestionProximo" name="proximo_seguimiento" type="date"></div></div><div class="button-group"><button type="submit" class="btn btn-primary">Guardar seguimiento</button><button type="button" class="btn btn-primary" data-cancelar>Cancelar</button></div></form><h3>Historial de seguimientos</h3><div data-historial></div>`;
     document.body.appendChild(dialogo);
     dialogo.querySelector('.form-help').insertAdjacentHTML('beforebegin', estadoCuentaClienteCarteraSiigo(cliente));
+    dialogo.querySelector('[data-historial]').insertAdjacentHTML('afterend', bloqueChatCarteraSiigo(cliente));
     const form = dialogo.querySelector('form');
     form.querySelector('h3').insertAdjacentHTML('afterend', `<div class="form-group"><label for="siigoGestionEstado">Estado del seguimiento *</label><select id="siigoGestionEstado" name="estado_gestion" required><option value="">Seleccione</option><option value="SIN_GESTION">Sin Gestión</option><option value="NO_LOCALIZADO">No localizado</option><option value="EN_PROCESO">En proceso</option><option value="CON_COMPROMISO">Con compromiso</option></select></div>`);
     const estado = dialogo.querySelector('[data-estado]');
@@ -900,6 +997,55 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
         }
     };
     reintentar.addEventListener('click', cargarHistorial);
+    cargarChatCarteraSiigo(dialogo, cliente);
+    dialogo.querySelector('[data-chat-nuevo]')?.addEventListener('submit', async event => {
+        event.preventDefault();
+        const chatForm = event.currentTarget;
+        const estadoChat = dialogo.querySelector('[data-chat-estado]');
+        estadoChat.textContent = 'Guardando conversacion...';
+        try {
+            const datos = Object.fromEntries(new FormData(chatForm));
+            datos.identificacion = cliente.identificacion;
+            datos.cliente_nombre = cliente.cliente;
+            const response = await fetch('/api/contable/chat-cartera', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const data = await leerRespuestaSiigo(response);
+            if (!response.ok) throw new Error(data.error || 'No fue posible guardar la conversacion.');
+            chatForm.reset();
+            await cargarChatCarteraSiigo(dialogo, cliente);
+            estadoChat.textContent = 'Conversacion creada.';
+        } catch (error) {
+            estadoChat.textContent = error.message;
+        }
+    });
+    dialogo.querySelector('[data-chat-historial]')?.addEventListener('submit', async event => {
+        const chatForm = event.target.closest('[data-chat-responder]');
+        if (!chatForm) return;
+        event.preventDefault();
+        const submitter = event.submitter;
+        const estadoChat = dialogo.querySelector('[data-chat-estado]');
+        const datos = Object.fromEntries(new FormData(chatForm));
+        if (submitter?.name === 'decision') datos.decision = submitter.value;
+        estadoChat.textContent = 'Enviando mensaje...';
+        try {
+            const response = await fetch(`/api/contable/chat-cartera/${chatForm.dataset.chatResponder}/mensajes`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datos),
+            });
+            const data = await leerRespuestaSiigo(response);
+            if (!response.ok) throw new Error(data.error || 'No fue posible enviar el mensaje.');
+            await cargarChatCarteraSiigo(dialogo, cliente);
+            estadoChat.textContent = 'Mensaje guardado.';
+        } catch (error) {
+            estadoChat.textContent = error.message;
+        }
+    });
     form.addEventListener('submit', async event => {
         event.preventDefault();
         if (guardando || !form.reportValidity()) return;

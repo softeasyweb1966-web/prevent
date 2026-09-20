@@ -20,6 +20,8 @@ _CARGA_CLIENTES_LOCK = threading.Lock()
 
 from app.models import (
     ClienteComercial,
+    ChatCarteraHilo,
+    ChatCarteraMensaje,
     SiigoCarga,
     SiigoCliente,
     SiigoComprobante,
@@ -35,7 +37,7 @@ from app.routes import contable_bp
 from app.security import get_permission_names_for_user
 
 
-from app.clientes_scope import es_administrador, clientes_visibles
+from app.clientes_scope import es_administrador, clientes_visibles, vendedor_actual
 from app.clientes_maestro import identificacion
 
 
@@ -831,6 +833,8 @@ def _estado_compromiso(registro, hoy=None):
 
 
 ESTADOS_GESTION_CARTERA = {'SIN_GESTION', 'NO_LOCALIZADO', 'EN_PROCESO', 'CON_COMPROMISO'}
+TIPOS_CHAT_CARTERA = {'AUTORIZACION_ARREGLO', 'SOLICITUD_INFO', 'GENERAL'}
+ESTADOS_CHAT_CARTERA = {'ABIERTO', 'AUTORIZADO', 'RECHAZADO', 'CERRADO'}
 
 
 def _serializar_seguimiento_cartera(registro):
@@ -853,6 +857,77 @@ def _serializar_seguimiento_cartera(registro):
         'proximo_seguimiento': registro.proximo_seguimiento.isoformat() if registro.proximo_seguimiento else None,
         'registrado_por': registro.usuario_nombre,
         'created_at': registro.created_at.isoformat() + 'Z',
+    }
+
+
+def _cliente_maestro_por_identificacion(identificacion_raw):
+    clave = _nit_cartera(identificacion_raw)
+    if not clave:
+        return None
+    for cliente in clientes_visibles().all():
+        if _nit_cartera(cliente.nit) == clave:
+            return cliente
+    return None
+
+
+def _vendedor_chat_visible(vendedor_id=None, cliente=None):
+    if cliente is not None:
+        vendedor_id = cliente.vendedor_id
+    if vendedor_id in ('', None):
+        vendedor_id = None
+    if vendedor_id is None:
+        vendedor = vendedor_actual()
+        if vendedor:
+            return vendedor
+        raise PermissionError('Seleccione un vendedor para la conversacion.')
+    vendedor = Vendedor.query.get(int(vendedor_id))
+    if vendedor is None:
+        raise ValueError('Seleccione un vendedor valido.')
+    if not es_administrador():
+        actual = vendedor_actual()
+        if actual is None or actual.id != vendedor.id:
+            raise PermissionError('No tienes acceso a este vendedor.')
+    return vendedor
+
+
+def _hilo_chat_visible(hilo_id):
+    hilo = ChatCarteraHilo.query.get(hilo_id)
+    if hilo is None:
+        return None
+    if es_administrador():
+        return hilo
+    actual = vendedor_actual()
+    if actual is None or hilo.vendedor_id != actual.id:
+        return None
+    return hilo
+
+
+def _serializar_chat_cartera(hilo, incluir_mensajes=True):
+    mensajes = sorted(hilo.mensajes, key=lambda item: (item.created_at, item.id)) if incluir_mensajes else []
+    return {
+        'id': hilo.id,
+        'tipo': hilo.tipo,
+        'estado': hilo.estado,
+        'asunto': hilo.asunto,
+        'cliente_id': hilo.cliente_id,
+        'identificacion': hilo.identificacion,
+        'cliente_nombre': hilo.cliente_nombre,
+        'vendedor_id': hilo.vendedor_id,
+        'vendedor_nombre': hilo.vendedor.nombre if hilo.vendedor else '',
+        'creado_por': hilo.creado_por.nombre_completo if hilo.creado_por else '',
+        'autorizado_por': hilo.autorizado_por.nombre_completo if hilo.autorizado_por else None,
+        'autorizado_at': hilo.autorizado_at.isoformat() + 'Z' if hilo.autorizado_at else None,
+        'cerrado_at': hilo.cerrado_at.isoformat() + 'Z' if hilo.cerrado_at else None,
+        'created_at': hilo.created_at.isoformat() + 'Z',
+        'updated_at': hilo.updated_at.isoformat() + 'Z',
+        'mensajes': [{
+            'id': mensaje.id,
+            'remitente_id': mensaje.remitente_id,
+            'remitente_nombre': mensaje.remitente_nombre,
+            'mensaje': mensaje.mensaje,
+            'decision': mensaje.decision,
+            'created_at': mensaje.created_at.isoformat() + 'Z',
+        } for mensaje in mensajes],
     }
 
 
@@ -879,6 +954,119 @@ def _clientes_agrupados_por_responsable(clientes):
         for empresa in grupo['empresas']:
             resultado[empresa['identificacion']] = grupo
     return resultado
+
+
+@contable_bp.route('/chat-cartera', methods=['GET', 'POST'])
+@login_required
+def chat_cartera():
+    try:
+        _requiere_ventas()
+        if request.method == 'GET':
+            identificacion_raw = _texto(request.args.get('identificacion'))
+            vendedor_id = request.args.get('vendedor_id', type=int)
+            query = ChatCarteraHilo.query
+            if identificacion_raw:
+                clave = _nit_cartera(identificacion_raw)
+                cliente = _cliente_maestro_por_identificacion(clave)
+                if cliente is None:
+                    # Puede existir cartera SIIGO sin ficha completa; el alcance se valida con movimientos visibles.
+                    existe = db.session.query(SiigoMovimiento.id).join(SiigoComprobante).filter(
+                        _alcance_movimiento(),
+                        SiigoMovimiento.identificacion == identificacion_raw,
+                        SiigoComprobante.tipo_documento == 'FV',
+                        SiigoMovimiento.codigo_contable == '13050501',
+                    ).first()
+                    if existe is None:
+                        return jsonify(error='Cliente no encontrado en tu cartera.'), 404
+                query = query.filter(ChatCarteraHilo.identificacion == clave)
+            elif vendedor_id:
+                vendedor = _vendedor_chat_visible(vendedor_id=vendedor_id)
+                query = query.filter(ChatCarteraHilo.vendedor_id == vendedor.id, ChatCarteraHilo.identificacion.is_(None))
+            else:
+                if not es_administrador():
+                    vendedor = _vendedor_chat_visible()
+                    query = query.filter(ChatCarteraHilo.vendedor_id == vendedor.id)
+            hilos = query.order_by(ChatCarteraHilo.updated_at.desc(), ChatCarteraHilo.id.desc()).limit(100).all()
+            hilos = [hilo for hilo in hilos if _hilo_chat_visible(hilo.id) is not None]
+            return jsonify({'hilos': [_serializar_chat_cartera(hilo) for hilo in hilos]})
+
+        datos = request.get_json(silent=True) or {}
+        tipo = _texto(datos.get('tipo')).upper() or 'GENERAL'
+        if tipo not in TIPOS_CHAT_CARTERA:
+            raise ValueError('Seleccione un tipo de conversacion valido.')
+        asunto = _texto(datos.get('asunto'))
+        if not asunto or len(asunto) > 200:
+            raise ValueError('Indique un asunto de maximo 200 caracteres.')
+        mensaje = _texto(datos.get('mensaje'))
+        if not mensaje or len(mensaje) > 5000:
+            raise ValueError('Escriba un mensaje de maximo 5000 caracteres.')
+
+        identificacion_raw = _texto(datos.get('identificacion'))
+        cliente = _cliente_maestro_por_identificacion(identificacion_raw) if identificacion_raw else None
+        vendedor = _vendedor_chat_visible(datos.get('vendedor_id'), cliente)
+        clave = _nit_cartera(identificacion_raw) if identificacion_raw else None
+        cliente_nombre = _texto(datos.get('cliente_nombre')) or (cliente.razon_social if cliente else None)
+        hilo = ChatCarteraHilo(
+            tipo=tipo,
+            estado='ABIERTO',
+            asunto=asunto,
+            cliente_id=cliente.id if cliente else None,
+            identificacion=clave,
+            cliente_nombre=cliente_nombre,
+            vendedor_id=vendedor.id,
+            creado_por_id=current_user.id,
+        )
+        hilo.mensajes.append(ChatCarteraMensaje(
+            remitente_id=current_user.id,
+            remitente_nombre=current_user.nombre_completo,
+            mensaje=mensaje,
+        ))
+        db.session.add(hilo)
+        db.session.commit()
+        return jsonify({'hilo': _serializar_chat_cartera(hilo)}), 201
+    except (ValueError, PermissionError) as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
+
+
+@contable_bp.route('/chat-cartera/<int:hilo_id>/mensajes', methods=['POST'])
+@login_required
+def responder_chat_cartera(hilo_id):
+    try:
+        _requiere_ventas()
+        hilo = _hilo_chat_visible(hilo_id)
+        if hilo is None:
+            return jsonify(error='Conversacion no encontrada.'), 404
+        datos = request.get_json(silent=True) or {}
+        mensaje = _texto(datos.get('mensaje'))
+        if not mensaje or len(mensaje) > 5000:
+            raise ValueError('Escriba un mensaje de maximo 5000 caracteres.')
+        decision = _texto(datos.get('decision')).upper()
+        if decision:
+            if not es_administrador():
+                raise PermissionError('Solo un administrador puede registrar una decision.')
+            if decision not in {'AUTORIZADO', 'RECHAZADO', 'CERRADO'}:
+                raise ValueError('Seleccione una decision valida.')
+            hilo.estado = decision
+            if decision in {'AUTORIZADO', 'RECHAZADO'}:
+                hilo.autorizado_por_id = current_user.id
+                hilo.autorizado_at = datetime.utcnow()
+            if decision == 'CERRADO':
+                hilo.cerrado_at = datetime.utcnow()
+        elif hilo.estado != 'ABIERTO':
+            raise ValueError('Esta conversacion ya tiene decision registrada.')
+        hilo.updated_at = datetime.utcnow()
+        hilo.mensajes.append(ChatCarteraMensaje(
+            remitente_id=current_user.id,
+            remitente_nombre=current_user.nombre_completo,
+            mensaje=mensaje,
+            decision=decision or None,
+        ))
+        db.session.commit()
+        return jsonify({'hilo': _serializar_chat_cartera(hilo)})
+    except (ValueError, PermissionError) as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
 
 
 @contable_bp.route('/seguimiento-cartera', methods=['GET', 'POST', 'PATCH'])
