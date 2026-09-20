@@ -533,6 +533,9 @@ function syncComercialPermissionUI() {
     setComercialElementsVisibility('button[onclick="consultarComercial(\'examenes\')"]', canReadCatalogoComercial());
     setComercialElementsVisibility('button[onclick="mostrarAgregarClienteComercial()"]', canManageComercial('clientes', 'create'));
     setComercialElementsVisibility('button[onclick="consultarComercial(\'clientes\')"]', canManageComercial('clientes', 'read'));
+    if (typeof actualizarAccionesClientesCarteraSiigo === 'function') {
+        actualizarAccionesClientesCarteraSiigo();
+    }
     setComercialElementsVisibility('#clienteSeguimientoMenuAtenciones', canManageComercial('atenciones', 'create'));
     setComercialElementsVisibility('#clienteSeguimientoMenuDocumentos', canManageComercial('documentos', 'create'));
     setComercialElementsVisibility('#clienteSeguimientoMenuPagos', canManageComercial('pagos', 'create'));

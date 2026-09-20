@@ -427,6 +427,7 @@ function asegurarInicioGestionCarteraSiigo(panel) {
     if (panel.querySelector('[data-cartera-inicio]')) return;
     panel.insertAdjacentHTML('afterbegin', `<section data-cartera-inicio class="siigo-cartera-inicio"><div><h3>Gestión de cartera</h3><p class="form-help">Alertas de cartera según el estado del último seguimiento visible para tu rol.</p></div><div class="form-group" data-cartera-vendedor-caja hidden><label for="siigoCarteraInicioVendedor">Ver cartera de</label><select id="siigoCarteraInicioVendedor" data-cartera-vendedor><option value="">Todos los vendedores</option></select></div><div class="siigo-cartera-alertas" data-cartera-alertas></div><div class="button-group"><button type="button" class="btn btn-primary" data-ver-cartera>Ver cartera</button><button type="button" class="btn btn-secondary" data-cartera-volver>Regresar al menú principal</button></div><p data-cartera-estado role="status"></p></section>`);
     cargarSelectorVendedorCarteraInicio(panel);
+    agregarAccionesClientesCarteraSiigo(panel);
     panel.querySelector('[data-ver-cartera]').addEventListener('click', () => {
         panel._filtroAlertaCartera = '';
         panel.querySelector('[data-cartera-inicio]').hidden = true;
@@ -434,6 +435,51 @@ function asegurarInicioGestionCarteraSiigo(panel) {
         aplicarFiltroVendedorCarteraInicio(panel);
     });
     panel.querySelector('[data-cartera-volver]').addEventListener('click', regresarMenuPrincipalCarteraSiigo);
+}
+
+function agregarAccionesClientesCarteraSiigo(panel) {
+    const acciones = panel.querySelector('[data-cartera-inicio] .button-group');
+    const volver = panel.querySelector('[data-cartera-volver]');
+    if (!acciones || !volver || panel.querySelector('[data-cartera-nuevo-cliente]')) return;
+
+    const nuevo = document.createElement('button');
+    nuevo.type = 'button';
+    nuevo.className = 'btn btn-secondary';
+    nuevo.dataset.carteraNuevoCliente = '1';
+    nuevo.textContent = 'Nuevo cliente';
+    nuevo.addEventListener('click', async () => {
+        if (typeof switchComercialSection === 'function') {
+            await switchComercialSection('clientes', { focus: false });
+        }
+        if (typeof mostrarAgregarClienteComercial === 'function') {
+            mostrarAgregarClienteComercial();
+        } else {
+            window.location.href = '/api/comercial/maestros#clientes';
+        }
+    });
+
+    const maestro = document.createElement('button');
+    maestro.type = 'button';
+    maestro.className = 'btn btn-secondary';
+    maestro.dataset.carteraMaestroClientes = '1';
+    maestro.textContent = 'Maestro de clientes';
+    maestro.addEventListener('click', () => {
+        window.location.href = '/api/comercial/maestros#clientes';
+    });
+
+    acciones.insertBefore(nuevo, volver);
+    acciones.insertBefore(maestro, volver);
+    actualizarAccionesClientesCarteraSiigo(panel);
+}
+
+function actualizarAccionesClientesCarteraSiigo(panel = document.getElementById('siigoFacturasVencidasPanel')) {
+    if (!panel) return;
+    const puedeCrear = typeof canManageComercial === 'function' && canManageComercial('clientes', 'create');
+    const puedeLeer = typeof canManageComercial === 'function' && canManageComercial('clientes', 'read');
+    const nuevo = panel.querySelector('[data-cartera-nuevo-cliente]');
+    const maestro = panel.querySelector('[data-cartera-maestro-clientes]');
+    if (nuevo) nuevo.style.display = puedeCrear ? '' : 'none';
+    if (maestro) maestro.style.display = puedeLeer ? '' : 'none';
 }
 
 // Solo un Administrador puede elegir ver un vendedor puntual o todos; un vendedor siempre ve lo suyo.
