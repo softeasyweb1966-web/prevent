@@ -145,6 +145,20 @@ class MaestroTest(unittest.TestCase):
         self.login(0)
         self.assertEqual(self.http.get(path).json['total_vencido'],1000)
 
+    def test_admin_puede_filtrar_cartera_por_vendedor_seleccionado(self):
+        self.factura('9001','Empresa Uno',Decimal('100'),1)
+        self.factura('9002','Empresa Dos',Decimal('900'),2)
+        self.login(0)
+        path='/api/contable/cartera-dinamica?fecha_corte=2026-03-01&informe=vencidas'
+        data_v1=self.http.get(path+f'&vendedor_id={self.v1.id}').json
+        data_v2=self.http.get(path+f'&vendedor_id={self.v2.id}').json
+        self.assertEqual(data_v1['cantidad_clientes'],1)
+        self.assertEqual(data_v1['clientes'][0]['identificacion'],'9001')
+        self.assertEqual(data_v1['total_vencido'],100)
+        self.assertEqual(data_v2['cantidad_clientes'],1)
+        self.assertEqual(data_v2['clientes'][0]['identificacion'],'9002')
+        self.assertEqual(data_v2['total_vencido'],900)
+
     def test_comprobante_con_varios_terceros_no_revela_total_ajeno(self):
         doc=self.factura('9001','Empresa Uno',Decimal('100'),1)
         doc.movimientos.append(SiigoMovimiento(secuencia=2,codigo_contable='13050501',cuenta_contable='Clientes',identificacion='9002',nombre_tercero='Empresa Dos',debito=900,credito=0))

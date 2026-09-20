@@ -627,6 +627,9 @@ async function consultarFacturasVencidasSiigo(form) {
     const visor = panel.querySelector('.siigo-vencidas-visor');
     const estado = panel.querySelector(visor.hidden ? '[data-vencidas-estado]' : '#siigoVencidasCargaResultado');
     const filtros = { ...valoresFiltrosMaestroSiigo(form), fecha_corte: form.querySelector('input[type="date"]').value, cliente: form.elements.cliente.value.trim(), estado_facturas: form.elements.estado_facturas.value };
+    if (panel.dataset.origen === 'comercial-cartera' && panel._filtroVendedorCartera) {
+        filtros.vendedor_id = panel._filtroVendedorCartera;
+    }
     const params = new URLSearchParams({ informe: 'vencidas', ...filtros });
     const botones = [form.querySelector('[type="submit"]'), panel.querySelector('[data-vencidas-generar]')];
     botones.forEach(boton => { boton.disabled = true; });
