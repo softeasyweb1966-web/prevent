@@ -827,8 +827,21 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     padding: 14px;
 }
 
-.siigo-cartera-resumen-bloque h4 {
-    margin: 0 0 10px;
+.siigo-cartera-resumen-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.siigo-cartera-resumen-header h4 {
+    margin: 0;
+}
+
+.siigo-cartera-resumen-header .btn {
+    width: auto;
+    padding: 8px 12px;
 }
 
 .siigo-cartera-resumen-bloque dl {
@@ -838,7 +851,7 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     margin: 0;
 }
 
-.siigo-cartera-resumen-bloque div {
+.siigo-cartera-resumen-bloque dl > div {
     padding: 10px;
     border: 1px solid #e2e8f0;
     border-radius: 6px;

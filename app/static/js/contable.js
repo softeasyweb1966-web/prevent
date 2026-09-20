@@ -605,8 +605,12 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
         if (!resumenResponse.ok) throw new Error(resumenData.error || 'No fue posible calcular el resumen acumulado.');
         if (!mesResponse.ok) throw new Error(mesData.error || 'No fue posible calcular el resumen mensual.');
         panel._datosVencidas = data;
+        panel._resumenInicioCartera = { acumulado: resumenData, mes: mesData, mesSeleccionado: mes };
         alertas.innerHTML = ordenEstadosGestionCarteraSiigo.map(estadoClave => `<button type="button" class="siigo-alerta-card siigo-${estadoClave}" data-alerta-inicio="${estadoClave}"><span>${estadosGestionCarteraSiigo[estadoClave]}:</span><strong>${(data.clientes || []).filter(cliente => estadoClienteCarteraSiigo(cliente) === estadoClave).length}</strong></button>`).join('');
         if (resumen) resumen.innerHTML = renderResumenInicioCarteraSiigo(resumenData, mesData, mes);
+        resumen?.querySelectorAll('[data-cartera-resumen-detalle]').forEach(boton => {
+            boton.addEventListener('click', () => abrirDetalleResumenInicioCarteraSiigo(panel, boton.dataset.carteraResumenDetalle));
+        });
         alertas.querySelectorAll('[data-alerta-inicio]').forEach(boton => {
             boton.addEventListener('click', () => {
                 panel._filtroAlertaCartera = boton.dataset.alertaInicio;
@@ -650,8 +654,33 @@ function renderResumenInicioCarteraSiigo(acumuladoData, mesData, mes) {
     const acumulado = totalesResumenCarteraSiigo(acumuladoData);
     const mensual = totalesResumenCarteraSiigo(mesData);
     const etiquetaMes = mes ? new Date(`${mes}-01T00:00:00`).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' }) : 'Mes seleccionado';
-    const bloque = (titulo, datos) => `<section class="siigo-cartera-resumen-bloque"><h4>${escapeSiigo(titulo)}</h4><dl><div><dt>Total ventas</dt><dd>${formatoSiigoNumero(datos.ventas)}</dd></div><div><dt>Total recaudado</dt><dd>${formatoSiigoNumero(datos.recaudado)}</dd></div><div><dt>Total sin recaudo</dt><dd>${formatoSiigoNumero(datos.sinRecaudo)}</dd></div><div><dt>Cartera a corte</dt><dd>${formatoSiigoNumero(datos.cartera)}</dd></div></dl></section>`;
-    return `${bloque('Acumulado total', acumulado)}${bloque(`Mes: ${etiquetaMes}`, mensual)}`;
+    const bloque = (titulo, datos, tipo) => `<section class="siigo-cartera-resumen-bloque"><div class="siigo-cartera-resumen-header"><h4>${escapeSiigo(titulo)}</h4><button type="button" class="btn btn-secondary" data-cartera-resumen-detalle="${tipo}">Ver detalle</button></div><dl><div><dt>Total ventas</dt><dd>${formatoSiigoNumero(datos.ventas)}</dd></div><div><dt>Total recaudado</dt><dd>${formatoSiigoNumero(datos.recaudado)}</dd></div><div><dt>Total sin recaudo</dt><dd>${formatoSiigoNumero(datos.sinRecaudo)}</dd></div><div><dt>Cartera a corte</dt><dd>${formatoSiigoNumero(datos.cartera)}</dd></div></dl></section>`;
+    return `${bloque('Acumulado total', acumulado, 'acumulado')}${bloque(`Mes: ${etiquetaMes}`, mensual, 'mes')}`;
+}
+
+function abrirDetalleResumenInicioCarteraSiigo(panel, tipo) {
+    const data = panel?._resumenInicioCartera?.[tipo];
+    if (!data) return;
+    const mesSeleccionado = panel._resumenInicioCartera.mesSeleccionado;
+    const etiquetaMes = mesSeleccionado
+        ? new Date(`${mesSeleccionado}-01T00:00:00`).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })
+        : 'seleccionado';
+    const titulo = tipo === 'mes'
+        ? `Detalle del mes ${etiquetaMes}`
+        : 'Detalle acumulado total';
+    const clientes = data.cartera_clientes || [];
+    const dialogo = document.createElement('dialog');
+    dialogo.className = 'siigo-seguimiento-dialogo siigo-cartera-detalle-dialogo';
+    dialogo.innerHTML = `<div class="siigo-seguimiento-cabecera"><h2>${escapeSiigo(titulo)}</h2></div><div class="button-group"><button type="button" class="btn btn-primary" data-cerrar>Cerrar</button></div><p class="form-help">Fecha de corte: ${escapeSiigo(formatoSiigoFecha(data.fecha_corte || ''))}. Clientes: ${clientes.length}.</p><div data-cartera-detalle-contenido>${tablaCarteraClientesSiigo(clientes) || '<p>No hay cartera para este periodo.</p>'}</div>`;
+    document.body.appendChild(dialogo);
+    const contenido = dialogo.querySelector('[data-cartera-detalle-contenido]');
+    contenido.querySelectorAll('[data-siigo-cliente-index]').forEach(button => button.addEventListener('click', () => {
+        const cliente = clientes[Number(button.dataset.siigoClienteIndex)];
+        if (cliente) mostrarDetalleCarteraClienteSiigo(contenido, cliente, button);
+    }));
+    dialogo.querySelector('[data-cerrar]').addEventListener('click', () => dialogo.close());
+    dialogo.addEventListener('close', () => dialogo.remove(), { once: true });
+    dialogo.showModal();
 }
 
 function regresarMenuPrincipalCarteraSiigo() {
