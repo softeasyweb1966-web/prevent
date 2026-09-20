@@ -804,8 +804,15 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
         if (!registros.some(r => r.id === seleccionId)) seleccionId = null;
         historial.querySelectorAll('input[name="siigoSeguimientoSeleccion"]').forEach(radio => {
             radio.checked = Number(radio.value) === seleccionId;
-            radio.addEventListener('change', () => {
-                seleccionId = Number(radio.value);
+            // Un radio nativo no se puede desmarcar solo; permitimos volver a hacer clic para quitar la selección.
+            radio.addEventListener('click', () => {
+                const valor = Number(radio.value);
+                if (valor === seleccionId) {
+                    radio.checked = false;
+                    seleccionId = null;
+                } else {
+                    seleccionId = valor;
+                }
                 actualizarBotonesSeleccionSiigo();
             });
         });
