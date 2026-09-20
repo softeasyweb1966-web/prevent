@@ -642,6 +642,37 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     gap: 16px;
 }
 
+.siigo-seguimiento-dialogo .btn {
+    width: auto;
+    min-width: 0;
+}
+
+.siigo-seguimiento-dialogo .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.siigo-seguimiento-toolbar {
+    margin: 6px 0 16px;
+}
+
+.siigo-seguimiento-toolbar .btn {
+    padding: 8px 14px;
+    font-size: 0.9rem;
+}
+
+.siigo-seguimiento-seleccion {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin-bottom: 6px;
+    cursor: pointer;
+}
+
 .siigo-responsable-grupo,
 .siigo-estado-cuenta {
     border: 1px solid var(--border-color);
@@ -675,12 +706,6 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
 
 .siigo-seguimiento-dialogo select[multiple] {
     min-height: 130px;
-}
-
-.siigo-seguimiento-comunicacion {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
 }
 
 .siigo-seguimiento-registro {

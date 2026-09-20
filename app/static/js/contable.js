@@ -608,8 +608,8 @@ function comprobantesPagoCarteraSiigo(item) {
     return `<section class="siigo-comprobantes-pago"><h5>Comprobantes de pago</h5>${archivos.length ? `<ul>${archivos.map(a => `<li>${escapeSiigo(a.nombre)} · ${Math.ceil(a.tamano_bytes / 1024)} KB <a href="${escapeSiigo(a.url)}" target="_blank" rel="noopener">Ver</a> · <a href="${escapeSiigo(a.url)}?descargar=1">Descargar</a></li>`).join('')}</ul>` : '<p>Sin comprobantes adjuntos.</p>'}<label for="siigoAdjuntos${item.id}">Subir comprobantes de pago</label><input id="siigoAdjuntos${item.id}" type="file" data-adjuntos-seguimiento="${item.id}" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple><small>PDF, JPG, PNG o WebP. Hasta 5 archivos, máximo 10 MB por archivo y 15 MB por carga.</small></section>`;
 }
 
-function accionesComunicacionCompromisoSiigo(item, cliente) {
-    if (!item.fecha_compromiso) return '';
+function datosComunicacionCompromisoSiigo(item, cliente) {
+    if (!item?.fecha_compromiso) return null;
     const asunto = `Compromiso de pago ${cliente?.cliente || ''}`.trim();
     const texto = [
         `Cliente: ${cliente?.cliente || item.cliente_nombre || ''}`,
@@ -618,7 +618,7 @@ function accionesComunicacionCompromisoSiigo(item, cliente) {
         item.valor_compromiso != null ? `Valor compromiso: ${formatoSiigoNumero(item.valor_compromiso)}` : '',
         `Gestión: ${item.observaciones || ''}`,
     ].filter(Boolean).join('\n');
-    return `<p class="siigo-seguimiento-comunicacion"><a class="btn btn-secondary" href="mailto:?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(texto)}">Enviar por correo</a><a class="btn btn-secondary" href="https://wa.me/?text=${encodeURIComponent(texto)}" target="_blank" rel="noopener">Enviar por WhatsApp</a></p>`;
+    return { asunto, texto };
 }
 
 function agregarAccionesComunicacionCompromisoSiigo(contenedor, registros, cliente) {
@@ -627,15 +627,12 @@ function agregarAccionesComunicacionCompromisoSiigo(contenedor, registros, clien
             const estado = normalizarEstadoGestionCarteraSiigo(registros[index]?.estado_gestion || (registros[index]?.fecha_compromiso ? 'con_compromiso' : 'en_proceso'));
             article.querySelector('h4')?.insertAdjacentHTML('afterend', `<p class="siigo-estado-gestion-historial"><span class="siigo-semaforo siigo-${estado}">${estadosGestionCarteraSiigo[estado] || 'Sin Gestión'}</span></p>`);
         }
-        if (article.querySelector('.siigo-seguimiento-comunicacion')) return;
-        const html = accionesComunicacionCompromisoSiigo(registros[index], cliente);
-        if (html) article.insertAdjacentHTML('beforeend', html);
     });
 }
 
 function historialSeguimientoCarteraSiigo(registros, cliente = null) {
     if (!registros.length) return '<p>Este cliente aún no tiene seguimientos registrados.</p>';
-    return registros.map(item => `<article class="siigo-seguimiento-registro"><h4>${escapeSiigo(formatoSiigoFecha(item.fecha_gestion))} · ${escapeSiigo(item.medio)}</h4><p>Registrado por: <strong>${escapeSiigo(item.registrado_por)}</strong>${item.contacto ? ` · Contacto: ${escapeSiigo(item.contacto)}` : ''}</p><p class="siigo-seguimiento-nota">${escapeSiigo(item.observaciones)}</p>${item.fecha_compromiso ? `<p><span class="siigo-semaforo siigo-${item.estado_compromiso}">${estadosCompromisoSiigo[item.estado_compromiso]}</span> Compromiso de pago: ${escapeSiigo(formatoSiigoFecha(item.fecha_compromiso))}${item.valor_compromiso != null ? ` · ${formatoSiigoNumero(item.valor_compromiso)}` : ''}</p>` : ''}${item.fecha_compromiso && !item.compromiso_cumplido_at ? `<button type="button" class="btn btn-secondary" data-cumplir="${item.id}">Marcar cumplido</button>` : ''}${item.compromiso_cumplido_at ? `<p>Cumplimiento registrado por ${escapeSiigo(item.compromiso_cumplido_por)} · ${escapeSiigo(formatoSiigoFecha(item.compromiso_cumplido_at.slice(0, 10)))}</p>` : ''}${item.proximo_seguimiento ? `<p>Próximo seguimiento: ${escapeSiigo(formatoSiigoFecha(item.proximo_seguimiento))}</p>` : ''}${comprobantesPagoCarteraSiigo(item)}</article>`).join('');
+    return registros.map(item => `<article class="siigo-seguimiento-registro" data-seguimiento-id="${item.id}">${item.fecha_compromiso ? `<label class="siigo-seguimiento-seleccion"><input type="radio" name="siigoSeguimientoSeleccion" value="${item.id}"> Seleccionar este compromiso</label>` : ''}<h4>${escapeSiigo(formatoSiigoFecha(item.fecha_gestion))} · ${escapeSiigo(item.medio)}</h4><p>Registrado por: <strong>${escapeSiigo(item.registrado_por)}</strong>${item.contacto ? ` · Contacto: ${escapeSiigo(item.contacto)}` : ''}</p><p class="siigo-seguimiento-nota">${escapeSiigo(item.observaciones)}</p>${item.fecha_compromiso ? `<p><span class="siigo-semaforo siigo-${item.estado_compromiso}">${estadosCompromisoSiigo[item.estado_compromiso]}</span> Compromiso de pago: ${escapeSiigo(formatoSiigoFecha(item.fecha_compromiso))}${item.valor_compromiso != null ? ` · ${formatoSiigoNumero(item.valor_compromiso)}` : ''}</p>` : ''}${item.compromiso_cumplido_at ? `<p>Cumplimiento registrado por ${escapeSiigo(item.compromiso_cumplido_por)} · ${escapeSiigo(formatoSiigoFecha(item.compromiso_cumplido_at.slice(0, 10)))}</p>` : ''}${item.proximo_seguimiento ? `<p>Próximo seguimiento: ${escapeSiigo(formatoSiigoFecha(item.proximo_seguimiento))}</p>` : ''}${comprobantesPagoCarteraSiigo(item)}</article>`).join('');
 }
 
 const estadosCompromisoSiigo = { vencido: 'Vencido', proximo: 'Próximo a vencer', cumplido: 'Cumplido', pendiente: 'Pendiente', sin_compromiso: 'Sin compromiso' };
@@ -711,7 +708,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     const hoy = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
     const empresasGrupo = empresasResponsableCarteraSiigo(cliente);
     const opcionesAlcance = empresasGrupo.length > 1 ? `<div class="form-group"><label for="siigoGestionAlcance">Aplicar compromiso</label><select id="siigoGestionAlcance" name="alcance"><option value="empresa">Solo esta empresa</option><option value="grupo">Todas las empresas del responsable (${empresasGrupo.length})</option></select></div>` : '';
-    dialogo.innerHTML = `<div class="siigo-seguimiento-cabecera"><h2 id="siigoSeguimientoTitulo">Seguimiento de cartera</h2><button type="button" class="btn btn-secondary" data-cerrar>Cerrar</button></div><p><strong>${escapeSiigo(cliente.cliente)}</strong> · ${escapeSiigo(cliente.identificacion)}<br>Vendedor: ${escapeSiigo(cliente.vendedor)}</p>${resumenResponsableCarteraSiigo(cliente)}<p class="form-help">Historial completo del cliente, independiente de la fecha de corte del informe.</p><div class="button-group"><button type="button" class="btn btn-primary" data-nuevo disabled>Nuevo seguimiento</button><button type="button" class="btn btn-secondary" data-reintentar hidden>Reintentar consulta</button></div><p data-estado role="status" aria-live="polite"></p><form hidden><h3>Nuevo seguimiento</h3>${opcionesAlcance}<div class="form-row"><div class="form-group"><label for="siigoGestionFecha">Fecha de gestión *</label><input id="siigoGestionFecha" name="fecha_gestion" type="date" required value="${hoy}" max="${hoy}"></div><div class="form-group"><label for="siigoGestionMedio">Medio de contacto *</label><select id="siigoGestionMedio" name="medio" required><option value="">Seleccione</option><option value="LLAMADA">Llamada</option><option value="WHATSAPP">WhatsApp</option><option value="CORREO">Correo</option><option value="VISITA">Visita</option><option value="OTRO">Otro</option></select></div></div><div class="form-group"><label for="siigoGestionContacto">Persona contactada</label><input id="siigoGestionContacto" name="contacto" maxlength="200"></div><div class="form-group"><label for="siigoGestionNota">Gestión realizada y acuerdos *</label><textarea id="siigoGestionNota" name="observaciones" rows="4" maxlength="5000" required></textarea></div><div class="form-row"><div class="form-group"><label for="siigoGestionCompromiso">Fecha compromiso de pago</label><input id="siigoGestionCompromiso" name="fecha_compromiso" type="date"></div><div class="form-group"><label for="siigoGestionValor">Valor compromiso (COP)</label><input id="siigoGestionValor" name="valor_compromiso" type="number" min="0.01" step="0.01"></div><div class="form-group"><label for="siigoGestionProximo">Próximo seguimiento</label><input id="siigoGestionProximo" name="proximo_seguimiento" type="date"></div></div><div class="button-group"><button type="submit" class="btn btn-primary">Guardar seguimiento</button><button type="button" class="btn btn-secondary" data-cancelar>Cancelar</button></div></form><h3>Historial de seguimientos</h3><div data-historial></div>`;
+    dialogo.innerHTML = `<div class="siigo-seguimiento-cabecera"><h2 id="siigoSeguimientoTitulo">Seguimiento de cartera</h2></div><div class="button-group siigo-seguimiento-toolbar"><button type="button" class="btn btn-primary" data-cerrar>Regresar</button><button type="button" class="btn btn-primary" data-nuevo disabled>Nuevo seguimiento</button><button type="button" class="btn btn-primary" data-marcar-cumplido disabled>Marcar cumplido</button><button type="button" class="btn btn-primary" data-enviar-correo disabled>Enviar por correo</button><button type="button" class="btn btn-primary" data-enviar-whatsapp disabled>Enviar por WhatsApp</button></div><p><strong>${escapeSiigo(cliente.cliente)}</strong> · ${escapeSiigo(cliente.identificacion)}<br>Vendedor: ${escapeSiigo(cliente.vendedor)}</p>${resumenResponsableCarteraSiigo(cliente)}<p class="form-help">Historial completo del cliente, independiente de la fecha de corte del informe.</p><p data-estado role="status" aria-live="polite"></p><button type="button" class="btn btn-primary" data-reintentar hidden>Reintentar consulta</button><form hidden><h3>Nuevo seguimiento</h3>${opcionesAlcance}<div class="form-row"><div class="form-group"><label for="siigoGestionFecha">Fecha de gestión *</label><input id="siigoGestionFecha" name="fecha_gestion" type="date" required value="${hoy}" max="${hoy}"></div><div class="form-group"><label for="siigoGestionMedio">Medio de contacto *</label><select id="siigoGestionMedio" name="medio" required><option value="">Seleccione</option><option value="LLAMADA">Llamada</option><option value="WHATSAPP">WhatsApp</option><option value="CORREO">Correo</option><option value="VISITA">Visita</option><option value="OTRO">Otro</option></select></div></div><div class="form-group"><label for="siigoGestionContacto">Persona contactada</label><input id="siigoGestionContacto" name="contacto" maxlength="200"></div><div class="form-group"><label for="siigoGestionNota">Gestión realizada y acuerdos *</label><textarea id="siigoGestionNota" name="observaciones" rows="4" maxlength="5000" required></textarea></div><div class="form-row"><div class="form-group"><label for="siigoGestionCompromiso">Fecha compromiso de pago</label><input id="siigoGestionCompromiso" name="fecha_compromiso" type="date"></div><div class="form-group"><label for="siigoGestionValor">Valor compromiso (COP)</label><input id="siigoGestionValor" name="valor_compromiso" type="number" min="0.01" step="0.01"></div><div class="form-group"><label for="siigoGestionProximo">Próximo seguimiento</label><input id="siigoGestionProximo" name="proximo_seguimiento" type="date"></div></div><div class="button-group"><button type="submit" class="btn btn-primary">Guardar seguimiento</button><button type="button" class="btn btn-primary" data-cancelar>Cancelar</button></div></form><h3>Historial de seguimientos</h3><div data-historial></div>`;
     document.body.appendChild(dialogo);
     dialogo.querySelector('.form-help').insertAdjacentHTML('beforebegin', estadoCuentaClienteCarteraSiigo(cliente));
     const form = dialogo.querySelector('form');
@@ -775,6 +772,29 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
         form.elements.fecha_gestion.focus();
     });
     dialogo.querySelector('[data-cancelar]').addEventListener('click', cancelarNuevo);
+    const marcarCumplidoBtn = dialogo.querySelector('[data-marcar-cumplido]');
+    const enviarCorreoBtn = dialogo.querySelector('[data-enviar-correo]');
+    const enviarWhatsappBtn = dialogo.querySelector('[data-enviar-whatsapp]');
+    // Las 3 acciones del toolbar operan sobre el seguimiento con compromiso elegido en el historial.
+    let seleccionId = null;
+    const actualizarBotonesSeleccionSiigo = () => {
+        const item = registros.find(r => r.id === seleccionId) || null;
+        const datos = item ? datosComunicacionCompromisoSiigo(item, cliente) : null;
+        marcarCumplidoBtn.disabled = !item || !!item.compromiso_cumplido_at;
+        enviarCorreoBtn.disabled = !datos;
+        enviarWhatsappBtn.disabled = !datos;
+    };
+    const vincularSeleccionHistorialSiigo = () => {
+        if (!registros.some(r => r.id === seleccionId)) seleccionId = null;
+        historial.querySelectorAll('input[name="siigoSeguimientoSeleccion"]').forEach(radio => {
+            radio.checked = Number(radio.value) === seleccionId;
+            radio.addEventListener('change', () => {
+                seleccionId = Number(radio.value);
+                actualizarBotonesSeleccionSiigo();
+            });
+        });
+        actualizarBotonesSeleccionSiigo();
+    };
     const cargarHistorial = async () => {
         estado.textContent = 'Consultando seguimientos...';
         reintentar.hidden = true;
@@ -786,6 +806,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
             registros = data.seguimientos;
             historial.innerHTML = historialSeguimientoCarteraSiigo(registros, cliente);
             agregarAccionesComunicacionCompromisoSiigo(historial, registros, cliente);
+            vincularSeleccionHistorialSiigo();
             cliente.seguimientos = registros;
             actualizarAlertasCarteraSiigo(document.getElementById('siigoFacturasVencidasPanel'));
             estado.textContent = '';
@@ -821,6 +842,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
             registros.sort((a, b) => b.fecha_gestion.localeCompare(a.fecha_gestion) || b.created_at.localeCompare(a.created_at) || b.id - a.id);
             historial.innerHTML = historialSeguimientoCarteraSiigo(registros, cliente);
             agregarAccionesComunicacionCompromisoSiigo(historial, registros, cliente);
+            vincularSeleccionHistorialSiigo();
             cliente.seguimientos = registros;
             if (Array.isArray(data.seguimientos) && data.seguimientos.length > 1) {
                 const panel = document.getElementById('siigoFacturasVencidasPanel');
@@ -866,6 +888,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
             cliente.seguimientos = registros;
             historial.innerHTML = historialSeguimientoCarteraSiigo(registros, cliente);
             agregarAccionesComunicacionCompromisoSiigo(historial, registros, cliente);
+            vincularSeleccionHistorialSiigo();
             estado.textContent = 'Comprobantes guardados. Ya puede verlos o descargarlos.';
         } catch (error) {
             estado.textContent = error.message;
@@ -875,16 +898,16 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
             input.value = '';
         }
     });
-    historial.addEventListener('click', async event => {
-        const boton = event.target.closest('[data-cumplir]');
-        if (!boton || guardando) return;
+    marcarCumplidoBtn.addEventListener('click', async () => {
+        const item = registros.find(r => r.id === seleccionId);
+        if (!item || guardando) return;
         guardando = true;
-        boton.disabled = true;
+        marcarCumplidoBtn.disabled = true;
         estado.textContent = 'Registrando cumplimiento...';
         try {
             const response = await fetch('/api/contable/seguimiento-cartera', {
                 method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ identificacion: cliente.identificacion, id: Number(boton.dataset.cumplir) }),
+                body: JSON.stringify({ identificacion: cliente.identificacion, id: item.id }),
             });
             const data = await leerRespuestaSiigo(response);
             if (!response.ok) throw new Error(data.error || 'No fue posible registrar el cumplimiento.');
@@ -892,14 +915,27 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
             cliente.seguimientos = registros;
             historial.innerHTML = historialSeguimientoCarteraSiigo(registros, cliente);
             agregarAccionesComunicacionCompromisoSiigo(historial, registros, cliente);
+            vincularSeleccionHistorialSiigo();
             actualizarAlertasCarteraSiigo(document.getElementById('siigoFacturasVencidasPanel'));
             estado.textContent = 'Compromiso marcado como cumplido.';
         } catch (error) {
             estado.textContent = error.message;
-            boton.disabled = false;
         } finally {
             guardando = false;
+            actualizarBotonesSeleccionSiigo();
         }
+    });
+    enviarCorreoBtn.addEventListener('click', () => {
+        const item = registros.find(r => r.id === seleccionId);
+        const datos = item ? datosComunicacionCompromisoSiigo(item, cliente) : null;
+        if (!datos) return;
+        window.location.href = `mailto:?subject=${encodeURIComponent(datos.asunto)}&body=${encodeURIComponent(datos.texto)}`;
+    });
+    enviarWhatsappBtn.addEventListener('click', () => {
+        const item = registros.find(r => r.id === seleccionId);
+        const datos = item ? datosComunicacionCompromisoSiigo(item, cliente) : null;
+        if (!datos) return;
+        window.open(`https://wa.me/?text=${encodeURIComponent(datos.texto)}`, '_blank', 'noopener');
     });
     dialogo.showModal();
     await cargarHistorial();
