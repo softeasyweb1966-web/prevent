@@ -1236,7 +1236,7 @@ async function switchComercialSection(sectionName = 'inicio', options = {}) {
     const config = getComercialSectionConfig(normalizedSection);
 
     window._comercialSeccionActual = normalizedSection;
-    if (homeHeader) homeHeader.style.display = '';
+    if (homeHeader) homeHeader.style.display = normalizedSection === 'cartera' ? 'none' : '';
     actualizarNavegacionComercial(normalizedSection);
     mostrarPanelesComercial(normalizedSection);
 
