@@ -751,6 +751,9 @@ async function cargarChatCarteraSiigo(dialogo, cliente, vendedorId = '') {
         const data = await leerRespuestaSiigo(response);
         if (!response.ok) throw new Error(data.error || 'No fue posible consultar el chat.');
         historial.innerHTML = renderChatCarteraSiigo(data.hilos || []);
+        if (!(currentUser?.role === 'Administrador' || currentUser?.is_superuser || currentUser?.is_easy)) {
+            historial.querySelectorAll('button[name="decision"]').forEach(boton => boton.remove());
+        }
         estado.textContent = '';
     } catch (error) {
         estado.textContent = error.message;

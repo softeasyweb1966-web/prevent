@@ -241,7 +241,13 @@ def _estado_actualizacion_comprobantes():
 def _puede_usar_ventas():
     if getattr(current_user, 'is_easy', False) or getattr(getattr(current_user, 'role', None), 'nombre', None) == 'Administrador':
         return True
-    return 'menu_ventas' in get_permission_names_for_user(current_user)
+    permisos = get_permission_names_for_user(current_user)
+    return bool({
+        'menu_ventas',
+        'menu_comercial',
+        'comercial_section_cartera',
+        'comercial_clientes_read',
+    }.intersection(permisos))
 
 
 def _requiere_ventas():
@@ -970,9 +976,15 @@ def chat_cartera():
                 cliente = _cliente_maestro_por_identificacion(clave)
                 if cliente is None:
                     # Puede existir cartera SIIGO sin ficha completa; el alcance se valida con movimientos visibles.
+                    identificacion_normalizada = func.upper(func.regexp_replace(
+                        func.split_part(SiigoMovimiento.identificacion, '-', 1),
+                        '[^a-zA-Z0-9]',
+                        '',
+                        'g',
+                    ))
                     existe = db.session.query(SiigoMovimiento.id).join(SiigoComprobante).filter(
                         _alcance_movimiento(),
-                        SiigoMovimiento.identificacion == identificacion_raw,
+                        identificacion_normalizada == clave,
                         SiigoComprobante.tipo_documento == 'FV',
                         SiigoMovimiento.codigo_contable == '13050501',
                     ).first()
