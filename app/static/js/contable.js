@@ -1247,6 +1247,12 @@ async function agregarFiltrosMaestroSiigo(form) {
             labelV.hidden = true;
         }
         data.vendedores.forEach(v=>vendedor.add(new Option(v.nombre, v.id)));
+        // En el flujo de Gestión de Cartera el vendedor ya se eligió antes; se aplica aquí para que Contacto quede filtrado desde el inicio.
+        const panelCartera = form.closest('#siigoFacturasVencidasPanel');
+        if (panelCartera?.dataset.origen === 'comercial-cartera') {
+            vendedor.value = panelCartera._filtroVendedorCartera || '';
+            labelV.hidden = true;
+        }
         const cargarContactos = () => {
             contacto.replaceChildren(new Option('Todos los disponibles',''));
             data.contactos.filter(p=>!vendedor.value || String(p.vendedor_id)===vendedor.value || (vendedor.value==='sin_asignar' && !p.vendedor_id)).forEach(p=>contacto.add(new Option(p.nombre,p.id)));
