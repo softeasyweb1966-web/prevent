@@ -354,7 +354,13 @@ function crearPanelFacturasVencidasSiigo() {
     tituloFiltros.replaceWith(cabeceraFiltros);
     cabeceraFiltros.appendChild(tituloFiltros);
     cabeceraFiltros.insertAdjacentHTML('beforeend', '<button type="button" class="btn btn-secondary" data-vencidas-informes>Regresar a informes</button>');
-    cabeceraFiltros.querySelector('button').addEventListener('click', () => mostrarInformeSiigo('comparativo'));
+    cabeceraFiltros.querySelector('button').addEventListener('click', () => {
+        if (panel.dataset.origen === 'comercial-cartera') {
+            regresarMenuPrincipalCarteraSiigo();
+            return;
+        }
+        mostrarInformeSiigo('comparativo');
+    });
     const form = panel.querySelector('form');
     agregarFiltrosMaestroSiigo(form);
     form.addEventListener('submit', event => {
@@ -404,10 +410,24 @@ function crearPanelFacturasVencidasSiigo() {
 function abrirGestionCarteraComercial() {
     const destino = document.getElementById('comercialCarteraPanel');
     const panel = crearPanelFacturasVencidasSiigo();
+    panel.dataset.origen = 'comercial-cartera';
+    const volver = panel.querySelector('[data-vencidas-informes]');
+    if (volver) volver.textContent = 'Regresar al menú principal';
     if (destino && panel.parentElement !== destino) {
         destino.replaceChildren(panel);
     }
     mostrarFiltrosVencidasSiigo(true);
+}
+
+function regresarMenuPrincipalCarteraSiigo() {
+    mostrarFiltrosVencidasSiigo(false);
+    actualizarModoCarteraSiigo(false);
+    const vistas = document.querySelectorAll('.module-view');
+    vistas.forEach(view => view.classList.remove('active'));
+    document.getElementById('appBannerView')?.classList.add('active');
+    document.querySelectorAll('.menu-item').forEach(item => item.classList.remove('active'));
+    const titulo = document.getElementById('moduleTitle');
+    if (titulo) titulo.textContent = 'Gestión de Servicios';
 }
 
 function mostrarFiltrosVencidasSiigo(enfocar = false) {
@@ -558,8 +578,9 @@ function resumenResponsableCarteraSiigo(cliente) {
 function estadoCuentaClienteCarteraSiigo(cliente) {
     const facturas = cliente.facturas || [];
     if (!facturas.length) return '';
+    const total = facturas.reduce((suma, factura) => suma + Number(factura.saldo || 0), 0);
     const filas = facturas.map(factura => `<tr><td>${escapeSiigo(factura.referencia)}</td><td>${factura.dias_vencido > 0 ? `Vencida hace ${factura.dias_vencido} días` : factura.dias_vencido === 0 ? 'Vence hoy' : `Por vencer en ${-factura.dias_vencido} días`}</td><td>${formatoSiigoNumero(factura.saldo)}</td></tr>`).join('');
-    return `<details class="siigo-estado-cuenta"><summary>Ver estado de cuenta</summary><table class="data-table"><thead><tr><th>Factura</th><th>Vencimiento</th><th>Saldo</th></tr></thead><tbody>${filas}</tbody></table></details>`;
+    return `<details class="siigo-estado-cuenta"><summary>Ver estado de cuenta</summary><p><strong>Total cartera: ${formatoSiigoNumero(total)}</strong></p><table class="data-table"><thead><tr><th>Factura</th><th>Vencimiento</th><th>Saldo</th></tr></thead><tbody>${filas}</tbody></table></details>`;
 }
 
 function actualizarAlertasCarteraSiigo(panel) {
@@ -775,18 +796,32 @@ function movimientosSinAsignarSiigo(movimientos) {
 }
 
 function tablaFacturasVencidasSiigo(data) {
-    const clientes = data.clientes || [];
+    const clientesOriginales = data.clientes || [];
+    const clientes = clientesOriginales.map((cliente, indiceOriginal) => ({ cliente, indiceOriginal })).sort((a, b) => {
+        const responsableA = a.cliente.agrupacion_responsable?.responsable || 'Sin responsable';
+        const responsableB = b.cliente.agrupacion_responsable?.responsable || 'Sin responsable';
+        return responsableA.localeCompare(responsableB, 'es') || (a.cliente.cliente || '').localeCompare(b.cliente.cliente || '', 'es');
+    });
     if (!clientes.length) return '<p class="siigo-vencidas-vacio">No hay facturas con saldo pendiente para esta consulta.</p>';
-    const cantidad = clientes.reduce((maximo, cliente) => Math.max(maximo, cliente.cantidad_facturas), 0);
+    const cantidad = clientes.reduce((maximo, item) => Math.max(maximo, item.cliente.cantidad_facturas), 0);
     const encabezados = Array.from({ length: cantidad }, (_, indice) => `<th>N.º factura ${indice + 1}</th><th>Vencimiento</th><th>Valor</th>`).join('');
-    const filas = clientes.map((cliente, indice) => {
+    let responsableActual = null;
+    const filas = clientes.map(({ cliente, indiceOriginal }) => {
+        const responsable = cliente.agrupacion_responsable?.responsable || 'Sin responsable';
+        const totalResponsable = clientes
+            .filter(item => (item.cliente.agrupacion_responsable?.responsable || 'Sin responsable') === responsable)
+            .reduce((suma, item) => suma + Number(item.cliente.total_cliente || 0), 0);
+        const encabezadoResponsable = responsable !== responsableActual
+            ? `<tr class="siigo-responsable-fila"><th colspan="${cantidad * 3 + 6}">Responsable: ${escapeSiigo(responsable)} Â· Total cartera: ${formatoSiigoNumero(totalResponsable)}</th></tr>`
+            : '';
+        responsableActual = responsable;
         const detalle = cliente.facturas.map(factura => `<td>${escapeSiigo(factura.referencia)}</td><td>${factura.dias_vencido > 0 ? `Vencida hace ${factura.dias_vencido} días` : factura.dias_vencido === 0 ? 'Vence hoy' : `Por vencer en ${-factura.dias_vencido} días`}</td><td>${detalleCrucesFacturaSiigo(factura)}</td>`).join('');
         const vacias = '<td></td><td></td><td></td>'.repeat(cantidad - cliente.facturas.length);
         const seguimiento = cliente.identificacion
-            ? `<button type="button" class="siigo-seguimiento-icono siigo-${estadoClienteCarteraSiigo(cliente)}" data-siigo-seguimiento="${indice}" title="Seguimiento de cartera: ${estadosCompromisoSiigo[estadoClienteCarteraSiigo(cliente)] || (cliente.seguimientos?.length ? 'Con seguimiento' : 'Sin seguimiento')}" aria-label="Seguimiento de cartera: ${estadosCompromisoSiigo[estadoClienteCarteraSiigo(cliente)] || (cliente.seguimientos?.length ? 'Con seguimiento' : 'Sin seguimiento')}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11a8 8 0 0 1-8 8H6l-4 3V11a9 9 0 0 1 19 0Z"/><path d="M7 9h10M7 13h7"/></svg></button>`
+            ? `<button type="button" class="siigo-seguimiento-icono siigo-${estadoClienteCarteraSiigo(cliente)}" data-siigo-seguimiento="${indiceOriginal}" title="Seguimiento de cartera: ${estadosCompromisoSiigo[estadoClienteCarteraSiigo(cliente)] || (cliente.seguimientos?.length ? 'Con seguimiento' : 'Sin seguimiento')}" aria-label="Seguimiento de cartera: ${estadosCompromisoSiigo[estadoClienteCarteraSiigo(cliente)] || (cliente.seguimientos?.length ? 'Con seguimiento' : 'Sin seguimiento')}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11a8 8 0 0 1-8 8H6l-4 3V11a9 9 0 0 1 19 0Z"/><path d="M7 9h10M7 13h7"/></svg></button>`
             : '<span class="form-help">Sin identificación para seguimiento</span>';
         const estadoSeguimiento = estadoClienteCarteraSiigo(cliente);
-        return `<tr><td>${escapeSiigo(cliente.vendedor)}</td><td>${escapeSiigo(cliente.cliente)}</td><td>${cliente.cantidad_facturas}</td><td>${formatoSiigoNumero(cliente.total_cliente)}</td><td><span class="siigo-semaforo siigo-${estadoSeguimiento}">${estadosCompromisoSiigo[estadoSeguimiento] || (estadoSeguimiento === 'con_seguimiento' ? 'Con seguimiento' : 'Sin seguimiento')}</span></td><td>${seguimiento}</td>${detalle}${vacias}</tr>`;
+        return `${encabezadoResponsable}<tr><td>${escapeSiigo(cliente.vendedor)}</td><td>${escapeSiigo(cliente.cliente)}</td><td>${cliente.cantidad_facturas}</td><td>${formatoSiigoNumero(cliente.total_cliente)}</td><td><span class="siigo-semaforo siigo-${estadoSeguimiento}">${estadosCompromisoSiigo[estadoSeguimiento] || (estadoSeguimiento === 'con_seguimiento' ? 'Con seguimiento' : 'Sin seguimiento')}</span></td><td>${seguimiento}</td>${detalle}${vacias}</tr>`;
     }).join('');
     return `<div class="siigo-tabla-con-encabezado-fijo" tabindex="0" role="region" aria-label="Seguimiento de cartera"><table class="data-table"><thead><tr><th>Vendedor</th><th>Cliente</th><th>Cantidad</th><th>Valor total cliente</th><th>Estado del seguimiento</th><th>Seguimiento</th>${encabezados}</tr></thead><tbody>${filas}</tbody></table></div>`;
 }
@@ -941,6 +976,11 @@ function mostrarSeccionVentasSiigo(section) {
 function mostrarInformeSiigo(informe) {
     const panels = window._siigoPanels;
     if (!panels) return;
+    if (panels.vencidas) {
+        panels.vencidas.dataset.origen = 'ventas-informes';
+        const volver = panels.vencidas.querySelector('[data-vencidas-informes]');
+        if (volver) volver.textContent = 'Regresar a informes';
+    }
     mostrarFiltrosVencidasSiigo();
     actualizarModoCarteraSiigo(['cartera', 'vencidas'].includes(informe));
     document.body.classList.toggle('body-siigo-vencidas-activo', informe === 'vencidas');

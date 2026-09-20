@@ -633,6 +633,13 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     padding-left: 18px;
 }
 
+.siigo-responsable-fila th {
+    background: #e2e8f0;
+    color: #0f172a;
+    text-align: left;
+    font-weight: 700;
+}
+
 .siigo-estado-cuenta summary {
     cursor: pointer;
     font-weight: 700;

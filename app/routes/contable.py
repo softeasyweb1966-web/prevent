@@ -71,13 +71,17 @@ def _comprobantes_visibles(query=None):
 @login_required
 def filtros_clientes():
     _requiere_ventas()
-    clientes = clientes_visibles().all()
-    vendedores = {c.vendedor_id: c.vendedor.nombre for c in clientes if c.vendedor}
-    contactos = {p.id: {'id': p.id, 'nombre': p.nombre, 'vendedor_id': p.vendedor_id}
-                 for c in clientes for p in c.contactos}
+    from app.models import ContactoCliente, clientes_contactos
+    visibles = clientes_visibles().with_entities(ClienteComercial.id).subquery()
+    vendedores = db.session.query(Vendedor.id, Vendedor.nombre).join(
+        ClienteComercial, ClienteComercial.vendedor_id == Vendedor.id,
+    ).join(visibles, visibles.c.id == ClienteComercial.id).distinct().order_by(Vendedor.nombre.asc()).all()
+    contactos = db.session.query(ContactoCliente.id, ContactoCliente.nombre, ContactoCliente.vendedor_id).join(
+        clientes_contactos, clientes_contactos.c.contacto_id == ContactoCliente.id,
+    ).join(visibles, visibles.c.id == clientes_contactos.c.cliente_id).distinct().order_by(ContactoCliente.nombre.asc()).all()
     return jsonify(es_administrador=es_administrador(),
-                   vendedores=[{'id': pk, 'nombre': nombre} for pk, nombre in sorted(vendedores.items(), key=lambda item: item[1])],
-                   contactos=sorted(contactos.values(), key=lambda p: p['nombre']))
+                   vendedores=[{'id': pk, 'nombre': nombre} for pk, nombre in vendedores],
+                   contactos=[{'id': pk, 'nombre': nombre, 'vendedor_id': vendedor_id} for pk, nombre, vendedor_id in contactos])
 
 
 TIPOS_COMPROBANTE_PERMITIDOS = {'FV', 'RC', 'NC', 'ND', 'AC'}

@@ -1,0 +1,15 @@
+1. Mejorar presentación
+2. No está cargando vendedores o se demora mucho en cargarlos
+3. No regresa al menú principal
+4. No pude verificar si agrupa la cartera por Responsable
+5. En el estado de cuenta no muestra el total
+6. Necesito manejar estos estados del seguimiento a cartera:
+6.1 COLOR GRIS Sin Gestión
+6.2 COLOR ROJO No localizado
+6.3 COLOR AMARILLO En proceso
+6.4 COLOR VERDE Con compromiso
+7. Generar alertas de los compromisos
+8. Este módulo debe verificar el ROLL del usuario si es Vendedor solo ve los clientes de él, si es administrador puede verlo todo
+9. En la gestión de Cartera deben aparecer los estados para que la persona que hace el seguimiento escoja uno (obligatorio), si el estado escogido es Con Compromiso , pido fecha y valor compromiso, debo permitir varias fechas de pago y se debe verificar que el compromiso se haga contra el valor de la cartera total. Sino lo hace contra el total la persona que hace el seguimiento debe explicar que se hace con el excedente, en este caso cabe un color naranja para este compromiso ya que es parcial
+10. Crear un chat interno que deje huella si el usuario administrador solicita información al vendedor de algún cliente, o si el vendedor solicita permiso para hacer un acuerdo.
+  
