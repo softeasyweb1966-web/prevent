@@ -465,12 +465,14 @@ function nombreVendedorCarteraSiigo(panel) {
 }
 
 function aplicarFiltroVendedorCarteraInicio(panel) {
-    const vendedorSelect = panel.querySelector('form')?.elements?.namedItem('vendedor_id');
-    if (vendedorSelect) {
-        vendedorSelect.value = panel._filtroVendedorCartera || '';
-        vendedorSelect.dispatchEvent(new Event('change'));
-        // Ya se eligió en la pantalla de inicio; aquí solo se muestra, no se repite el selector.
-        vendedorSelect.closest('label')?.setAttribute('hidden', '');
+    const form = panel.querySelector('form');
+    if (form?._aplicarVendedorCarteraSiigo) {
+        form._aplicarVendedorCarteraSiigo(panel._filtroVendedorCartera);
+    } else if (form) {
+        // El fetch de vendedores/contactos de este formulario aún no responde; se reintenta al terminar.
+        const vendedorSelect = form.elements?.namedItem('vendedor_id');
+        if (vendedorSelect) vendedorSelect.value = panel._filtroVendedorCartera || '';
+        window.setTimeout(() => form._aplicarVendedorCarteraSiigo?.(panel._filtroVendedorCartera), 300);
     }
     const titulo = panel.querySelector('[data-vencidas-filtros] h3');
     if (titulo) {
@@ -1247,17 +1249,21 @@ async function agregarFiltrosMaestroSiigo(form) {
             labelV.hidden = true;
         }
         data.vendedores.forEach(v=>vendedor.add(new Option(v.nombre, v.id)));
-        // En el flujo de Gestión de Cartera el vendedor ya se eligió antes; se aplica aquí para que Contacto quede filtrado desde el inicio.
-        const panelCartera = form.closest('#siigoFacturasVencidasPanel');
-        if (panelCartera?.dataset.origen === 'comercial-cartera') {
-            vendedor.value = panelCartera._filtroVendedorCartera || '';
-            labelV.hidden = true;
-        }
         const cargarContactos = () => {
             contacto.replaceChildren(new Option('Todos los disponibles',''));
             data.contactos.filter(p=>!vendedor.value || String(p.vendedor_id)===vendedor.value || (vendedor.value==='sin_asignar' && !p.vendedor_id)).forEach(p=>contacto.add(new Option(p.nombre,p.id)));
         };
         vendedor.addEventListener('change', cargarContactos); cargarContactos();
+        // Expuesto para que la pantalla de Gestión de Cartera pueda re-filtrar Contacto sin depender del evento 'change'.
+        form._aplicarVendedorCarteraSiigo = valor => {
+            vendedor.value = valor || '';
+            labelV.hidden = true;
+            cargarContactos();
+        };
+        const panelCartera = form.closest('#siigoFacturasVencidasPanel');
+        if (panelCartera?.dataset.origen === 'comercial-cartera') {
+            form._aplicarVendedorCarteraSiigo(panelCartera._filtroVendedorCartera);
+        }
     } catch(error) {
         const aviso=document.createElement('span'); aviso.textContent=error.message; box.append(aviso);
     }
