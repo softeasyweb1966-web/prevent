@@ -479,8 +479,8 @@ body.body-siigo-vencidas-activo #siigoInformesNavegacion {
 
 .siigo-vencidas-filtros {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    align-items: end;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    align-items: start;
     gap: 16px;
     max-width: 1100px;
     margin-top: 20px;
