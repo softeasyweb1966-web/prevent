@@ -631,11 +631,19 @@ function rangoMesCarteraSiigo(valorMes) {
 }
 
 function totalesResumenCarteraSiigo(data) {
+    if (data?.totales) {
+        return {
+            ventas: Number(data.totales.ventas || 0),
+            recaudado: Number(data.totales.recaudado || 0),
+            sinRecaudo: Number(data.totales.sin_recaudo || data.totales.sinRecaudo || 0),
+            cartera: Number(data.totales.cartera || 0),
+        };
+    }
     const periodos = data?.periodos || [];
     const ventas = periodos.reduce((suma, item) => suma + Number(item.facturado || 0), 0);
     const recaudado = periodos.reduce((suma, item) => suma + Number(item.recaudado || 0), 0);
     const cartera = (data?.cartera_clientes || []).reduce((suma, item) => suma + Number(item.saldo || 0), 0);
-    return { ventas, recaudado, sinRecaudo: Math.max(ventas - recaudado, 0), cartera };
+    return { ventas, recaudado, sinRecaudo: cartera, cartera };
 }
 
 function renderResumenInicioCarteraSiigo(acumuladoData, mesData, mes) {

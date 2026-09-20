@@ -1587,6 +1587,13 @@ def cartera_dinamica():
             })
         analisis_pagos.sort(key=lambda item: item['promedio_dias'], reverse=True)
 
+        totales = {
+            'ventas': sum((item['facturado'] for item in periodos.values()), Decimal('0')),
+            'recaudado': sum((item['recaudado'] for item in periodos.values()), Decimal('0')),
+            'sin_recaudo': sum((item['saldo'] for item in cartera_por_cliente.values()), Decimal('0')),
+            'cartera': sum((item['saldo'] for item in cartera_por_cliente.values()), Decimal('0')),
+        }
+
         def serializar(items):
             return [{clave: (float(valor) if isinstance(valor, Decimal) else valor) for clave, valor in item.items()} for item in items]
 
@@ -1655,6 +1662,7 @@ def cartera_dinamica():
             'cliente': cliente or None,
             'periodos': serializar(sorted(periodos.values(), key=lambda item: item['periodo'])),
             'cartera_clientes': serializar_cartera_clientes(),
+            'totales': {clave: float(valor) for clave, valor in totales.items()},
             'pagos_clientes': analisis_pagos,
             'pagos_sin_factura': pagos_sin_factura,
             'ajustes_ac_sin_factura': ajustes_ac_sin_factura,
