@@ -983,7 +983,9 @@ def ventas_mensuales():
 
 
 def _nit_cartera(value):
-    return re.sub(r'[.\s]', '', _texto(value).split('-', 1)[0]).upper()
+    base = _texto(value).split('-', 1)[0].strip().upper()
+    base = re.sub(r'([.,]0+)$', '', base)
+    return re.sub(r'[^0-9A-Z]', '', base)
 
 
 def _estado_compromiso(registro, hoy=None):

@@ -201,6 +201,25 @@ class CarteraACTest(unittest.TestCase):
             self.assertEqual(data['totales_nuevos']['cartera'], saldo)
             self.assertEqual(data['totales_nuevos']['facturacion'], 1000)
 
+    def test_comparativo_normaliza_identificacion_decimal_texto(self):
+        self.documento('FV', 1, '2024-09-01', [{
+            'identificacion': '900532173.0',
+            'nombre_tercero': 'SORING CLINICA',
+            'debito': Decimal('100'),
+        }])
+        self.documento('FV', 2, '2026-03-01', [{
+            'identificacion': '900532173',
+            'nombre_tercero': 'SORING CLINICA',
+            'debito': Decimal('200'),
+        }])
+        with self.app.test_request_context(query_string={
+            'periodo_a_desde': '2024-01-01', 'periodo_a_hasta': '2025-12-31',
+            'periodo_b_desde': '2026-01-01', 'periodo_b_hasta': '2026-09-15',
+        }):
+            comparativo = contable.comparativo_clientes.__wrapped__().get_json()
+        self.assertEqual(comparativo['nuevos'], [])
+        self.assertEqual(comparativo['no_volvieron'], [])
+
     def test_nc_rc_ac_cancelan_factura_y_reversos_reabren_saldo_al_corte(self):
         self.factura_y_recibo()
         self.documento('AC', 1, '2026-02-05', [{'credito': Decimal('30')}])
