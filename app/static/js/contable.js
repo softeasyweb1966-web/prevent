@@ -22,6 +22,10 @@ function actualizarModoCarteraSiigo(ocultarMenu) {
     });
 }
 
+function esVendedorCarteraSiigo() {
+    return typeof currentUser !== 'undefined' && Boolean(currentUser?.es_vendedor);
+}
+
 function mostrarVigenciaComprobantes(vigencia) {
     const panel = document.getElementById('siigoVigenciaComprobantes');
     if (!panel) return;
@@ -468,7 +472,9 @@ function reorganizarInicioCarteraSiigo(panel) {
     const mesActual = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit' }).format(new Date());
     const filtros = document.createElement('div');
     filtros.className = 'siigo-cartera-filtros';
-    filtros.innerHTML = `<div class="form-group"><label for="siigoCarteraMesResumen">Mes</label><input id="siigoCarteraMesResumen" type="month" value="${mesActual}" data-cartera-mes></div>`;
+    filtros.innerHTML = esVendedorCarteraSiigo()
+        ? ''
+        : `<div class="form-group"><label for="siigoCarteraMesResumen">Mes</label><input id="siigoCarteraMesResumen" type="month" value="${mesActual}" data-cartera-mes></div>`;
     if (vendedorCaja) filtros.insertBefore(vendedorCaja, filtros.firstChild);
     if (acciones) {
         acciones.classList.add('siigo-cartera-acciones');
@@ -606,24 +612,28 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
         if (panel._filtroVendedorCartera) params.set('vendedor_id', panel._filtroVendedorCartera);
         const resumenParams = new URLSearchParams({ fecha_corte: fecha });
         if (panel._filtroVendedorCartera) resumenParams.set('vendedor_id', panel._filtroVendedorCartera);
-        const mes = panel.querySelector('[data-cartera-mes]')?.value || '';
+        const esVendedor = esVendedorCarteraSiigo();
+        const mes = esVendedor ? '' : (panel.querySelector('[data-cartera-mes]')?.value || '');
         const rangoMes = rangoMesCarteraSiigo(mes);
         const mesParams = new URLSearchParams({ fecha_corte: rangoMes.hasta, desde: rangoMes.desde, hasta: rangoMes.hasta });
         if (panel._filtroVendedorCartera) mesParams.set('vendedor_id', panel._filtroVendedorCartera);
-        const [response, resumenResponse, mesResponse] = await Promise.all([
+        const consultas = [
             fetch(`/api/contable/cartera-dinamica?${params}`, { credentials: 'include' }),
             fetch(`/api/contable/cartera-dinamica?${resumenParams}`, { credentials: 'include' }),
-            fetch(`/api/contable/cartera-dinamica?${mesParams}`, { credentials: 'include' }),
-        ]);
+        ];
+        if (!esVendedor) {
+            consultas.push(fetch(`/api/contable/cartera-dinamica?${mesParams}`, { credentials: 'include' }));
+        }
+        const [response, resumenResponse, mesResponse] = await Promise.all(consultas);
         const data = await leerRespuestaSiigo(response);
         const resumenData = await leerRespuestaSiigo(resumenResponse);
-        const mesData = await leerRespuestaSiigo(mesResponse);
+        const mesData = mesResponse ? await leerRespuestaSiigo(mesResponse) : null;
         if (!response.ok) throw new Error(data.error || 'No fue posible calcular las alertas.');
         if (!resumenResponse.ok) throw new Error(resumenData.error || 'No fue posible calcular el resumen acumulado.');
-        if (!mesResponse.ok) throw new Error(mesData.error || 'No fue posible calcular el resumen mensual.');
+        if (mesResponse && !mesResponse.ok) throw new Error(mesData.error || 'No fue posible calcular el resumen mensual.');
         panel._datosVencidas = data;
         panel._resumenInicioCartera = { acumulado: resumenData, mes: mesData, mesSeleccionado: mes };
-        alertas.innerHTML = ordenEstadosGestionCarteraSiigo.map(estadoClave => `<button type="button" class="siigo-alerta-card siigo-${estadoClave}" data-alerta-inicio="${estadoClave}"><span>${estadosGestionCarteraSiigo[estadoClave]}:</span><strong>${(data.clientes || []).filter(cliente => estadoClienteCarteraSiigo(cliente) === estadoClave).length}</strong></button>`).join('');
+        alertas.innerHTML = esVendedor ? '' : ordenEstadosGestionCarteraSiigo.map(estadoClave => `<button type="button" class="siigo-alerta-card siigo-${estadoClave}" data-alerta-inicio="${estadoClave}"><span>${estadosGestionCarteraSiigo[estadoClave]}:</span><strong>${(data.clientes || []).filter(cliente => estadoClienteCarteraSiigo(cliente) === estadoClave).length}</strong></button>`).join('');
         if (resumen) resumen.innerHTML = renderResumenInicioCarteraSiigo(resumenData, mesData, mes);
         resumen?.querySelectorAll('[data-cartera-resumen-detalle]').forEach(boton => {
             boton.addEventListener('click', () => abrirDetalleResumenInicioCarteraSiigo(panel, boton.dataset.carteraResumenDetalle));
@@ -669,6 +679,9 @@ function totalesResumenCarteraSiigo(data) {
 
 function renderResumenInicioCarteraSiigo(acumuladoData, mesData, mes) {
     const acumulado = totalesResumenCarteraSiigo(acumuladoData);
+    if (esVendedorCarteraSiigo()) {
+        return `<section class="siigo-cartera-resumen-bloque"><div class="siigo-cartera-resumen-header"><h4>Total cartera</h4></div><dl><div><dt>Total cartera</dt><dd>${formatoSiigoNumero(acumulado.cartera)}</dd></div></dl></section>`;
+    }
     const mensual = totalesResumenCarteraSiigo(mesData);
     const etiquetaMes = mes ? new Date(`${mes}-01T00:00:00`).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' }) : 'Mes seleccionado';
     const bloque = (titulo, datos, tipo) => `<section class="siigo-cartera-resumen-bloque"><div class="siigo-cartera-resumen-header"><h4>${escapeSiigo(titulo)}</h4><button type="button" class="btn btn-secondary" data-cartera-resumen-detalle="${tipo}">Ver detalle</button></div><dl><div><dt>Total ventas</dt><dd>${formatoSiigoNumero(datos.ventas)}</dd></div><div><dt>Total recaudado</dt><dd>${formatoSiigoNumero(datos.recaudado)}</dd></div><div><dt>Total sin recaudo</dt><dd>${formatoSiigoNumero(datos.sinRecaudo)}</dd></div><div><dt>Cartera a corte</dt><dd>${formatoSiigoNumero(datos.cartera)}</dd></div></dl></section>`;
