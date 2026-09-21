@@ -675,22 +675,36 @@ def comparativo_clientes():
                 SiigoMovimiento.identificacion.isnot(None),
                 SiigoMovimiento.codigo_contable == '13050501',
             ).group_by(SiigoMovimiento.identificacion).all()
-            return {
-                identificacion: {
+            resultado = {}
+            for identificacion, nombre, facturas, valor in rows:
+                clave = _nit_cartera(identificacion)
+                if not clave:
+                    continue
+                item = resultado.setdefault(clave, {
+                    'clave': clave,
                     'identificacion': identificacion,
                     'nombre': nombre or '',
-                    'facturas': int(facturas),
-                    'facturacion': valor or Decimal('0'),
-                }
-                for identificacion, nombre, facturas, valor in rows
-            }
+                    'facturas': 0,
+                    'facturacion': Decimal('0'),
+                    'identificaciones_raw': set(),
+                })
+                item['facturas'] += int(facturas)
+                item['facturacion'] += valor or Decimal('0')
+                item['identificaciones_raw'].add(identificacion)
+                if nombre and (not item['nombre'] or len(nombre) > len(item['nombre'])):
+                    item['nombre'] = nombre
+            return resultado
 
         periodo_a = terceros_del_periodo(periodo_a_desde, periodo_a_hasta)
         periodo_b = terceros_del_periodo(periodo_b_desde, periodo_b_hasta)
         nuevos = sorted((periodo_b[key] for key in periodo_b.keys() - periodo_a.keys()), key=lambda item: item['nombre'])
         no_volvieron = sorted((periodo_a[key] for key in periodo_a.keys() - periodo_b.keys()), key=lambda item: item['nombre'])
 
-        identificaciones = list((periodo_b.keys() - periodo_a.keys()) | (periodo_a.keys() - periodo_b.keys()))
+        identificaciones = sorted({
+            identificacion
+            for item in [*nuevos, *no_volvieron]
+            for identificacion in item.get('identificaciones_raw', set())
+        })
         facturas_cartera = {}
         pagos_sin_factura = {}
         if identificaciones:
@@ -709,6 +723,7 @@ def comparativo_clientes():
                 referencia = referencia or f'FV-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}'
                 factura = facturas_cartera.setdefault(referencia, {
                     'identificacion': movimiento.identificacion,
+                    'clave': _nit_cartera(movimiento.identificacion),
                     'valor': Decimal('0'),
                     'pagado': Decimal('0'),
                 })
@@ -717,43 +732,66 @@ def comparativo_clientes():
             for comprobante, movimiento, referencia, valor in _cancelaciones_cartera(fecha_corte_cartera, identificaciones):
                 factura = facturas_cartera.get(referencia)
                 if not _mismo_tercero_cartera(factura, movimiento):
-                    pagos_sin_factura[movimiento.identificacion] = pagos_sin_factura.get(movimiento.identificacion, Decimal('0')) + valor
+                    clave_pago = _nit_cartera(movimiento.identificacion)
+                    pagos_sin_factura[clave_pago] = pagos_sin_factura.get(clave_pago, Decimal('0')) + valor
                 else:
                     factura['pagado'] += valor
 
-        def totales(items):
-            identificaciones_grupo = {item['identificacion'] for item in items}
+        def cartera_cliente(item):
             cartera = Decimal('0')
-            pagos_pendientes = sum((pagos_sin_factura.get(identificacion, Decimal('0')) for identificacion in identificaciones_grupo), Decimal('0'))
+            pagos_pendientes = pagos_sin_factura.get(item['clave'], Decimal('0'))
             for factura in facturas_cartera.values():
-                if factura['identificacion'] not in identificaciones_grupo:
+                if factura['clave'] != item['clave']:
                     continue
                 saldo = factura['valor'] - factura['pagado']
                 cartera += max(saldo, Decimal('0'))
                 pagos_pendientes += max(-saldo, Decimal('0'))
+            return cartera, pagos_pendientes
+
+        for item in [*nuevos, *no_volvieron]:
+            cartera_item, pagos_pendientes_item = cartera_cliente(item)
+            item['cartera'] = cartera_item
+            item['pagos_pendientes_conciliar'] = pagos_pendientes_item
+
+        def totales(items):
             return {
                 'facturacion': float(sum((item['facturacion'] for item in items), Decimal('0'))),
-                'cartera': float(cartera),
-                'pagos_pendientes_conciliar': float(pagos_pendientes),
+                'cartera': float(sum((item.get('cartera', Decimal('0')) for item in items), Decimal('0'))),
+                'pagos_pendientes_conciliar': float(sum((item.get('pagos_pendientes_conciliar', Decimal('0')) for item in items), Decimal('0'))),
+            }
+
+        def serializar_item(item):
+            return {
+                'identificacion': item['identificacion'],
+                'nombre': item['nombre'],
+                'facturas': item['facturas'],
+                'facturacion': float(item['facturacion']),
+                'cartera': float(item.get('cartera', Decimal('0'))),
+                'pagos_pendientes_conciliar': float(item.get('pagos_pendientes_conciliar', Decimal('0'))),
             }
 
         data = {
             'clientes_periodo_a': len(periodo_a),
             'clientes_periodo_b': len(periodo_b),
-            'nuevos': [{**item, 'facturacion': float(item['facturacion'])} for item in nuevos],
-            'no_volvieron': [{**item, 'facturacion': float(item['facturacion'])} for item in no_volvieron],
+            'nuevos': [serializar_item(item) for item in nuevos],
+            'no_volvieron': [serializar_item(item) for item in no_volvieron],
             'totales_nuevos': totales(nuevos),
             'totales_no_volvieron': totales(no_volvieron),
             'fecha_cartera': fecha_corte_cartera.isoformat(),
         }
         if request.args.get('formato') == 'xlsx':
             def filas_clientes(items):
-                return [[item['identificacion'], item['nombre'], item['facturas'], item.get('facturacion', 0)] for item in items]
+                return [[item['identificacion'], item['nombre'], item['facturas'], item.get('facturacion', 0),
+                         item.get('cartera', 0), item.get('pagos_pendientes_conciliar', 0)] for item in items]
+            no_volvieron_con_deuda = [item for item in data['no_volvieron'] if item.get('cartera', 0) > 0]
+            no_volvieron_sin_deuda = [item for item in data['no_volvieron'] if item.get('cartera', 0) <= 0]
             resumen = [
                 ['Clientes periodo 1', data['clientes_periodo_a']],
                 ['Clientes periodo 2', data['clientes_periodo_b']],
                 ['Clientes nuevos', len(data['nuevos'])],
                 ['Clientes que no volvieron', len(data['no_volvieron'])],
+                ['No volvieron con deuda', len(no_volvieron_con_deuda)],
+                ['No volvieron sin deuda', len(no_volvieron_sin_deuda)],
                 ['Fecha cartera', data['fecha_cartera']],
                 ['Facturacion nuevos', data['totales_nuevos']['facturacion']],
                 ['Cartera nuevos', data['totales_nuevos']['cartera']],
@@ -766,8 +804,9 @@ def comparativo_clientes():
                 'comparativo_clientes.xlsx',
                 [
                     ('Resumen', ['Concepto', 'Valor'], resumen),
-                    ('Clientes nuevos', ['Identificacion', 'Cliente', 'Facturas', 'Facturacion'], filas_clientes(data['nuevos'])),
-                    ('No volvieron', ['Identificacion', 'Cliente', 'Facturas', 'Facturacion'], filas_clientes(data['no_volvieron'])),
+                    ('Clientes nuevos', ['Identificacion', 'Cliente', 'Facturas', 'Facturacion', 'Cartera', 'Abonos por conciliar'], filas_clientes(data['nuevos'])),
+                    ('No volvieron con deuda', ['Identificacion', 'Cliente', 'Facturas', 'Facturacion', 'Cartera', 'Abonos por conciliar'], filas_clientes(no_volvieron_con_deuda)),
+                    ('No volvieron sin deuda', ['Identificacion', 'Cliente', 'Facturas', 'Facturacion', 'Cartera', 'Abonos por conciliar'], filas_clientes(no_volvieron_sin_deuda)),
                 ],
             )
         return jsonify(data)
