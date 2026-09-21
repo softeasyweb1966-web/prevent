@@ -633,7 +633,7 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
         if (mesResponse && !mesResponse.ok) throw new Error(mesData.error || 'No fue posible calcular el resumen mensual.');
         panel._datosVencidas = data;
         panel._resumenInicioCartera = { acumulado: resumenData, mes: mesData, mesSeleccionado: mes };
-        alertas.innerHTML = esVendedor ? '' : ordenEstadosGestionCarteraSiigo.map(estadoClave => `<button type="button" class="siigo-alerta-card siigo-${estadoClave}" data-alerta-inicio="${estadoClave}"><span>${estadosGestionCarteraSiigo[estadoClave]}:</span><strong>${(data.clientes || []).filter(cliente => estadoClienteCarteraSiigo(cliente) === estadoClave).length}</strong></button>`).join('');
+        alertas.innerHTML = ordenEstadosGestionCarteraSiigo.map(estadoClave => `<button type="button" class="siigo-alerta-card siigo-${estadoClave}" data-alerta-inicio="${estadoClave}"><span>${estadosGestionCarteraSiigo[estadoClave]}:</span><strong>${(data.clientes || []).filter(cliente => estadoClienteCarteraSiigo(cliente) === estadoClave).length}</strong></button>`).join('');
         if (resumen) resumen.innerHTML = renderResumenInicioCarteraSiigo(resumenData, mesData, mes);
         resumen?.querySelectorAll('[data-cartera-resumen-detalle]').forEach(boton => {
             boton.addEventListener('click', () => abrirDetalleResumenInicioCarteraSiigo(panel, boton.dataset.carteraResumenDetalle));
