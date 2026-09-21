@@ -1460,6 +1460,18 @@ def _clientes_facturas_vencidas(cartera_clientes, vendedores, estado_facturas='t
         raise ValueError('Seleccione Todos, Solo vencidos o Por vencer.')
     resultado = []
     for cliente in cartera_clientes:
+        recibos_caja = []
+        for factura_cliente in cliente['facturas']:
+            for movimiento in factura_cliente.get('movimientos', []):
+                if _texto(movimiento.get('comprobante')).startswith('RC-'):
+                    valor = Decimal(str(movimiento.get('credito', 0))) - Decimal(str(movimiento.get('debito', 0)))
+                    if valor > 0:
+                        recibos_caja.append({
+                            'recibo': movimiento.get('comprobante'),
+                            'fecha': movimiento.get('fecha'),
+                            'factura': factura_cliente.get('referencia'),
+                            'valor': valor,
+                        })
         facturas = sorted(
             (factura for factura in cliente['facturas']
              if factura['saldo'] > 0
@@ -1478,6 +1490,7 @@ def _clientes_facturas_vencidas(cartera_clientes, vendedores, estado_facturas='t
             'total_cliente': sum((factura['saldo'] for factura in facturas), Decimal('0')),
             'total_vencido': sum((f['saldo'] for f in facturas if f['dias_vencido'] > 0), Decimal('0')),
             'facturas': facturas,
+            'recibos_caja': sorted(recibos_caja, key=lambda item: (item['fecha'] or '', item['recibo'] or '', item['factura'] or '')),
         })
     resultado.sort(key=lambda cliente: (
         -cliente['cantidad_facturas'],

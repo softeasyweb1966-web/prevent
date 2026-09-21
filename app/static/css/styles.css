@@ -756,6 +756,14 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     padding: 10px 20px;
 }
 
+.siigo-recibos-caja {
+    margin-top: 16px;
+}
+
+.siigo-recibos-caja h4 {
+    margin: 0 0 8px;
+}
+
 .siigo-seguimiento-dialogo select[multiple] {
     min-height: 130px;
 }
