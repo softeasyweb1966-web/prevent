@@ -786,8 +786,12 @@ def comparativo_clientes():
             no_volvieron_con_deuda = [item for item in data['no_volvieron'] if item.get('cartera', 0) > 0]
             no_volvieron_sin_deuda = [item for item in data['no_volvieron'] if item.get('cartera', 0) <= 0]
             resumen = [
-                ['Clientes periodo 1', data['clientes_periodo_a']],
-                ['Clientes periodo 2', data['clientes_periodo_b']],
+                ['Periodo 1 anterior desde', periodo_a_desde.isoformat()],
+                ['Periodo 1 anterior hasta', periodo_a_hasta.isoformat()],
+                ['Periodo 2 actual desde', periodo_b_desde.isoformat()],
+                ['Periodo 2 actual hasta', periodo_b_hasta.isoformat()],
+                ['Clientes periodo 1 anterior', data['clientes_periodo_a']],
+                ['Clientes periodo 2 actual', data['clientes_periodo_b']],
                 ['Clientes nuevos', len(data['nuevos'])],
                 ['Clientes que no volvieron', len(data['no_volvieron'])],
                 ['No volvieron con deuda', len(no_volvieron_con_deuda)],
