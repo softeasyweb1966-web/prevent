@@ -966,6 +966,11 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     font-weight: 700;
 }
 
+.siigo-alerta-card.siigo-proximo-hoy {
+    color: #1d4ed8;
+    background: #eff6ff;
+}
+
 .siigo-cartera-resumen {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));

@@ -14,6 +14,29 @@ function formatoSiigoFecha(value) {
     return `${day}/${month}/${year}`;
 }
 
+function fechaCorteAnualCarteraSiigo() {
+    const anio = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota', year: 'numeric' }).format(new Date());
+    return `${anio}-12-31`;
+}
+
+function fechaHoyCarteraSiigo() {
+    return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
+}
+
+function formatoSiigoFechaHora(value) {
+    if (!value) return '';
+    const fecha = new Date(value);
+    if (Number.isNaN(fecha.getTime())) return formatoSiigoFecha(String(value).slice(0, 10));
+    return fecha.toLocaleString('es-CO', {
+        timeZone: 'America/Bogota',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
 function actualizarModoCarteraSiigo(ocultarMenu) {
     document.body.classList.toggle('body-siigo-cartera-focus', ocultarMenu);
     document.querySelectorAll('#siigoAlternarMenuCartera, #siigoAlternarMenuVencidas').forEach(boton => {
@@ -407,10 +430,12 @@ function crearPanelFacturasVencidasSiigo() {
     panel = document.createElement('section');
     panel.id = 'siigoFacturasVencidasPanel';
     panel.className = 'recent-section';
-    const hoy = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
+    const hoy = fechaCorteAnualCarteraSiigo();
     panel.innerHTML = `<div data-vencidas-filtros><h3>Facturas vencidas y por vencer por cliente</h3><form class="siigo-vencidas-filtros"><div class="form-group"><label for="siigoVencidasCorte">Fecha de corte</label><input id="siigoVencidasCorte" type="date" required value="${hoy}"></div><div class="form-group"><label for="siigoVencidasCliente">Cliente o identificación (opcional)</label><input id="siigoVencidasCliente" name="cliente" type="text"></div><div class="form-group"><label for="siigoEstadoFacturas">Facturas</label><select id="siigoEstadoFacturas" name="estado_facturas"><option value="todos">Todos</option><option value="vencidos">Solo vencidos</option><option value="por_vencer">Por vencer</option></select><small>Por vencer incluye las que vencen hoy. Cantidad y total corresponden al filtro.</small></div><button class="btn btn-primary" type="submit">Generar informe</button></form><p data-vencidas-estado role="status"></p></div><div class="siigo-vencidas-visor" hidden><header class="siigo-vencidas-cabecera"><div><h2 tabindex="-1">Facturas vencidas y por vencer por cliente</h2><p data-vencidas-meta></p><p data-alertas-cartera role="status" aria-live="polite"></p></div><button type="button" class="btn btn-secondary" data-vencidas-regresar>Regresar</button></header><div class="table-container siigo-vencidas-datos"></div><footer class="siigo-vencidas-pie"><div class="siigo-vencidas-barra" tabindex="0" role="region" aria-label="Desplazamiento horizontal de las facturas"><div></div></div><div class="siigo-vencidas-acciones"><button class="btn btn-primary" type="button" data-vencidas-generar>Generar informe</button><button class="btn btn-secondary" type="button" data-siigo-exportar-vencidas>Descargar Excel</button><button class="btn btn-secondary" type="button" id="siigoAlternarMenuVencidas">Mostrar menú lateral</button><button class="btn btn-secondary" type="button" data-vencidas-actualizar>Actualizar comprobantes</button></div><p id="siigoVencidasCargaResultado" role="status" aria-live="polite"></p></footer></div>`;
     panel.querySelector('[data-vencidas-filtros] h3').textContent = 'Seguimiento de cartera';
     panel.querySelector('.siigo-vencidas-cabecera h2').textContent = 'Seguimiento de cartera';
+    panel.querySelector('#siigoVencidasCorte')?.closest('.form-group')?.remove();
+    panel.querySelector('form')?.insertAdjacentHTML('afterbegin', `<input id="siigoVencidasCorte" name="fecha_corte" type="hidden" value="${fechaCorteAnualCarteraSiigo()}">`);
     const clienteInput = panel.querySelector('#siigoVencidasCliente');
     panel.querySelector('label[for="siigoVencidasCliente"]').textContent = 'Búsqueda de cliente o identificación';
     clienteInput.type = 'search';
@@ -500,9 +525,11 @@ function asegurarInicioGestionCarteraSiigo(panel) {
     reorganizarInicioCarteraSiigo(panel);
     panel.querySelector('[data-ver-cartera]').addEventListener('click', () => {
         panel._filtroAlertaCartera = '';
+        panel._filtroProximoHoyCartera = false;
         panel.querySelector('[data-cartera-inicio]').hidden = true;
         mostrarFiltrosVencidasSiigo(true);
         aplicarFiltroVendedorCarteraInicio(panel);
+        panel.querySelector('form')?.requestSubmit();
     });
     panel.querySelector('[data-cartera-volver]').addEventListener('click', regresarMenuPrincipalCarteraSiigo);
     panel.querySelector('[data-cartera-mes]')?.addEventListener('change', () => cargarAlertasInicioCarteraSiigo(panel));
@@ -656,6 +683,8 @@ function aplicarFiltroVendedorCarteraInicio(panel) {
 }
 
 function mostrarInicioGestionCarteraSiigo(panel) {
+    panel._filtroAlertaCartera = '';
+    panel._filtroProximoHoyCartera = false;
     mostrarFiltrosVencidasSiigo(false);
     panel.querySelector('[data-cartera-inicio]').hidden = false;
     panel.querySelector('[data-vencidas-filtros]').hidden = true;
@@ -666,7 +695,7 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
     const estado = panel.querySelector('[data-cartera-estado]');
     const alertas = panel.querySelector('[data-cartera-alertas]');
     const resumen = panel.querySelector('[data-cartera-resumen]');
-    const fecha = panel.querySelector('#siigoVencidasCorte')?.value || new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
+    const fecha = panel.querySelector('#siigoVencidasCorte')?.value || fechaCorteAnualCarteraSiigo();
     estado.textContent = 'Calculando alertas...';
     try {
         const params = new URLSearchParams({ informe: 'vencidas', fecha_corte: fecha, estado_facturas: 'todos' });
@@ -694,7 +723,9 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
         if (mesResponse && !mesResponse.ok) throw new Error(mesData.error || 'No fue posible calcular el resumen mensual.');
         panel._datosVencidas = data;
         panel._resumenInicioCartera = { acumulado: resumenData, mes: mesData, mesSeleccionado: mes };
-        alertas.innerHTML = ordenEstadosGestionCarteraSiigo.map(estadoClave => `<button type="button" class="siigo-alerta-card siigo-${estadoClave}" data-alerta-inicio="${estadoClave}"><span>${estadosGestionCarteraSiigo[estadoClave]}:</span><strong>${(data.clientes || []).filter(cliente => estadoClienteCarteraSiigo(cliente) === estadoClave).length}</strong></button>`).join('');
+        const hoy = fechaHoyCarteraSiigo();
+        const proximosHoy = (data.clientes || []).filter(cliente => (cliente.seguimientos || []).some(item => item.proximo_seguimiento === hoy)).length;
+        alertas.innerHTML = `${ordenEstadosGestionCarteraSiigo.map(estadoClave => `<button type="button" class="siigo-alerta-card siigo-${estadoClave}" data-alerta-inicio="${estadoClave}"><span>${estadosGestionCarteraSiigo[estadoClave]}:</span><strong>${(data.clientes || []).filter(cliente => estadoClienteCarteraSiigo(cliente) === estadoClave).length}</strong></button>`).join('')}<button type="button" class="siigo-alerta-card siigo-proximo-hoy" data-proximo-hoy><span>Próximo seguimiento hoy:</span><strong>${proximosHoy}</strong></button>`;
         if (resumen) resumen.innerHTML = renderResumenInicioCarteraSiigo(resumenData, mesData, mes);
         resumen?.querySelectorAll('[data-cartera-resumen-detalle]').forEach(boton => {
             boton.addEventListener('click', () => abrirDetalleResumenInicioCarteraSiigo(panel, boton.dataset.carteraResumenDetalle));
@@ -702,11 +733,20 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
         alertas.querySelectorAll('[data-alerta-inicio]').forEach(boton => {
             boton.addEventListener('click', () => {
                 panel._filtroAlertaCartera = boton.dataset.alertaInicio;
+                panel._filtroProximoHoyCartera = false;
                 panel.querySelector('[data-cartera-inicio]').hidden = true;
                 mostrarFiltrosVencidasSiigo(true);
                 aplicarFiltroVendedorCarteraInicio(panel);
                 panel.querySelector('form')?.requestSubmit();
             });
+        });
+        alertas.querySelector('[data-proximo-hoy]')?.addEventListener('click', () => {
+            panel._filtroAlertaCartera = '';
+            panel._filtroProximoHoyCartera = true;
+            panel.querySelector('[data-cartera-inicio]').hidden = true;
+            mostrarFiltrosVencidasSiigo(true);
+            aplicarFiltroVendedorCarteraInicio(panel);
+            panel.querySelector('form')?.requestSubmit();
         });
         estado.textContent = '';
     } catch (error) {
@@ -803,7 +843,7 @@ function mostrarFiltrosVencidasSiigo(enfocar = false) {
     if (enfocar) {
         document.body.classList.add('body-siigo-vencidas-activo');
         actualizarModoCarteraSiigo(true);
-        panel.querySelector('#siigoVencidasCorte').focus();
+        (panel.querySelector('#siigoVencidasCliente') || panel.querySelector('[data-vencidas-generar]'))?.focus();
         panel.scrollIntoView({ block: 'start' });
     }
 }
@@ -845,7 +885,7 @@ async function consultarFacturasVencidasSiigo(form) {
     panel._consultaVencidas = controller;
     const visor = panel.querySelector('.siigo-vencidas-visor');
     const estado = panel.querySelector(visor.hidden ? '[data-vencidas-estado]' : '#siigoVencidasCargaResultado');
-    const filtros = { ...valoresFiltrosMaestroSiigo(form), fecha_corte: form.querySelector('input[type="date"]').value, cliente: form.elements.cliente.value.trim(), estado_facturas: form.elements.estado_facturas.value };
+    const filtros = { ...valoresFiltrosMaestroSiigo(form), fecha_corte: form.elements.fecha_corte?.value || fechaCorteAnualCarteraSiigo(), cliente: form.elements.cliente.value.trim(), estado_facturas: form.elements.estado_facturas.value };
     if (panel.dataset.origen === 'comercial-cartera' && panel._filtroVendedorCartera) {
         filtros.vendedor_id = panel._filtroVendedorCartera;
     }
@@ -861,12 +901,15 @@ async function consultarFacturasVencidasSiigo(form) {
         panel._filtrosConsultados = filtros;
         const estadoFacturas = form.elements.estado_facturas.selectedOptions[0].textContent;
         const nombre = filtros.cliente && (data.clientes?.length === 1 ? data.clientes[0].cliente : filtros.cliente);
-        panel.querySelector('[data-vencidas-meta]').textContent = `Fecha de corte: ${formatoSiigoFecha(data.fecha_corte)} | ${estadoFacturas}${nombre ? ` · Cliente: ${nombre}` : ''}`;
+        const filtroExtra = panel._filtroProximoHoyCartera ? ' · Próximo seguimiento hoy' : '';
+        panel.querySelector('[data-vencidas-meta]').textContent = `Fecha de corte: ${formatoSiigoFecha(data.fecha_corte)} | ${estadoFacturas}${nombre ? ` · Cliente: ${nombre}` : ''}${filtroExtra}`;
         const resultado = panel.querySelector('.siigo-vencidas-datos');
         panel._datosVencidas = data;
         const dataTabla = panel._filtroAlertaCartera
             ? { ...data, clientes: (data.clientes || []).map((cliente, indiceOriginal) => ({ ...cliente, _indiceOriginal: indiceOriginal })).filter(cliente => estadoClienteCarteraSiigo(cliente) === panel._filtroAlertaCartera) }
-            : data;
+            : panel._filtroProximoHoyCartera
+                ? { ...data, clientes: (data.clientes || []).map((cliente, indiceOriginal) => ({ ...cliente, _indiceOriginal: indiceOriginal })).filter(cliente => (cliente.seguimientos || []).some(item => item.proximo_seguimiento === fechaHoyCarteraSiigo())) }
+                : data;
         resultado.innerHTML = tablaFacturasVencidasSiigo(dataTabla);
         actualizarAlertasCarteraSiigo(panel);
         resultado.querySelectorAll('[data-siigo-seguimiento]').forEach(boton => {
@@ -918,7 +961,7 @@ function agregarAccionesComunicacionCompromisoSiigo(contenedor, registros, clien
 
 function historialSeguimientoCarteraSiigo(registros, cliente = null) {
     if (!registros.length) return '<p>Este cliente aún no tiene seguimientos registrados.</p>';
-    return registros.map(item => `<article class="siigo-seguimiento-registro" data-seguimiento-id="${item.id}">${item.fecha_compromiso ? `<label class="siigo-seguimiento-seleccion"><input type="radio" name="siigoSeguimientoSeleccion" value="${item.id}"> Seleccionar este compromiso</label>` : ''}<h4>${escapeSiigo(formatoSiigoFecha(item.fecha_gestion))} · ${escapeSiigo(item.medio)}</h4><p>Registrado por: <strong>${escapeSiigo(item.registrado_por)}</strong>${item.contacto ? ` · Contacto: ${escapeSiigo(item.contacto)}` : ''}</p><p class="siigo-seguimiento-nota">${escapeSiigo(item.observaciones)}</p>${item.fecha_compromiso ? `<p><span class="siigo-semaforo siigo-${item.estado_compromiso}">${estadosCompromisoSiigo[item.estado_compromiso]}</span> Compromiso de pago: ${escapeSiigo(formatoSiigoFecha(item.fecha_compromiso))}${item.valor_compromiso != null ? ` · ${formatoSiigoNumero(item.valor_compromiso)}` : ''}</p>` : ''}${item.compromiso_cumplido_at ? `<p>Cumplimiento registrado por ${escapeSiigo(item.compromiso_cumplido_por)} · ${escapeSiigo(formatoSiigoFecha(item.compromiso_cumplido_at.slice(0, 10)))}</p>` : ''}${item.proximo_seguimiento ? `<p>Próximo seguimiento: ${escapeSiigo(formatoSiigoFecha(item.proximo_seguimiento))}</p>` : ''}${comprobantesPagoCarteraSiigo(item)}</article>`).join('');
+    return registros.map(item => `<article class="siigo-seguimiento-registro" data-seguimiento-id="${item.id}">${item.fecha_compromiso ? `<label class="siigo-seguimiento-seleccion"><input type="radio" name="siigoSeguimientoSeleccion" value="${item.id}"> Seleccionar este compromiso</label>` : ''}<h4>${escapeSiigo(formatoSiigoFechaHora(item.fecha_hora_gestion || item.created_at))} · ${escapeSiigo(item.medio)}</h4><p>Registrado por: <strong>${escapeSiigo(item.registrado_por)}</strong>${item.contacto ? ` · Contacto: ${escapeSiigo(item.contacto)}` : ''}</p><p class="siigo-seguimiento-nota">${escapeSiigo(item.observaciones)}</p>${item.fecha_compromiso ? `<p><span class="siigo-semaforo siigo-${item.estado_compromiso}">${estadosCompromisoSiigo[item.estado_compromiso]}</span> Compromiso de pago: ${escapeSiigo(formatoSiigoFecha(item.fecha_compromiso))}${item.valor_compromiso != null ? ` · ${formatoSiigoNumero(item.valor_compromiso)}` : ''}</p>` : ''}${item.compromiso_cumplido_at ? `<p>Cumplimiento registrado por ${escapeSiigo(item.compromiso_cumplido_por)} · ${escapeSiigo(formatoSiigoFecha(item.compromiso_cumplido_at.slice(0, 10)))}</p>` : ''}${item.proximo_seguimiento ? `<p>Próximo seguimiento: ${escapeSiigo(formatoSiigoFecha(item.proximo_seguimiento))}</p>` : ''}${comprobantesPagoCarteraSiigo(item)}</article>`).join('');
 }
 
 function etiquetaTipoChatCarteraSiigo(tipo) {

@@ -1050,6 +1050,7 @@ def _serializar_seguimiento_cartera(registro):
         'valor_compromiso': float(registro.valor_compromiso) if registro.valor_compromiso is not None else None,
         'proximo_seguimiento': registro.proximo_seguimiento.isoformat() if registro.proximo_seguimiento else None,
         'registrado_por': registro.usuario_nombre,
+        'fecha_hora_gestion': registro.created_at.isoformat() + 'Z',
         'created_at': registro.created_at.isoformat() + 'Z',
     }
 
@@ -1570,7 +1571,9 @@ def _excel_facturas_vencidas(clientes, fecha_corte, movimientos_sin_asignar=None
 def cartera_dinamica():
     try:
         _requiere_ventas()
-        fecha_corte = _fecha(request.args.get('fecha_corte') or date.today().isoformat())
+        hoy_bogota = datetime.now(ZoneInfo('America/Bogota')).date()
+        fecha_corte_default = date(hoy_bogota.year, 12, 31)
+        fecha_corte = _fecha(request.args.get('fecha_corte') or fecha_corte_default.isoformat())
         desde = _fecha(request.args.get('desde')) if request.args.get('desde') else None
         hasta = _fecha(request.args.get('hasta')) if request.args.get('hasta') else None
         cliente = _texto(request.args.get('cliente'))
