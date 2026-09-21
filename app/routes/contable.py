@@ -244,6 +244,7 @@ def _puede_usar_ventas():
     permisos = get_permission_names_for_user(current_user)
     return bool({
         'menu_ventas',
+        'menu_cartera',
         'menu_comercial',
         'comercial_section_cartera',
         'comercial_clientes_read',

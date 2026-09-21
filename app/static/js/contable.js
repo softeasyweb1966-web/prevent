@@ -67,6 +67,24 @@ function mostrarDetalleCarteraClienteSiigo(result, cliente, button) {
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+let filtrosClientesSiigoPromise = null;
+
+async function cargarFiltrosClientesSiigo() {
+    if (!filtrosClientesSiigoPromise) {
+        filtrosClientesSiigoPromise = fetch('/api/contable/filtros-clientes', { credentials: 'include' })
+            .then(async response => {
+                const data = await leerRespuestaSiigo(response);
+                if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los filtros.');
+                return data;
+            })
+            .catch(error => {
+                filtrosClientesSiigoPromise = null;
+                throw error;
+            });
+    }
+    return filtrosClientesSiigoPromise;
+}
+
 function tablaCarteraClientesSiigo(clientes) {
     if (!clientes.length) return '';
     const filas = clientes.map((cliente, index) => {
@@ -531,11 +549,10 @@ async function cargarSelectorVendedorCarteraInicio(panel) {
     const caja = panel.querySelector('[data-cartera-vendedor-caja]');
     const select = panel.querySelector('[data-cartera-vendedor]');
     try {
-        const response = await fetch('/api/contable/filtros-clientes', { credentials: 'include' });
-        const data = await leerRespuestaSiigo(response);
-        if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los vendedores.');
+        const data = await cargarFiltrosClientesSiigo();
         panel._vendedoresCartera = data.vendedores || [];
         if (!data.es_administrador) return;
+        select.replaceChildren(new Option('Todos los vendedores', ''));
         panel._vendedoresCartera.forEach(v => select.add(new Option(v.nombre, v.id)));
         caja.hidden = false;
         select.addEventListener('change', () => {
@@ -701,6 +718,13 @@ function mostrarFiltrosVencidasSiigo(enfocar = false) {
     panel._consultaVencidas?.abort();
     panel._scrollVencidas?.disconnect();
     panel.querySelector('.siigo-vencidas-visor').hidden = true;
+    const inicio = panel.querySelector('[data-cartera-inicio]');
+    if (panel.dataset.origen === 'comercial-cartera' && !enfocar && inicio) {
+        inicio.hidden = false;
+        panel.querySelector('[data-vencidas-filtros]').hidden = true;
+        return;
+    }
+    if (inicio) inicio.hidden = true;
     panel.querySelector('[data-vencidas-filtros]').hidden = false;
     if (enfocar) {
         document.body.classList.add('body-siigo-vencidas-activo');
@@ -1296,6 +1320,9 @@ function tablaFacturasVencidasSiigo(data) {
         return responsableA.localeCompare(responsableB, 'es') || (a.cliente.cliente || '').localeCompare(b.cliente.cliente || '', 'es');
     });
     if (!clientes.length) return '<p class="siigo-vencidas-vacio">No hay facturas con saldo pendiente para esta consulta.</p>';
+    const totalClientes = clientes.reduce((suma, item) => suma + Number(item.cliente.total_cliente || 0), 0);
+    const totalFacturas = clientes.reduce((suma, item) => suma + Number(item.cliente.cantidad_facturas || 0), 0);
+    const resumen = `<div class="siigo-vencidas-resumen"><strong>${clientes.length}</strong> clientes <strong>${totalFacturas}</strong> facturas <strong>${formatoSiigoNumero(totalClientes)}</strong> total cartera</div>`;
     const cantidad = clientes.reduce((maximo, item) => Math.max(maximo, item.cliente.cantidad_facturas), 0);
     const encabezados = Array.from({ length: cantidad }, (_, indice) => `<th>N.º factura ${indice + 1}</th><th>Vencimiento</th><th>Valor</th>`).join('');
     let responsableActual = null;
@@ -1316,7 +1343,7 @@ function tablaFacturasVencidasSiigo(data) {
         const estadoSeguimiento = estadoClienteCarteraSiigo(cliente);
         return `${encabezadoResponsable}<tr><td>${escapeSiigo(cliente.vendedor)}</td><td>${escapeSiigo(cliente.cliente)}</td><td>${cliente.cantidad_facturas}</td><td>${formatoSiigoNumero(cliente.total_cliente)}</td><td><span class="siigo-semaforo siigo-${estadoSeguimiento}">${estadosGestionCarteraSiigo[estadoSeguimiento] || 'Sin Gestión'}</span></td><td>${seguimiento}</td>${detalle}${vacias}</tr>`;
     }).join('');
-    return `<div class="siigo-tabla-con-encabezado-fijo" tabindex="0" role="region" aria-label="Seguimiento de cartera"><table class="data-table"><thead><tr><th>Vendedor</th><th>Cliente</th><th>Cantidad</th><th>Valor total cliente</th><th>Estado del seguimiento</th><th>Seguimiento</th>${encabezados}</tr></thead><tbody>${filas}</tbody></table></div>`;
+    return `${resumen}<div class="siigo-tabla-con-encabezado-fijo" tabindex="0" role="region" aria-label="Seguimiento de cartera"><table class="data-table"><thead><tr><th>Vendedor</th><th>Cliente</th><th>Cantidad</th><th>Valor total cliente</th><th>Estado del seguimiento</th><th>Seguimiento</th>${encabezados}</tr></thead><tbody>${filas}</tbody></table></div>`;
 }
 
 async function consultarCarteraDinamicaSiigo(form, tipo) {
@@ -1550,9 +1577,7 @@ async function agregarFiltrosMaestroSiigo(form) {
     vendedor.add(new Option('Todos los disponibles', '')); contacto.add(new Option('Todos los disponibles', ''));
     labelV.append(vendedor); labelC.append(contacto); box.append(labelV, labelC); form.append(box);
     try {
-        const response = await fetch('/api/contable/filtros-clientes', {credentials:'include'});
-        const data = await leerRespuestaSiigo(response);
-        if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los filtros.');
+        const data = await cargarFiltrosClientesSiigo();
         if (data.es_administrador) {
             vendedor.add(new Option('Sin asignar', 'sin_asignar'));
         } else {

@@ -496,6 +496,7 @@ function hasAnyCatalogoPermission() {
 }
 
 function hasComercialSectionPermission(section) {
+    if (section === 'cartera' && hasRolePermission('menu_cartera')) return true;
     if (hasRolePermission(`comercial_section_${section}`)) return true;
 
     // Compatibilidad con los roles creados antes de los permisos por pestana.

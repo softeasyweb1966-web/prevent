@@ -614,6 +614,20 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
 #siigoVencidasCargaResultado { margin: 6px 0 0; font-size: 13px; }
 .siigo-vencidas-vacio { padding: 20px 0; }
 
+.siigo-vencidas-resumen {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin: 0 0 10px;
+    color: #334155;
+    font-size: 0.95rem;
+}
+
+.siigo-vencidas-resumen strong {
+    color: #0f172a;
+}
+
 @media (max-width: 700px) {
     .siigo-vencidas-filtros { grid-template-columns: 1fr; }
     .siigo-vencidas-filtros .btn { justify-self: start; }
