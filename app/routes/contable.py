@@ -781,6 +781,52 @@ def configuracion_ventas():
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
 
 
+def _excel_ventas_mensuales(data):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    nombres_meses = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+    workbook = Workbook()
+    hoja = workbook.active
+    hoja.title = 'Analisis de ventas'
+    hoja.append(['Analisis de ventas', data['anio']])
+    hoja.append(['Incluye notas credito', 'Si' if data['incluir_nc'] else 'No'])
+    hoja.append(['Incluye impuesto', 'Si' if data['incluir_iva'] else 'No'])
+    hoja.append([])
+    hoja.append(['Mes', 'Ventas PREVENT'])
+    for item in data['meses']:
+        hoja.append([nombres_meses[item['mes']], item['valor']])
+    hoja.append(['Total', data['total']])
+
+    hoja_cuentas = workbook.create_sheet('Cuentas')
+    hoja_cuentas.append(['Cuentas utilizadas'])
+    for cuenta in data['cuentas']:
+        hoja_cuentas.append([cuenta])
+
+    header_fill = PatternFill('solid', fgColor='D9EAF7')
+    for sheet in workbook.worksheets:
+        header_row = 5 if sheet.title == 'Analisis de ventas' else 1
+        for cell in sheet[1]:
+            cell.font = Font(bold=True)
+        for cell in sheet[header_row]:
+            cell.font = Font(bold=True)
+            cell.fill = header_fill
+        for row in sheet.iter_rows():
+            for cell in row:
+                if isinstance(cell.value, (int, float)):
+                    cell.number_format = '#,##0.00'
+        for column in sheet.columns:
+            width = max(len(str(cell.value or '')) for cell in column) + 2
+            sheet.column_dimensions[get_column_letter(column[0].column)].width = min(max(width, 12), 40)
+
+    archivo = BytesIO()
+    workbook.save(archivo)
+    archivo.seek(0)
+    return archivo
+
+
 @contable_bp.route('/ventas-mensuales', methods=['GET'])
 @login_required
 def ventas_mensuales():
@@ -814,14 +860,20 @@ def ventas_mensuales():
             SiigoMovimiento.codigo_contable.in_(cuentas),
         ).group_by(mes).order_by(mes).all()
         totales = {int(numero_mes): float(total or 0) for numero_mes, total in rows}
-        return jsonify({
+        data = {
             'anio': anio,
             'incluir_nc': incluir_nc,
             'incluir_iva': incluir_iva,
             'cuentas': sorted(cuentas),
             'meses': [{'mes': mes_numero, 'valor': totales.get(mes_numero, 0)} for mes_numero in range(1, 13)],
             'total': sum(totales.values()),
-        })
+        }
+        if request.args.get('formato') == 'xlsx':
+            archivo = _excel_ventas_mensuales(data)
+            return send_file(archivo, as_attachment=True,
+                             download_name=f'analisis_ventas_{anio}.xlsx',
+                             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        return jsonify(data)
     except (ValueError, PermissionError) as exc:
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
 

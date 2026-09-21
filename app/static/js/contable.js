@@ -310,9 +310,10 @@ function crearPanelVentasMensualesSiigo() {
     panel.id = 'siigoVentasMensualesPanel';
     panel.className = 'recent-section';
     panel.style.marginTop = '16px';
-    panel.innerHTML = `<h3 style="margin-top:0;">Control mensual de ventas</h3><p class="form-help">Calculado desde PREVENT con las mismas reglas de FV, NC e IVA que se compararan contra SIIGO.</p><form id="siigoVentasMensualesForm"><div class="form-row"><div class="form-group"><label for="siigoVentasAnio">Ano</label><input id="siigoVentasAnio" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" required></div><div class="form-group" style="align-self:end;"><label><input id="siigoVentasIncluirNC" type="checkbox" checked> Incluir notas credito</label></div><div class="form-group" style="align-self:end;"><label><input id="siigoVentasIncluirIVA" type="checkbox"> Incluir impuesto</label></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Calcular ventas</button></div></div></form><div id="siigoVentasMensualesResultado" class="table-container" style="margin-top:16px;"></div><h4 style="margin:20px 0 8px;">Cuentas incluidas en el calculo</h4><div id="siigoConfiguracionVentas" class="table-container"></div>`;
+    panel.innerHTML = `<h3 style="margin-top:0;">Control mensual de ventas</h3><p class="form-help">Calculado desde PREVENT con las mismas reglas de FV, NC e IVA que se compararan contra SIIGO.</p><form id="siigoVentasMensualesForm"><div class="form-row"><div class="form-group"><label for="siigoVentasAnio">Ano</label><input id="siigoVentasAnio" type="number" min="2000" max="2100" value="${new Date().getFullYear()}" required></div><div class="form-group" style="align-self:end;"><label><input id="siigoVentasIncluirNC" type="checkbox" checked> Incluir notas credito</label></div><div class="form-group" style="align-self:end;"><label><input id="siigoVentasIncluirIVA" type="checkbox"> Incluir impuesto</label></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Calcular ventas</button></div><div class="form-group" style="align-self:end;"><button class="btn btn-secondary" type="button" data-siigo-exportar-ventas>Descargar Excel</button></div></div></form><div id="siigoVentasMensualesResultado" class="table-container" style="margin-top:16px;"></div><h4 style="margin:20px 0 8px;">Cuentas incluidas en el calculo</h4><div id="siigoConfiguracionVentas" class="table-container"></div>`;
     anchor.insertAdjacentElement('afterend', panel);
     panel.querySelector('form').addEventListener('submit', consultarVentasMensualesSiigo);
+    panel.querySelector('[data-siigo-exportar-ventas]').addEventListener('click', descargarVentasMensualesSiigo);
     agregarFiltrosMaestroSiigo(panel.querySelector('form'));
     return panel;
 }
@@ -1443,6 +1444,41 @@ async function consultarVentasMensualesSiigo(event) {
         result.innerHTML = `<p class="form-help">Cuentas utilizadas: ${data.cuentas.map(escapeSiigo).join(', ')}</p><table class="data-table"><thead><tr><th>Mes</th><th>Ventas PREVENT</th></tr></thead><tbody>${data.meses.map(item => `<tr><td>${meses[item.mes - 1]}</td><td>${formatoSiigoNumero(item.valor)}</td></tr>`).join('')}</tbody><tfoot><tr><th>Total</th><th>${formatoSiigoNumero(data.total)}</th></tr></tfoot></table>`;
     } catch (error) {
         result.textContent = error.message;
+    }
+}
+
+async function descargarVentasMensualesSiigo(event) {
+    const boton = event.currentTarget;
+    const form = boton.closest('form');
+    const params = new URLSearchParams({
+        ...valoresFiltrosMaestroSiigo(form),
+        anio: document.getElementById('siigoVentasAnio').value,
+        incluir_nc: document.getElementById('siigoVentasIncluirNC').checked,
+        incluir_iva: document.getElementById('siigoVentasIncluirIVA').checked,
+        formato: 'xlsx',
+    });
+    const result = document.getElementById('siigoVentasMensualesResultado');
+    boton.disabled = true;
+    if (result) result.textContent = 'Preparando Excel...';
+    try {
+        const response = await fetch(`/api/contable/ventas-mensuales?${params.toString()}`, { credentials: 'include' });
+        if (!response.ok || !response.headers.get('content-type')?.includes('spreadsheetml')) {
+            const data = await leerRespuestaSiigo(response);
+            throw new Error(data.error || 'No fue posible descargar el Excel.');
+        }
+        const url = URL.createObjectURL(await response.blob());
+        const enlace = document.createElement('a');
+        enlace.href = url;
+        enlace.download = `analisis_ventas_${params.get('anio')}.xlsx`;
+        document.body.appendChild(enlace);
+        enlace.click();
+        enlace.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        if (result) result.textContent = '';
+    } catch (error) {
+        if (result) result.textContent = error.message;
+    } finally {
+        boton.disabled = false;
     }
 }
 
