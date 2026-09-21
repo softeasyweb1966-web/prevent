@@ -1629,10 +1629,14 @@ def cartera_dinamica():
         notas_debito_sin_asignar = Decimal('0')
         otros_sin_asignar = Decimal('0')
         movimientos_sin_asignar = []
+        creditos_sin_referencia = []
         for comprobante, movimiento, referencia, valor in _cancelaciones_cartera(fecha_corte):
             tipo = _tipo_cartera(comprobante.tipo_documento, comprobante.codigo_comprobante)
             item = facturas.get(referencia)
             if not _mismo_tercero_cartera(item, movimiento):
+                if valor > 0 and not referencia and tipo == 'RC':
+                    creditos_sin_referencia.append((comprobante, movimiento, tipo, valor))
+                    continue
                 if tipo == 'AC':
                     ajustes_ac_sin_factura += 1
                     valor_ac_sin_factura += valor
@@ -1661,13 +1665,57 @@ def cartera_dinamica():
             if tipo == 'RC':
                 item['pagos'].append(cancelacion)
 
+        facturas_por_tercero = {}
+        for item in facturas.values():
+            clave = _nit_cartera(item['identificacion'])
+            if clave:
+                facturas_por_tercero.setdefault(clave, []).append(item)
+        for items in facturas_por_tercero.values():
+            items.sort(key=lambda item: (item['fecha_factura'], item['referencia']))
+
+        def saldo_factura(item):
+            return item['valor_factura'] - sum((movimiento['valor'] for movimiento in item['cancelaciones']), Decimal('0'))
+
+        for comprobante, movimiento, tipo, valor in creditos_sin_referencia:
+            restante = valor
+            for item in facturas_por_tercero.get(_nit_cartera(movimiento.identificacion), []):
+                saldo_abierto = saldo_factura(item)
+                if saldo_abierto <= 0:
+                    continue
+                aplicado = min(restante, saldo_abierto)
+                item[APLICACIONES_CARTERA.get(tipo, 'otros_movimientos')] += aplicado
+                item['movimientos'].append(_movimiento_cartera(comprobante, movimiento))
+                cancelacion = {'fecha': comprobante.fecha_elaboracion, 'valor': aplicado}
+                item['cancelaciones'].append(cancelacion)
+                if tipo == 'RC':
+                    item['pagos'].append(cancelacion)
+                restante -= aplicado
+                if restante <= 0:
+                    break
+            if restante > 0:
+                if tipo == 'AC':
+                    ajustes_ac_sin_factura += 1
+                    valor_ac_sin_factura += restante
+                elif tipo == 'NC':
+                    notas_credito_sin_asignar += restante
+                elif tipo == 'RC':
+                    pagos_sin_factura += 1
+                else:
+                    otros_sin_asignar += restante
+                movimientos_sin_asignar.append({
+                    'comprobante': f'{comprobante.tipo_documento}-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}',
+                    'fecha': comprobante.fecha_elaboracion.isoformat(),
+                    'referencia': None,
+                    'identificacion': movimiento.identificacion,
+                    'valor': float(restante),
+                    'motivo': 'Saldo a favor sin facturas abiertas para aplicar',
+                })
+
         periodos = {}
         cartera_por_cliente = {}
         pagos_completos = []
         for item in facturas.values():
-            saldo = max(item['valor_factura'] - sum(
-                (movimiento['valor'] for movimiento in item['cancelaciones']), Decimal('0'),
-            ), Decimal('0'))
+            saldo = max(saldo_factura(item), Decimal('0'))
             vencimiento = item['fecha_vencimiento'] or item['fecha_factura']
             dias_vencido = (fecha_corte - vencimiento).days
             periodo = item['fecha_factura'].strftime('%Y-%m')

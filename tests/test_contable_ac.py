@@ -124,6 +124,17 @@ class CarteraACTest(unittest.TestCase):
         self.assertEqual(data['ajustes_ac_sin_factura'], 3)
         self.assertEqual(data['valor_ac_sin_factura'], 60)
 
+    def test_recibo_sin_referencia_se_aplica_a_facturas_abiertas_del_mismo_cliente(self):
+        self.documento('FV', 1, '2026-01-01', [{'debito': Decimal('1000')}])
+        self.documento('FV', 2, '2026-01-15', [{'debito': Decimal('500'), 'detalle': 'FV-2-2 Cuota: 1 Fecha: 15/02/2026'}])
+        self.documento('RC', 1, '2026-02-01', [{'credito': Decimal('1200'), 'detalle': 'Pago cliente', 'descripcion': 'Pago cliente'}])
+        data = self.cartera()
+        facturas = {f['referencia']: f for c in data['cartera_clientes'] for f in c['facturas']}
+        self.assertEqual(facturas['FV-2-1']['saldo'], 0)
+        self.assertEqual(facturas['FV-2-2']['saldo'], 300)
+        self.assertEqual(data['cartera_clientes'][0]['saldo'], 300)
+        self.assertEqual(data['pagos_sin_factura'], 0)
+
     def test_ac_puede_usar_descripcion_y_prioriza_detalle(self):
         self.factura_y_recibo()
         self.documento('AC', 1, '2026-02-10', [

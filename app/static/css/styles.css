@@ -652,6 +652,11 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     color: #1f2937;
 }
 
+.siigo-seguimiento-shell {
+    max-width: 1180px;
+    margin: 0 auto;
+}
+
 .siigo-seguimiento-dialogo::backdrop {
     background: rgba(0, 0, 0, .45);
 }
@@ -661,6 +666,15 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     align-items: center;
     justify-content: space-between;
     gap: 16px;
+}
+
+.siigo-seguimiento-cabecera h2 {
+    margin: 0;
+}
+
+.siigo-seguimiento-cabecera p {
+    margin: 6px 0 0;
+    color: #475569;
 }
 
 .siigo-seguimiento-dialogo .btn {
@@ -703,6 +717,14 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     background: #f8fafc;
 }
 
+.siigo-responsable-grupo,
+.siigo-estado-cuenta,
+.siigo-historial-cartera,
+.siigo-nuevo-seguimiento,
+.siigo-chat-cartera {
+    max-width: 1040px;
+}
+
 .siigo-responsable-grupo h3 {
     margin: 0 0 6px;
     font-size: 16px;
@@ -725,8 +747,124 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     font-weight: 700;
 }
 
+.siigo-estado-cuenta p {
+    margin: 8px 0 12px;
+}
+
+.siigo-estado-cuenta .data-table th,
+.siigo-estado-cuenta .data-table td {
+    padding: 10px 20px;
+}
+
 .siigo-seguimiento-dialogo select[multiple] {
     min-height: 130px;
+}
+
+.siigo-seccion-titulo {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 18px;
+}
+
+.siigo-seccion-titulo h3,
+.siigo-nuevo-seguimiento h3,
+.siigo-chat-cartera h3 {
+    margin: 0 0 4px;
+}
+
+.siigo-historial-cartera {
+    margin-top: 14px;
+}
+
+.siigo-historial-cartera [data-historial] > p {
+    margin: 8px 0 0;
+    padding: 10px 12px;
+    width: fit-content;
+    max-width: 100%;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    color: #475569;
+    background: #f8fafc;
+}
+
+.siigo-nuevo-seguimiento,
+.siigo-chat-cartera {
+    margin-top: 18px;
+    padding: 16px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.siigo-nuevo-seguimiento .form-row,
+.siigo-chat-cartera .form-row {
+    gap: 16px;
+}
+
+.siigo-nuevo-seguimiento .siigo-form-dos {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
+}
+
+.siigo-medios-contacto {
+    border: 0;
+    padding: 0;
+    margin: 0 0 16px;
+}
+
+.siigo-medios-contacto legend {
+    margin-bottom: 8px;
+    font-weight: 700;
+}
+
+.siigo-medios-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.siigo-medio-chip input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.siigo-medio-chip span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 38px;
+    padding: 8px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #334155;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.siigo-medio-chip input:checked + span {
+    border-color: #2563eb;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.siigo-medio-chip input:focus-visible + span {
+    outline: 3px solid #93c5fd;
+    outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+    .siigo-seguimiento-dialogo {
+        padding: 14px;
+    }
+
+    .siigo-seguimiento-cabecera,
+    .siigo-nuevo-seguimiento .siigo-form-dos {
+        grid-template-columns: 1fr;
+        flex-direction: column;
+    }
 }
 
 .siigo-seguimiento-registro {
