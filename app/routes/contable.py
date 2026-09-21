@@ -635,11 +635,17 @@ def consultar_comprobantes():
             query = query.join(SiigoMovimiento).filter(_alcance_movimiento(), or_(SiigoMovimiento.identificacion.ilike(like), SiigoMovimiento.nombre_tercero.ilike(like))).distinct()
         items = query.order_by(SiigoComprobante.fecha_elaboracion.desc()).limit(200).all()
         movimientos_visibles = {item.id: SiigoMovimiento.query.filter(SiigoMovimiento.comprobante_id == item.id, _alcance_movimiento()).all() for item in items}
-        return jsonify({'comprobantes': [{
+        comprobantes = [{
             'tipo': item.tipo_documento, 'codigo': item.codigo_comprobante, 'numero': item.numero_comprobante,
             'fecha': item.fecha_elaboracion.isoformat(), 'debito': float(sum(m.debito for m in movimientos_visibles[item.id])), 'credito': float(sum(m.credito for m in movimientos_visibles[item.id])),
             'movimientos': len(movimientos_visibles[item.id]),
-        } for item in items]})
+        } for item in items]
+        if request.args.get('formato') == 'xlsx':
+            filas = [[f"{item['tipo']}-{item['codigo']}-{item['numero']}", item['fecha'],
+                      item['movimientos'], item['debito'], item['credito']] for item in comprobantes]
+            return _workbook_response('consulta_por_cliente.xlsx',
+                                      [('Consulta', ['Documento', 'Fecha', 'Movimientos', 'Debito', 'Credito'], filas)])
+        return jsonify({'comprobantes': comprobantes})
     except (ValueError, PermissionError) as exc:
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
 
@@ -731,7 +737,7 @@ def comparativo_clientes():
                 'pagos_pendientes_conciliar': float(pagos_pendientes),
             }
 
-        return jsonify({
+        data = {
             'clientes_periodo_a': len(periodo_a),
             'clientes_periodo_b': len(periodo_b),
             'nuevos': [{**item, 'facturacion': float(item['facturacion'])} for item in nuevos],
@@ -739,7 +745,32 @@ def comparativo_clientes():
             'totales_nuevos': totales(nuevos),
             'totales_no_volvieron': totales(no_volvieron),
             'fecha_cartera': fecha_corte_cartera.isoformat(),
-        })
+        }
+        if request.args.get('formato') == 'xlsx':
+            def filas_clientes(items):
+                return [[item['identificacion'], item['nombre'], item['facturas'], item.get('facturacion', 0)] for item in items]
+            resumen = [
+                ['Clientes periodo 1', data['clientes_periodo_a']],
+                ['Clientes periodo 2', data['clientes_periodo_b']],
+                ['Clientes nuevos', len(data['nuevos'])],
+                ['Clientes que no volvieron', len(data['no_volvieron'])],
+                ['Fecha cartera', data['fecha_cartera']],
+                ['Facturacion nuevos', data['totales_nuevos']['facturacion']],
+                ['Cartera nuevos', data['totales_nuevos']['cartera']],
+                ['Abonos por conciliar nuevos', data['totales_nuevos']['pagos_pendientes_conciliar']],
+                ['Facturacion no volvieron', data['totales_no_volvieron']['facturacion']],
+                ['Cartera no volvieron', data['totales_no_volvieron']['cartera']],
+                ['Abonos por conciliar no volvieron', data['totales_no_volvieron']['pagos_pendientes_conciliar']],
+            ]
+            return _workbook_response(
+                'comparativo_clientes.xlsx',
+                [
+                    ('Resumen', ['Concepto', 'Valor'], resumen),
+                    ('Clientes nuevos', ['Identificacion', 'Cliente', 'Facturas', 'Facturacion'], filas_clientes(data['nuevos'])),
+                    ('No volvieron', ['Identificacion', 'Cliente', 'Facturas', 'Facturacion'], filas_clientes(data['no_volvieron'])),
+                ],
+            )
+        return jsonify(data)
     except (ValueError, PermissionError) as exc:
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403
 
@@ -825,6 +856,36 @@ def _excel_ventas_mensuales(data):
     workbook.save(archivo)
     archivo.seek(0)
     return archivo
+
+
+def _workbook_response(nombre_archivo, hojas):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+    header_fill = PatternFill('solid', fgColor='D9EAF7')
+    for titulo, encabezados, filas in hojas:
+        hoja = workbook.create_sheet(titulo[:31])
+        hoja.append(encabezados)
+        for fila in filas:
+            hoja.append(fila)
+        for cell in hoja[1]:
+            cell.font = Font(bold=True)
+            cell.fill = header_fill
+        for row in hoja.iter_rows():
+            for cell in row:
+                if isinstance(cell.value, (int, float)):
+                    cell.number_format = '#,##0.00'
+        for column in hoja.columns:
+            width = max(len(str(cell.value or '')) for cell in column) + 2
+            hoja.column_dimensions[get_column_letter(column[0].column)].width = min(max(width, 12), 45)
+    archivo = BytesIO()
+    workbook.save(archivo)
+    archivo.seek(0)
+    return send_file(archivo, as_attachment=True, download_name=nombre_archivo,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 
 @contable_bp.route('/ventas-mensuales', methods=['GET'])
@@ -1708,7 +1769,7 @@ def cartera_dinamica():
                 'ajustes_ac_sin_factura': ajustes_ac_sin_factura,
             })
 
-        return jsonify({
+        data = {
             'fecha_corte': fecha_corte.isoformat(),
             'desde': desde.isoformat() if desde else None,
             'hasta': hasta.isoformat() if hasta else None,
@@ -1725,6 +1786,33 @@ def cartera_dinamica():
             'otros_sin_asignar': float(otros_sin_asignar),
             'movimientos_sin_asignar': movimientos_sin_asignar,
             'facturas': len(facturas),
-        })
+        }
+        if request.args.get('formato') == 'xlsx':
+            hojas = [
+                ('Periodos', ['Periodo', 'Facturado', 'Recaudado', 'Ajustes AC', 'Notas credito', 'Notas debito',
+                              'Otros cruces', 'Por vencer', '1 a 30', '31 a 60', '61 a 90', 'Mas de 90', 'Saldo'],
+                 [[item['periodo'], item['facturado'], item['recaudado'], item['ajustes_ac'], item['notas_credito'],
+                   item['notas_debito'], item['otros_movimientos'], item['por_vencer'], item['vencido_1_30'],
+                   item['vencido_31_60'], item['vencido_61_90'], item['vencido_91_mas'], item['saldo']]
+                  for item in data['periodos']]),
+                ('Cartera clientes', ['Identificacion', 'Cliente', 'Vendedor', 'Facturado', 'Recaudado', 'Ajustes AC',
+                                      'Notas credito', 'Notas debito', 'Otros cruces', 'Por vencer', '1 a 30',
+                                      '31 a 60', '61 a 90', 'Mas de 90', 'Saldo'],
+                 [[item['identificacion'], item['cliente'], item.get('vendedor', 'Sin asignar'), item['facturado'],
+                   item['recaudado'], item['ajustes_ac'], item['notas_credito'], item['notas_debito'],
+                   item['otros_movimientos'], item['por_vencer'], item['vencido_1_30'], item['vencido_31_60'],
+                   item['vencido_61_90'], item['vencido_91_mas'], item['saldo']]
+                  for item in data['cartera_clientes']]),
+                ('Analisis pagos', ['Cliente', 'Facturas pagadas', 'Promedio dias', 'Mas rapida', 'Dias mas rapida',
+                                    'Mas lenta', 'Dias mas lenta'],
+                 [[item['cliente'], item['facturas_pagadas'], item['promedio_dias'], item['mas_rapida'],
+                   item['dias_mas_rapida'], item['mas_lenta'], item['dias_mas_lenta']]
+                  for item in data['pagos_clientes']]),
+                ('Movimientos sin asignar', ['Comprobante', 'Fecha', 'Referencia', 'Identificacion', 'Valor', 'Motivo'],
+                 [[item.get('comprobante'), item.get('fecha'), item.get('referencia'), item.get('identificacion'),
+                   item.get('valor'), item.get('motivo')] for item in data['movimientos_sin_asignar']]),
+            ]
+            return _workbook_response(f'cartera_dinamica_{fecha_corte.isoformat()}.xlsx', hojas)
+        return jsonify(data)
     except (ValueError, PermissionError) as exc:
         return jsonify({'error': str(exc)}), 400 if isinstance(exc, ValueError) else 403

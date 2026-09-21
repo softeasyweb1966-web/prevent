@@ -26,6 +26,31 @@ function esVendedorCarteraSiigo() {
     return typeof currentUser !== 'undefined' && Boolean(currentUser?.es_vendedor);
 }
 
+async function descargarExcelSiigo(url, nombreArchivo, estadoNode, boton) {
+    if (boton) boton.disabled = true;
+    if (estadoNode) estadoNode.textContent = 'Preparando Excel...';
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        if (!response.ok || !response.headers.get('content-type')?.includes('spreadsheetml')) {
+            const data = await leerRespuestaSiigo(response);
+            throw new Error(data.error || 'No fue posible descargar el Excel.');
+        }
+        const blobUrl = URL.createObjectURL(await response.blob());
+        const enlace = document.createElement('a');
+        enlace.href = blobUrl;
+        enlace.download = nombreArchivo;
+        document.body.appendChild(enlace);
+        enlace.click();
+        enlace.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+        if (estadoNode) estadoNode.textContent = '';
+    } catch (error) {
+        if (estadoNode) estadoNode.textContent = error.message;
+    } finally {
+        if (boton) boton.disabled = false;
+    }
+}
+
 function mostrarVigenciaComprobantes(vigencia) {
     const panel = document.getElementById('siigoVigenciaComprobantes');
     if (!panel) return;
@@ -188,14 +213,19 @@ async function seguirEstadoCargaClientes(result, alCompletar = null) {
     }, 4000);
 }
 
-async function consultarComprobantesSiigo(event) {
-    if (event) event.preventDefault();
+function paramsConsultaComprobantesSiigo() {
     const params = new URLSearchParams();
     [['cliente', 'siigoClienteFiltro'], ['tipo', 'siigoTipoFiltro'], ['numero', 'siigoNumeroFiltro'], ['desde', 'siigoDesdeFiltro'], ['hasta', 'siigoHastaFiltro']].forEach(([key, id]) => {
         const input = document.getElementById(id);
         const value = key === 'cliente' && input.dataset.identificacion ? input.dataset.identificacion : input.value.trim();
         if (value) params.set(key, value);
     });
+    return params;
+}
+
+async function consultarComprobantesSiigo(event) {
+    if (event) event.preventDefault();
+    const params = paramsConsultaComprobantesSiigo();
     const container = document.getElementById('siigoConsultaResultado');
     container.innerHTML = 'Consultando...';
     try {
@@ -264,9 +294,10 @@ function crearPanelComparativoSiigo() {
     panel.id = 'siigoComparativoPanel';
     panel.className = 'recent-section';
     panel.style.marginTop = '16px';
-    panel.innerHTML = `<h3 style="margin-top:0;">Clientes nuevos y clientes que no volvieron</h3><p class="form-help">Se comparan las facturas FV de dos periodos. La cartera cruza facturas y recibos de caja hasta la fecha de corte indicada.</p><form id="siigoComparativoForm"><div class="form-row"><div class="form-group"><label>Periodo 1: desde</label><input id="siigoPeriodoADesde" type="date" required></div><div class="form-group"><label>Periodo 1: hasta</label><input id="siigoPeriodoAHasta" type="date" required></div><div class="form-group"><label>Periodo 2: desde</label><input id="siigoPeriodoBDesde" type="date" required></div><div class="form-group"><label>Periodo 2: hasta</label><input id="siigoPeriodoBHasta" type="date" required></div><div class="form-group"><label>Cartera a fecha de corte</label><input id="siigoComparativoFechaCorte" type="date"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar comparativo</button></div></div></form><div id="siigoComparativoResultado" class="table-container" style="margin-top:16px;"></div>`;
+    panel.innerHTML = `<h3 style="margin-top:0;">Clientes nuevos y clientes que no volvieron</h3><p class="form-help">Se comparan las facturas FV de dos periodos. La cartera cruza facturas y recibos de caja hasta la fecha de corte indicada.</p><form id="siigoComparativoForm"><div class="form-row"><div class="form-group"><label>Periodo 1: desde</label><input id="siigoPeriodoADesde" type="date" required></div><div class="form-group"><label>Periodo 1: hasta</label><input id="siigoPeriodoAHasta" type="date" required></div><div class="form-group"><label>Periodo 2: desde</label><input id="siigoPeriodoBDesde" type="date" required></div><div class="form-group"><label>Periodo 2: hasta</label><input id="siigoPeriodoBHasta" type="date" required></div><div class="form-group"><label>Cartera a fecha de corte</label><input id="siigoComparativoFechaCorte" type="date"></div><div class="form-group" style="align-self:end;"><button class="btn btn-primary" type="submit">Generar comparativo</button></div><div class="form-group" style="align-self:end;"><button class="btn btn-secondary" type="button" data-siigo-exportar-comparativo>Descargar Excel</button></div></div></form><div id="siigoComparativoResultado" class="table-container" style="margin-top:16px;"></div>`;
     consulta.insertAdjacentElement('afterend', panel);
     panel.querySelector('form').addEventListener('submit', consultarComparativoClientesSiigo);
+    panel.querySelector('[data-siigo-exportar-comparativo]').addEventListener('click', descargarComparativoClientesSiigo);
     agregarFiltrosMaestroSiigo(panel.querySelector('form'));
     return panel;
 }
@@ -277,10 +308,9 @@ function mostrarComparativoClientes() {
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-async function consultarComparativoClientesSiigo(event) {
-    event.preventDefault();
+function paramsComparativoClientesSiigo(form) {
     const params = new URLSearchParams({
-        ...valoresFiltrosMaestroSiigo(event.currentTarget || event.target),
+        ...valoresFiltrosMaestroSiigo(form),
         periodo_a_desde: document.getElementById('siigoPeriodoADesde').value,
         periodo_a_hasta: document.getElementById('siigoPeriodoAHasta').value,
         periodo_b_desde: document.getElementById('siigoPeriodoBDesde').value,
@@ -288,6 +318,12 @@ async function consultarComparativoClientesSiigo(event) {
     });
     const fechaCorte = document.getElementById('siigoComparativoFechaCorte').value;
     if (fechaCorte) params.set('fecha_corte_cartera', fechaCorte);
+    return params;
+}
+
+async function consultarComparativoClientesSiigo(event) {
+    event.preventDefault();
+    const params = paramsComparativoClientesSiigo(event.currentTarget || event.target);
     const result = document.getElementById('siigoComparativoResultado');
     result.textContent = 'Generando comparativo...';
     try {
@@ -334,6 +370,16 @@ function crearPanelCarteraDinamicaSiigo(tipo) {
     const form = panel.querySelector('form');
     agregarFiltrosMaestroSiigo(form);
     anchor.insertAdjacentElement('afterend', panel);
+    const exportar = document.createElement('button');
+    exportar.type = 'button';
+    exportar.className = 'btn btn-secondary';
+    exportar.textContent = 'Descargar Excel';
+    exportar.addEventListener('click', () => descargarCarteraDinamicaSiigo(form, tipo, exportar));
+    const exportarGroup = document.createElement('div');
+    exportarGroup.className = 'form-group';
+    exportarGroup.style.alignSelf = 'end';
+    exportarGroup.appendChild(exportar);
+    form.querySelector('.form-row')?.appendChild(exportarGroup);
     const boton = form.querySelector('button[type="submit"]');
     boton.type = 'button';
     boton.addEventListener('click', () => consultarCarteraDinamicaSiigo(form, tipo));
@@ -485,6 +531,20 @@ function reorganizarInicioCarteraSiigo(panel) {
     if (alertas) {
         alertas.insertAdjacentHTML('afterend', '<div class="siigo-cartera-resumen" data-cartera-resumen></div>');
     }
+}
+
+function descargarComparativoClientesSiigo(event) {
+    const params = paramsComparativoClientesSiigo(event.currentTarget.closest('form'));
+    params.set('formato', 'xlsx');
+    descargarExcelSiigo(`/api/contable/comparativo-clientes?${params.toString()}`, 'comparativo_clientes.xlsx',
+        document.getElementById('siigoComparativoResultado'), event.currentTarget);
+}
+
+function descargarComprobantesSiigo(event) {
+    const params = paramsConsultaComprobantesSiigo();
+    params.set('formato', 'xlsx');
+    descargarExcelSiigo(`/api/contable/comprobantes?${params.toString()}`, 'consulta_por_cliente.xlsx',
+        document.getElementById('siigoConsultaResultado'), event.currentTarget);
 }
 
 function agregarAccionesClientesCarteraSiigo(panel) {
@@ -1391,6 +1451,14 @@ async function consultarCarteraDinamicaSiigo(form, tipo) {
     }
 }
 
+function descargarCarteraDinamicaSiigo(form, tipo, boton) {
+    const result = form.closest('.recent-section')?.querySelector('.table-container');
+    const fechaCorte = form.querySelector('input[type="date"]').value;
+    const params = new URLSearchParams({ ...valoresFiltrosMaestroSiigo(form), fecha_corte: fechaCorte, formato: 'xlsx' });
+    const nombre = tipo === 'pagos' ? 'analisis_pagos.xlsx' : 'cartera_y_recaudo.xlsx';
+    descargarExcelSiigo(`/api/contable/cartera-dinamica?${params.toString()}`, nombre, result, boton);
+}
+
 async function cargarConfiguracionVentasSiigo() {
     const container = document.getElementById('siigoConfiguracionVentas');
     if (!container) return;
@@ -1591,6 +1659,16 @@ function inicializarVentasSiigo() {
     const form = document.getElementById('siigoConsultaForm');
     if (form && !form.dataset.bound) {
         form.addEventListener('submit', consultarComprobantesSiigo);
+        const acciones = form.querySelector('.form-row:last-of-type .form-group:last-child');
+        if (acciones && !acciones.querySelector('[data-siigo-exportar-consulta]')) {
+            const botonExcel = document.createElement('button');
+            botonExcel.type = 'button';
+            botonExcel.className = 'btn btn-secondary';
+            botonExcel.dataset.siigoExportarConsulta = '1';
+            botonExcel.textContent = 'Descargar Excel';
+            botonExcel.addEventListener('click', descargarComprobantesSiigo);
+            acciones.append(' ', botonExcel);
+        }
         form.dataset.bound = 'true';
     }
     configurarAutocompletadoTercerosSiigo();
