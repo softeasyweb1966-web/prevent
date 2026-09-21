@@ -532,7 +532,7 @@ function asegurarInicioGestionCarteraSiigo(panel) {
         panel.querySelector('form')?.requestSubmit();
     });
     panel.querySelector('[data-cartera-volver]').addEventListener('click', regresarMenuPrincipalCarteraSiigo);
-    panel.querySelector('[data-cartera-mes]')?.addEventListener('change', () => cargarAlertasInicioCarteraSiigo(panel));
+    panel.querySelector('[data-cartera-anio]')?.addEventListener('change', () => cargarAlertasInicioCarteraSiigo(panel));
 }
 
 function reorganizarInicioCarteraSiigo(panel) {
@@ -543,12 +543,12 @@ function reorganizarInicioCarteraSiigo(panel) {
     const acciones = inicio.querySelector('.button-group');
     const alertas = inicio.querySelector('[data-cartera-alertas]');
     const vendedorCaja = inicio.querySelector('[data-cartera-vendedor-caja]');
-    const mesActual = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit' }).format(new Date());
+    const anioActual = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota', year: 'numeric' }).format(new Date());
     const filtros = document.createElement('div');
     filtros.className = 'siigo-cartera-filtros';
     filtros.innerHTML = esVendedorCarteraSiigo()
         ? ''
-        : `<div class="form-group"><label for="siigoCarteraMesResumen">Mes</label><input id="siigoCarteraMesResumen" type="month" value="${mesActual}" data-cartera-mes></div>`;
+        : `<div class="form-group"><label for="siigoCarteraAnioResumen">Año</label><input id="siigoCarteraAnioResumen" type="number" min="2020" max="2100" step="1" value="${anioActual}" data-cartera-anio></div>`;
     if (vendedorCaja) filtros.insertBefore(vendedorCaja, filtros.firstChild);
     if (acciones) {
         acciones.classList.add('siigo-cartera-acciones');
@@ -695,38 +695,32 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
     const estado = panel.querySelector('[data-cartera-estado]');
     const alertas = panel.querySelector('[data-cartera-alertas]');
     const resumen = panel.querySelector('[data-cartera-resumen]');
-    const fecha = panel.querySelector('#siigoVencidasCorte')?.value || fechaCorteAnualCarteraSiigo();
+    const anio = anioCarteraSeleccionadoSiigo(panel);
+    const rangoAnio = rangoAnioCarteraSiigo(anio);
+    const fecha = rangoAnio.hasta;
+    const corteInput = panel.querySelector('#siigoVencidasCorte');
+    if (corteInput) corteInput.value = fecha;
     estado.textContent = 'Calculando alertas...';
     try {
-        const params = new URLSearchParams({ informe: 'vencidas', fecha_corte: fecha, estado_facturas: 'todos' });
+        const params = new URLSearchParams({ informe: 'vencidas', fecha_corte: fecha, desde: rangoAnio.desde, hasta: rangoAnio.hasta, estado_facturas: 'todos' });
         if (panel._filtroVendedorCartera) params.set('vendedor_id', panel._filtroVendedorCartera);
-        const resumenParams = new URLSearchParams({ fecha_corte: fecha });
-        if (panel._filtroVendedorCartera) resumenParams.set('vendedor_id', panel._filtroVendedorCartera);
-        const esVendedor = esVendedorCarteraSiigo();
-        const mes = esVendedor ? '' : (panel.querySelector('[data-cartera-mes]')?.value || '');
-        const rangoMes = rangoMesCarteraSiigo(mes);
-        const mesParams = new URLSearchParams({ fecha_corte: rangoMes.hasta, desde: rangoMes.desde, hasta: rangoMes.hasta });
-        if (panel._filtroVendedorCartera) mesParams.set('vendedor_id', panel._filtroVendedorCartera);
+        const anioParams = new URLSearchParams({ fecha_corte: rangoAnio.hasta, desde: rangoAnio.desde, hasta: rangoAnio.hasta });
+        if (panel._filtroVendedorCartera) anioParams.set('vendedor_id', panel._filtroVendedorCartera);
         const consultas = [
             fetch(`/api/contable/cartera-dinamica?${params}`, { credentials: 'include' }),
-            fetch(`/api/contable/cartera-dinamica?${resumenParams}`, { credentials: 'include' }),
+            fetch(`/api/contable/cartera-dinamica?${anioParams}`, { credentials: 'include' }),
         ];
-        if (!esVendedor) {
-            consultas.push(fetch(`/api/contable/cartera-dinamica?${mesParams}`, { credentials: 'include' }));
-        }
-        const [response, resumenResponse, mesResponse] = await Promise.all(consultas);
+        const [response, resumenResponse] = await Promise.all(consultas);
         const data = await leerRespuestaSiigo(response);
         const resumenData = await leerRespuestaSiigo(resumenResponse);
-        const mesData = mesResponse ? await leerRespuestaSiigo(mesResponse) : null;
         if (!response.ok) throw new Error(data.error || 'No fue posible calcular las alertas.');
-        if (!resumenResponse.ok) throw new Error(resumenData.error || 'No fue posible calcular el resumen acumulado.');
-        if (mesResponse && !mesResponse.ok) throw new Error(mesData.error || 'No fue posible calcular el resumen mensual.');
+        if (!resumenResponse.ok) throw new Error(resumenData.error || 'No fue posible calcular el resumen del año.');
         panel._datosVencidas = data;
-        panel._resumenInicioCartera = { acumulado: resumenData, mes: mesData, mesSeleccionado: mes };
+        panel._resumenInicioCartera = { anio: resumenData, anioSeleccionado: anio };
         const hoy = fechaHoyCarteraSiigo();
         const proximosHoy = (data.clientes || []).filter(cliente => (cliente.seguimientos || []).some(item => item.proximo_seguimiento === hoy)).length;
         alertas.innerHTML = `${ordenEstadosGestionCarteraSiigo.map(estadoClave => `<button type="button" class="siigo-alerta-card siigo-${estadoClave}" data-alerta-inicio="${estadoClave}"><span>${estadosGestionCarteraSiigo[estadoClave]}:</span><strong>${(data.clientes || []).filter(cliente => estadoClienteCarteraSiigo(cliente) === estadoClave).length}</strong></button>`).join('')}<button type="button" class="siigo-alerta-card siigo-proximo-hoy" data-proximo-hoy><span>Próximo seguimiento hoy:</span><strong>${proximosHoy}</strong></button>`;
-        if (resumen) resumen.innerHTML = renderResumenInicioCarteraSiigo(resumenData, mesData, mes);
+        if (resumen) resumen.innerHTML = renderResumenInicioCarteraSiigo(resumenData, anio);
         resumen?.querySelectorAll('[data-cartera-resumen-detalle]').forEach(boton => {
             boton.addEventListener('click', () => abrirDetalleResumenInicioCarteraSiigo(panel, boton.dataset.carteraResumenDetalle));
         });
@@ -754,11 +748,16 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
     }
 }
 
-function rangoMesCarteraSiigo(valorMes) {
-    const hoy = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota' }).format(new Date());
-    const [anio, mes] = String(valorMes || hoy.slice(0, 7)).split('-').map(Number);
-    const desde = `${anio}-${String(mes).padStart(2, '0')}-01`;
-    const hasta = new Date(Date.UTC(anio, mes, 0)).toISOString().slice(0, 10);
+function anioCarteraSeleccionadoSiigo(panel) {
+    const anioActual = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Bogota', year: 'numeric' }).format(new Date());
+    const valor = Number(panel?.querySelector('[data-cartera-anio]')?.value || anioActual);
+    return Number.isFinite(valor) && valor >= 2020 && valor <= 2100 ? valor : Number(anioActual);
+}
+
+function rangoAnioCarteraSiigo(anio) {
+    const year = Number(anio);
+    const desde = `${year}-01-01`;
+    const hasta = `${year}-12-31`;
     return { desde, hasta };
 }
 
@@ -778,27 +777,20 @@ function totalesResumenCarteraSiigo(data) {
     return { ventas, recaudado, sinRecaudo: cartera, cartera };
 }
 
-function renderResumenInicioCarteraSiigo(acumuladoData, mesData, mes) {
-    const acumulado = totalesResumenCarteraSiigo(acumuladoData);
+function renderResumenInicioCarteraSiigo(anioData, anio) {
+    const acumulado = totalesResumenCarteraSiigo(anioData);
     if (esVendedorCarteraSiigo()) {
-        return `<section class="siigo-cartera-resumen-bloque"><div class="siigo-cartera-resumen-header"><h4>Total cartera</h4></div><dl><div><dt>Total cartera</dt><dd>${formatoSiigoNumero(acumulado.cartera)}</dd></div></dl></section>`;
+        return `<section class="siigo-cartera-resumen-bloque"><div class="siigo-cartera-resumen-header"><h4>Cartera ${escapeSiigo(anio)}</h4></div><dl><div><dt>Total cartera</dt><dd>${formatoSiigoNumero(acumulado.cartera)}</dd></div></dl></section>`;
     }
-    const mensual = totalesResumenCarteraSiigo(mesData);
-    const etiquetaMes = mes ? new Date(`${mes}-01T00:00:00`).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' }) : 'Mes seleccionado';
     const bloque = (titulo, datos, tipo) => `<section class="siigo-cartera-resumen-bloque"><div class="siigo-cartera-resumen-header"><h4>${escapeSiigo(titulo)}</h4><button type="button" class="btn btn-secondary" data-cartera-resumen-detalle="${tipo}">Ver detalle</button></div><dl><div><dt>Total ventas</dt><dd>${formatoSiigoNumero(datos.ventas)}</dd></div><div><dt>Total recaudado</dt><dd>${formatoSiigoNumero(datos.recaudado)}</dd></div><div><dt>Total sin recaudo</dt><dd>${formatoSiigoNumero(datos.sinRecaudo)}</dd></div><div><dt>Cartera a corte</dt><dd>${formatoSiigoNumero(datos.cartera)}</dd></div></dl></section>`;
-    return `${bloque('Acumulado total', acumulado, 'acumulado')}${bloque(`Mes: ${etiquetaMes}`, mensual, 'mes')}`;
+    return bloque(`Año ${anio}`, acumulado, 'anio');
 }
 
 function abrirDetalleResumenInicioCarteraSiigo(panel, tipo) {
     const data = panel?._resumenInicioCartera?.[tipo];
     if (!data) return;
-    const mesSeleccionado = panel._resumenInicioCartera.mesSeleccionado;
-    const etiquetaMes = mesSeleccionado
-        ? new Date(`${mesSeleccionado}-01T00:00:00`).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })
-        : 'seleccionado';
-    const titulo = tipo === 'mes'
-        ? `Detalle del mes ${etiquetaMes}`
-        : 'Detalle acumulado total';
+    const anioSeleccionado = panel._resumenInicioCartera.anioSeleccionado;
+    const titulo = `Detalle año ${anioSeleccionado}`;
     const clientes = data.cartera_clientes || [];
     const dialogo = document.createElement('dialog');
     dialogo.className = 'siigo-seguimiento-dialogo siigo-cartera-detalle-dialogo';
@@ -885,7 +877,17 @@ async function consultarFacturasVencidasSiigo(form) {
     panel._consultaVencidas = controller;
     const visor = panel.querySelector('.siigo-vencidas-visor');
     const estado = panel.querySelector(visor.hidden ? '[data-vencidas-estado]' : '#siigoVencidasCargaResultado');
-    const filtros = { ...valoresFiltrosMaestroSiigo(form), fecha_corte: form.elements.fecha_corte?.value || fechaCorteAnualCarteraSiigo(), cliente: form.elements.cliente.value.trim(), estado_facturas: form.elements.estado_facturas.value };
+    const anioSeleccionado = panel.dataset.origen === 'comercial-cartera' ? anioCarteraSeleccionadoSiigo(panel) : null;
+    const fechaCorte = anioSeleccionado ? rangoAnioCarteraSiigo(anioSeleccionado).hasta : (form.elements.fecha_corte?.value || fechaCorteAnualCarteraSiigo());
+    if (form.elements.fecha_corte) form.elements.fecha_corte.value = fechaCorte;
+    const rangoConsulta = anioSeleccionado ? rangoAnioCarteraSiigo(anioSeleccionado) : null;
+    const filtros = {
+        ...valoresFiltrosMaestroSiigo(form),
+        fecha_corte: fechaCorte,
+        ...(rangoConsulta ? { desde: rangoConsulta.desde, hasta: rangoConsulta.hasta } : {}),
+        cliente: form.elements.cliente.value.trim(),
+        estado_facturas: form.elements.estado_facturas.value,
+    };
     if (panel.dataset.origen === 'comercial-cartera' && panel._filtroVendedorCartera) {
         filtros.vendedor_id = panel._filtroVendedorCartera;
     }
