@@ -760,8 +760,10 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     margin-top: 16px;
 }
 
-.siigo-recibos-caja h4 {
-    margin: 0 0 8px;
+.siigo-recibos-caja summary {
+    cursor: pointer;
+    font-weight: 700;
+    margin-bottom: 8px;
 }
 
 .siigo-seguimiento-dialogo select[multiple] {

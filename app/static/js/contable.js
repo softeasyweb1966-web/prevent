@@ -1125,7 +1125,7 @@ function estadoCuentaClienteCarteraSiigo(cliente) {
     const filas = facturas.map(factura => `<tr><td>${escapeSiigo(factura.referencia)}</td><td>${diasSaldo(factura)}</td><td>${formatoSiigoNumero(factura.saldo)}</td></tr>`).join('');
     const recibos = cliente.recibos_caja || [];
     const filasRecibos = recibos.map(recibo => `<tr><td>${escapeSiigo(recibo.recibo)}</td><td>${escapeSiigo(formatoSiigoFecha(recibo.fecha))}</td><td>${escapeSiigo(recibo.factura)}</td><td>${formatoSiigoNumero(recibo.valor)}</td></tr>`).join('');
-    const tablaRecibos = `<div class="siigo-recibos-caja"><h4>Recibos de caja aplicados</h4>${filasRecibos ? `<table class="data-table"><thead><tr><th>RC</th><th>Fecha</th><th>Factura pagada</th><th>Valor aplicado</th></tr></thead><tbody>${filasRecibos}</tbody></table>` : '<p class="form-help">No hay recibos de caja aplicados a las facturas del cliente en esta consulta.</p>'}</div>`;
+    const tablaRecibos = `<details class="siigo-recibos-caja"><summary>Recibos de caja aplicados (${recibos.length})</summary>${filasRecibos ? `<table class="data-table"><thead><tr><th>RC</th><th>Fecha</th><th>Factura pagada</th><th>Valor aplicado</th></tr></thead><tbody>${filasRecibos}</tbody></table>` : '<p class="form-help">No hay recibos de caja aplicados a las facturas del cliente en esta consulta.</p>'}</details>`;
     return `<details class="siigo-estado-cuenta"><summary>Ver estado de cuenta</summary><p><strong>Total cartera: ${formatoSiigoNumero(total)}</strong></p><table class="data-table"><thead><tr><th>Factura</th><th>Dias</th><th>Saldo</th></tr></thead><tbody>${filas}</tbody></table>${tablaRecibos}</details>`;
 }
 function actualizarAlertasCarteraSiigo(panel) {
