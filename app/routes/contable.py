@@ -663,36 +663,56 @@ def comparativo_clientes():
             raise ValueError('La fecha inicial no puede ser posterior a la fecha final.')
 
         def terceros_del_periodo(desde, hasta):
-            rows = db.session.query(
-                SiigoMovimiento.identificacion,
-                func.max(SiigoMovimiento.nombre_tercero),
-                func.count(func.distinct(SiigoComprobante.id)),
-                func.coalesce(func.sum(SiigoMovimiento.debito - SiigoMovimiento.credito), 0),
-            ).join(SiigoComprobante).filter(
-            _alcance_movimiento(),
+            rows = db.session.query(SiigoComprobante, SiigoMovimiento).join(SiigoMovimiento).filter(
+                _alcance_movimiento(),
                 SiigoComprobante.tipo_documento == 'FV',
                 SiigoComprobante.fecha_elaboracion.between(desde, hasta),
                 SiigoMovimiento.identificacion.isnot(None),
                 SiigoMovimiento.codigo_contable == '13050501',
-            ).group_by(SiigoMovimiento.identificacion).all()
+                SiigoMovimiento.debito != SiigoMovimiento.credito,
+            ).all()
             resultado = {}
-            for identificacion, nombre, facturas, valor in rows:
+            for comprobante, movimiento in rows:
+                identificacion = movimiento.identificacion
                 clave = _nit_cartera(identificacion)
                 if not clave:
                     continue
                 item = resultado.setdefault(clave, {
                     'clave': clave,
                     'identificacion': identificacion,
-                    'nombre': nombre or '',
+                    'nombre': movimiento.nombre_tercero or '',
                     'facturas': 0,
                     'facturacion': Decimal('0'),
                     'identificaciones_raw': set(),
+                    '_facturas_periodo': {},
                 })
-                item['facturas'] += int(facturas)
-                item['facturacion'] += valor or Decimal('0')
                 item['identificaciones_raw'].add(identificacion)
-                if nombre and (not item['nombre'] or len(nombre) > len(item['nombre'])):
-                    item['nombre'] = nombre
+                if movimiento.nombre_tercero and (not item['nombre'] or len(movimiento.nombre_tercero) > len(item['nombre'])):
+                    item['nombre'] = movimiento.nombre_tercero
+                referencia = _referencia_movimiento(comprobante, movimiento)
+                if not _es_base_factura(comprobante, referencia):
+                    continue
+                referencia = referencia or f'FV-{comprobante.codigo_comprobante}-{comprobante.numero_comprobante}'
+                factura = item['_facturas_periodo'].setdefault(comprobante.id, {
+                    'referencia': referencia,
+                    'fecha': comprobante.fecha_elaboracion,
+                    'valor': Decimal('0'),
+                })
+                factura['valor'] += movimiento.debito - movimiento.credito
+            for item in resultado.values():
+                facturas_periodo = list(item['_facturas_periodo'].values())
+                item['facturas'] = len(facturas_periodo)
+                item['facturacion'] = sum((factura['valor'] for factura in facturas_periodo), Decimal('0'))
+                if facturas_periodo:
+                    ordenadas = sorted(facturas_periodo, key=lambda factura: (factura['fecha'], factura['referencia']))
+                    primera = ordenadas[0]
+                    ultima = ordenadas[-1]
+                    item['primera_factura_fecha'] = primera['fecha'].isoformat()
+                    item['primera_factura_numero'] = primera['referencia']
+                    item['primera_factura_valor'] = primera['valor']
+                    item['ultima_factura_fecha'] = ultima['fecha'].isoformat()
+                    item['ultima_factura_numero'] = ultima['referencia']
+                    item['ultima_factura_valor'] = ultima['valor']
             return resultado
 
         periodo_a = terceros_del_periodo(periodo_a_desde, periodo_a_hasta)
@@ -766,6 +786,12 @@ def comparativo_clientes():
                 'nombre': item['nombre'],
                 'facturas': item['facturas'],
                 'facturacion': float(item['facturacion']),
+                'primera_factura_fecha': item.get('primera_factura_fecha'),
+                'primera_factura_numero': item.get('primera_factura_numero'),
+                'primera_factura_valor': float(item.get('primera_factura_valor', Decimal('0'))),
+                'ultima_factura_fecha': item.get('ultima_factura_fecha'),
+                'ultima_factura_numero': item.get('ultima_factura_numero'),
+                'ultima_factura_valor': float(item.get('ultima_factura_valor', Decimal('0'))),
                 'cartera': float(item.get('cartera', Decimal('0'))),
                 'pagos_pendientes_conciliar': float(item.get('pagos_pendientes_conciliar', Decimal('0'))),
             }
@@ -782,6 +808,9 @@ def comparativo_clientes():
         if request.args.get('formato') == 'xlsx':
             def filas_clientes(items):
                 return [[item['identificacion'], item['nombre'], item['facturas'], item.get('facturacion', 0),
+                         item.get('primera_factura_fecha'), item.get('primera_factura_numero'),
+                         item.get('primera_factura_valor', 0), item.get('ultima_factura_fecha'),
+                         item.get('ultima_factura_numero'), item.get('ultima_factura_valor', 0),
                          item.get('cartera', 0), item.get('pagos_pendientes_conciliar', 0)] for item in items]
             no_volvieron_con_deuda = [item for item in data['no_volvieron'] if item.get('cartera', 0) > 0]
             no_volvieron_sin_deuda = [item for item in data['no_volvieron'] if item.get('cartera', 0) <= 0]
@@ -808,9 +837,9 @@ def comparativo_clientes():
                 'comparativo_clientes.xlsx',
                 [
                     ('Resumen', ['Concepto', 'Valor'], resumen),
-                    ('Clientes nuevos', ['Identificacion', 'Cliente', 'Facturas', 'Facturacion', 'Cartera', 'Abonos por conciliar'], filas_clientes(data['nuevos'])),
-                    ('No volvieron con deuda', ['Identificacion', 'Cliente', 'Facturas', 'Facturacion', 'Cartera', 'Abonos por conciliar'], filas_clientes(no_volvieron_con_deuda)),
-                    ('No volvieron sin deuda', ['Identificacion', 'Cliente', 'Facturas', 'Facturacion', 'Cartera', 'Abonos por conciliar'], filas_clientes(no_volvieron_sin_deuda)),
+                    ('Clientes nuevos', ['Identificacion', 'Cliente', 'Facturas', 'Facturacion', 'Primera factura fecha', 'Primera factura nro', 'Primera factura valor', 'Ultima factura fecha', 'Ultima factura nro', 'Ultima factura valor', 'Cartera', 'Abonos por conciliar'], filas_clientes(data['nuevos'])),
+                    ('No volvieron con deuda', ['Identificacion', 'Cliente', 'Facturas', 'Facturacion', 'Primera factura fecha', 'Primera factura nro', 'Primera factura valor', 'Ultima factura fecha', 'Ultima factura nro', 'Ultima factura valor', 'Cartera', 'Abonos por conciliar'], filas_clientes(no_volvieron_con_deuda)),
+                    ('No volvieron sin deuda', ['Identificacion', 'Cliente', 'Facturas', 'Facturacion', 'Primera factura fecha', 'Primera factura nro', 'Primera factura valor', 'Ultima factura fecha', 'Ultima factura nro', 'Ultima factura valor', 'Cartera', 'Abonos por conciliar'], filas_clientes(no_volvieron_sin_deuda)),
                 ],
             )
         return jsonify(data)

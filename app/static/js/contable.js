@@ -1076,10 +1076,10 @@ function estadoCuentaClienteCarteraSiigo(cliente) {
     const facturas = cliente.facturas || [];
     if (!facturas.length) return '';
     const total = facturas.reduce((suma, factura) => suma + Number(factura.saldo || 0), 0);
-    const filas = facturas.map(factura => `<tr><td>${escapeSiigo(factura.referencia)}</td><td>${factura.dias_vencido > 0 ? `Vencida hace ${factura.dias_vencido} días` : factura.dias_vencido === 0 ? 'Vence hoy' : `Por vencer en ${-factura.dias_vencido} días`}</td><td>${formatoSiigoNumero(factura.saldo)}</td></tr>`).join('');
-    return `<details class="siigo-estado-cuenta"><summary>Ver estado de cuenta</summary><p><strong>Total cartera: ${formatoSiigoNumero(total)}</strong></p><table class="data-table"><thead><tr><th>Factura</th><th>Vencimiento</th><th>Saldo</th></tr></thead><tbody>${filas}</tbody></table></details>`;
+    const diasSaldo = factura => Number(factura.dias_vencido || 0) > 0 ? -Number(factura.dias_vencido || 0) : Math.abs(Number(factura.dias_vencido || 0));
+    const filas = facturas.map(factura => `<tr><td>${escapeSiigo(factura.referencia)}</td><td>${diasSaldo(factura)}</td><td>${formatoSiigoNumero(factura.saldo)}</td></tr>`).join('');
+    return `<details class="siigo-estado-cuenta"><summary>Ver estado de cuenta</summary><p><strong>Total cartera: ${formatoSiigoNumero(total)}</strong></p><table class="data-table"><thead><tr><th>Factura</th><th>Dias</th><th>Saldo</th></tr></thead><tbody>${filas}</tbody></table></details>`;
 }
-
 function actualizarAlertasCarteraSiigo(panel) {
     const clientes = panel._datosVencidas?.clientes || [];
     panel.querySelector('[data-alertas-cartera]').innerHTML = ordenEstadosGestionCarteraSiigo.map(estado => `<button type="button" class="siigo-alerta-cartera siigo-${estado}" data-alerta-cartera="${estado}">${estadosGestionCarteraSiigo[estado]}: ${clientes.filter(c => estadoClienteCarteraSiigo(c) === estado).length}</button>`).join(' ');
@@ -1112,6 +1112,12 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     dialogo.querySelector('.form-help').insertAdjacentHTML('beforebegin', estadoCuentaClienteCarteraSiigo(cliente));
     dialogo.querySelector('[data-historial]').insertAdjacentHTML('afterend', bloqueChatCarteraSiigo(cliente));
     const form = dialogo.querySelector('form');
+    const historialTitulo = dialogo.querySelector('form + h3');
+    const historialBloque = dialogo.querySelector('[data-historial]');
+    if (historialTitulo && historialBloque) {
+        form.insertAdjacentElement('beforebegin', historialTitulo);
+        historialTitulo.insertAdjacentElement('afterend', historialBloque);
+    }
     form.querySelector('h3').insertAdjacentHTML('afterend', `<div class="form-group"><label for="siigoGestionEstado">Estado del seguimiento *</label><select id="siigoGestionEstado" name="estado_gestion" required><option value="">Seleccione</option><option value="SIN_GESTION">Sin Gestión</option><option value="NO_LOCALIZADO">No localizado</option><option value="EN_PROCESO">En proceso</option><option value="CON_COMPROMISO">Con compromiso</option></select></div>`);
     const estado = dialogo.querySelector('[data-estado]');
     const historial = dialogo.querySelector('[data-historial]');
@@ -1121,9 +1127,19 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     fechaGestion.readOnly = true;
     fechaGestion.setAttribute('aria-readonly', 'true');
     const medioSelect = form.elements.medio;
-    medioSelect.multiple = true;
-    medioSelect.size = 5;
-    medioSelect.querySelector('option[value=""]')?.remove();
+    const medioOpciones = Array.from(medioSelect.options).filter(option => option.value);
+    const medioGroup = document.createElement('fieldset');
+    medioGroup.className = 'siigo-medios-contacto';
+    medioGroup.innerHTML = `<legend>Medio de contacto *</legend>${medioOpciones.map(option => `<label><input type="checkbox" name="medio_check" value="${escapeSiigo(option.value)}"> ${escapeSiigo(option.textContent)}</label>`).join('')}`;
+    medioSelect.closest('.form-group').replaceWith(medioGroup);
+    const mediosChecks = Array.from(medioGroup.querySelectorAll('input[name="medio_check"]'));
+    const validarMedios = () => {
+        const mensaje = mediosChecks.some(check => check.checked) ? '' : 'Seleccione al menos un medio de contacto.';
+        mediosChecks[0]?.setCustomValidity(mensaje);
+        return !mensaje;
+    };
+    mediosChecks.forEach(check => check.addEventListener('change', validarMedios));
+    validarMedios();
     if (cliente.agrupacion_responsable?.responsable) {
         form.elements.contacto.value = cliente.agrupacion_responsable.responsable;
     }
@@ -1252,6 +1268,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     vincularRespuestasChatCarteraSiigo(dialogo, () => cargarChatCarteraSiigo(dialogo, cliente));
     form.addEventListener('submit', async event => {
         event.preventDefault();
+        validarMedios();
         if (guardando || !form.reportValidity()) return;
         guardando = true;
         const guardar = form.querySelector('[type="submit"]');
@@ -1259,7 +1276,8 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
         estado.textContent = 'Guardando seguimiento...';
         try {
             const datos = Object.fromEntries(new FormData(form));
-            datos.medio = [...form.elements.medio.selectedOptions].map(option => option.value);
+            datos.medio = mediosChecks.filter(check => check.checked).map(check => check.value);
+            delete datos.medio_check;
             datos.valor_compromiso = (datos.valor_compromiso || '').replace(/\./g, '').replace(',', '.');
             datos.identificacion = cliente.identificacion;
             if (datos.alcance === 'grupo') {

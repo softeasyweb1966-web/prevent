@@ -200,6 +200,10 @@ class CarteraACTest(unittest.TestCase):
                 data = contable.comparativo_clientes.__wrapped__().get_json()
             self.assertEqual(data['totales_nuevos']['cartera'], saldo)
             self.assertEqual(data['totales_nuevos']['facturacion'], 1000)
+            self.assertEqual(data['nuevos'][0]['primera_factura_fecha'], '2026-01-01')
+            self.assertEqual(data['nuevos'][0]['primera_factura_valor'], 1000)
+            self.assertEqual(data['nuevos'][0]['ultima_factura_fecha'], '2026-01-01')
+            self.assertEqual(data['nuevos'][0]['ultima_factura_valor'], 1000)
 
     def test_comparativo_normaliza_identificacion_decimal_texto(self):
         self.documento('FV', 1, '2024-09-01', [{
