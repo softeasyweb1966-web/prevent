@@ -1204,7 +1204,12 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     document.body.appendChild(dialogo);
     dialogo.querySelector('.siigo-historial-cartera').insertAdjacentHTML('beforebegin', estadoCuentaClienteCarteraSiigo(cliente));
     dialogo.querySelector('.siigo-seguimiento-shell').insertAdjacentHTML('beforeend', bloqueChatCarteraSiigo(cliente));
-    const form = dialogo.querySelector('form');
+    const form = dialogo.querySelector('form.siigo-nuevo-seguimiento');
+    if (!form) {
+        dialogo.remove();
+        alert('No fue posible abrir el formulario de seguimiento. Actualice la pagina e intente de nuevo.');
+        return;
+    }
     const estado = dialogo.querySelector('[data-estado]');
     const historial = dialogo.querySelector('[data-historial]');
     const nuevo = dialogo.querySelector('[data-nuevo]');
