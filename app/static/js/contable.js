@@ -914,8 +914,12 @@ async function consultarFacturasVencidasSiigo(form) {
                 : data;
         resultado.innerHTML = tablaFacturasVencidasSiigo(dataTabla);
         actualizarAlertasCarteraSiigo(panel);
+        const clientesVisiblesSeguimiento = dataTabla.clientes || [];
         resultado.querySelectorAll('[data-siigo-seguimiento]').forEach(boton => {
-            boton.addEventListener('click', () => abrirSeguimientoCarteraSiigo(data.clientes[Number(boton.dataset.siigoSeguimiento)]));
+            boton.addEventListener('click', () => {
+                const cliente = clientesVisiblesSeguimiento[Number(boton.dataset.siigoSeguimiento)];
+                if (cliente) abrirSeguimientoCarteraSiigo(cliente);
+            });
         });
         estado.textContent = '';
         panel.querySelector('[data-vencidas-filtros]').hidden = true;
@@ -1487,7 +1491,7 @@ function movimientosSinAsignarSiigo(movimientos) {
 
 function tablaFacturasVencidasSiigo(data) {
     const clientesOriginales = data.clientes || [];
-    const clientes = clientesOriginales.map((cliente, indiceOriginal) => ({ cliente, indiceOriginal: cliente._indiceOriginal ?? indiceOriginal })).sort((a, b) => {
+    const clientes = clientesOriginales.map((cliente, indiceOriginal) => ({ cliente, indiceOriginal })).sort((a, b) => {
         const responsableA = a.cliente.agrupacion_responsable?.responsable || 'Sin responsable';
         const responsableB = b.cliente.agrupacion_responsable?.responsable || 'Sin responsable';
         return responsableA.localeCompare(responsableB, 'es') || (a.cliente.cliente || '').localeCompare(b.cliente.cliente || '', 'es');
