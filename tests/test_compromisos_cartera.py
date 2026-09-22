@@ -43,3 +43,8 @@ class CompromisosTest(unittest.TestCase):
         self.assertEqual([c['facturas'][0]['dias_vencido'] for c in resultado], [50, 2, 0, -1, -10])
         with self.assertRaises(ValueError):
             _clientes_facturas_vencidas(clientes, {}, 'incorrecto')
+
+    def test_dias_vencidos_se_calculan_con_fecha_actual_no_corte_contable(self):
+        fecha_actual = date(2026, 9, 22)
+        vencimientos = [date(2025, 12, 15), date(2026, 2, 12), date(2026, 8, 13), date(2026, 9, 25)]
+        self.assertEqual([(fecha_actual - vencimiento).days for vencimiento in vencimientos], [281, 222, 40, -3])

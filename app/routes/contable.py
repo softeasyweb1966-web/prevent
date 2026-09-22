@@ -1715,6 +1715,9 @@ def cartera_dinamica():
         hoy_bogota = datetime.now(ZoneInfo('America/Bogota')).date()
         fecha_corte_default = date(hoy_bogota.year, 12, 31)
         fecha_corte = _fecha(request.args.get('fecha_corte') or fecha_corte_default.isoformat())
+        fecha_dias = _fecha(request.args.get('fecha_dias')) if request.args.get('fecha_dias') else (
+            hoy_bogota if request.args.get('informe') == 'vencidas' else fecha_corte
+        )
         desde = _fecha(request.args.get('desde')) if request.args.get('desde') else None
         hasta = _fecha(request.args.get('hasta')) if request.args.get('hasta') else None
         cliente = _texto(request.args.get('cliente'))
@@ -1864,7 +1867,7 @@ def cartera_dinamica():
         for item in facturas.values():
             saldo = max(saldo_factura(item), Decimal('0'))
             vencimiento = item['fecha_vencimiento'] or item['fecha_factura']
-            dias_vencido = (fecha_corte - vencimiento).days
+            dias_vencido = (fecha_dias - vencimiento).days
             periodo = item['fecha_factura'].strftime('%Y-%m')
             resumen = periodos.setdefault(periodo, {
                 'periodo': periodo, 'facturado': Decimal('0'), 'recaudado': Decimal('0'), 'ajustes_ac': Decimal('0'), 'notas_credito': Decimal('0'), 'notas_debito': Decimal('0'), 'saldo': Decimal('0'),
@@ -2025,6 +2028,7 @@ def cartera_dinamica():
                 return _excel_facturas_vencidas(clientes, fecha_corte, movimientos_sin_asignar)
             return jsonify({
                 'fecha_corte': fecha_corte.isoformat(),
+                'fecha_dias': fecha_dias.isoformat(),
                 'clientes': [dict(cliente, total_vencido=float(cliente['total_vencido']), total_cliente=float(cliente['total_cliente']),
                                   facturas=serializar(cliente['facturas'])) for cliente in clientes],
                 'cantidad_clientes': len(clientes),
@@ -2040,6 +2044,7 @@ def cartera_dinamica():
 
         data = {
             'fecha_corte': fecha_corte.isoformat(),
+            'fecha_dias': fecha_dias.isoformat(),
             'desde': desde.isoformat() if desde else None,
             'hasta': hasta.isoformat() if hasta else None,
             'cliente': cliente or None,

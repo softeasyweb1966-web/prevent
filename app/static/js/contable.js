@@ -904,7 +904,7 @@ async function consultarFacturasVencidasSiigo(form) {
         const estadoFacturas = form.elements.estado_facturas.selectedOptions[0].textContent;
         const nombre = filtros.cliente && (data.clientes?.length === 1 ? data.clientes[0].cliente : filtros.cliente);
         const filtroExtra = panel._filtroProximoHoyCartera ? ' · Próximo seguimiento hoy' : '';
-        panel.querySelector('[data-vencidas-meta]').textContent = `Fecha de corte: ${formatoSiigoFecha(data.fecha_corte)} | ${estadoFacturas}${nombre ? ` · Cliente: ${nombre}` : ''}${filtroExtra}`;
+        panel.querySelector('[data-vencidas-meta]').textContent = `Cartera a corte: ${formatoSiigoFecha(data.fecha_corte)} | Días calculados al: ${formatoSiigoFecha(data.fecha_dias || data.fecha_corte)} | ${estadoFacturas}${nombre ? ` · Cliente: ${nombre}` : ''}${filtroExtra}`;
         const resultado = panel.querySelector('.siigo-vencidas-datos');
         panel._datosVencidas = data;
         const dataTabla = panel._filtroAlertaCartera
