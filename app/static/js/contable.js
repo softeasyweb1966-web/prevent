@@ -912,15 +912,15 @@ async function consultarFacturasVencidasSiigo(form) {
             : panel._filtroProximoHoyCartera
                 ? { ...data, clientes: (data.clientes || []).map((cliente, indiceOriginal) => ({ ...cliente, _indiceOriginal: indiceOriginal })).filter(cliente => (cliente.seguimientos || []).some(item => item.proximo_seguimiento === fechaHoyCarteraSiigo())) }
                 : data;
+        panel._clientesSeguimientoVisibles = dataTabla.clientes || [];
         resultado.innerHTML = tablaFacturasVencidasSiigo(dataTabla);
         actualizarAlertasCarteraSiigo(panel);
-        const clientesVisiblesSeguimiento = dataTabla.clientes || [];
-        resultado.querySelectorAll('[data-siigo-seguimiento]').forEach(boton => {
-            boton.addEventListener('click', () => {
-                const cliente = clientesVisiblesSeguimiento[Number(boton.dataset.siigoSeguimiento)];
-                if (cliente) abrirSeguimientoCarteraSiigo(cliente);
-            });
-        });
+        resultado.onclick = event => {
+            const boton = event.target.closest('[data-siigo-seguimiento]');
+            if (!boton) return;
+            const cliente = (panel._clientesSeguimientoVisibles || [])[Number(boton.dataset.siigoSeguimiento)];
+            if (cliente) abrirSeguimientoCarteraSiigo(cliente);
+        };
         estado.textContent = '';
         panel.querySelector('[data-vencidas-filtros]').hidden = true;
         visor.hidden = false;
@@ -1098,6 +1098,7 @@ function normalizarEstadoGestionCarteraSiigo(valor) {
 }
 
 function estadoClienteCarteraSiigo(cliente) {
+    if (!cliente) return 'sin_gestion';
     const registros = cliente.seguimientos || [];
     if (!registros.length) return 'sin_gestion';
     const ultimo = registros[0] || {};
