@@ -151,6 +151,11 @@ def _referencia_factura(descripcion):
     return next(iter(referencias)) if len(referencias) == 1 else None
 
 
+def _fecha_hora_gestion(fecha_gestion):
+    ahora = datetime.now(ZoneInfo('America/Bogota'))
+    return datetime.combine(fecha_gestion, ahora.time().replace(microsecond=0))
+
+
 def _fecha_vencimiento(descripcion):
     match = FECHA_REFERENCIA_RE.search(_texto(descripcion))
     return _fecha(match.group(1)) if match else None
@@ -1050,7 +1055,7 @@ def _serializar_seguimiento_cartera(registro):
         'valor_compromiso': float(registro.valor_compromiso) if registro.valor_compromiso is not None else None,
         'proximo_seguimiento': registro.proximo_seguimiento.isoformat() if registro.proximo_seguimiento else None,
         'registrado_por': registro.usuario_nombre,
-        'fecha_hora_gestion': registro.created_at.isoformat() + 'Z',
+        'fecha_hora_gestion': (registro.fecha_hora_gestion or registro.created_at).isoformat(),
         'created_at': registro.created_at.isoformat() + 'Z',
     }
 
@@ -1306,6 +1311,7 @@ def seguimiento_cartera():
         if request.method == 'GET':
             registros = SiigoSeguimientoCartera.query.filter_by(identificacion=clave).order_by(
                 SiigoSeguimientoCartera.fecha_gestion.desc(),
+                SiigoSeguimientoCartera.fecha_hora_gestion.desc().nullslast(),
                 SiigoSeguimientoCartera.created_at.desc(), SiigoSeguimientoCartera.id.desc(),
             ).all()
             return jsonify({'seguimientos': [_serializar_seguimiento_cartera(item) for item in registros]})
@@ -1372,7 +1378,8 @@ def seguimiento_cartera():
             registro = SiigoSeguimientoCartera(
                 identificacion=identificacion_registro,
                 cliente_nombre=nombres_cliente.get(identificacion_registro) or ('Sin nombre' if identificacion_registro == clave else identificacion_registro),
-                fecha_gestion=fecha_gestion, medio=medio, estado_gestion=estado_gestion, contacto=contacto or None,
+                fecha_gestion=fecha_gestion, fecha_hora_gestion=_fecha_hora_gestion(fecha_gestion),
+                medio=medio, estado_gestion=estado_gestion, contacto=contacto or None,
                 observaciones=observaciones, valor_compromiso=valor,
                 usuario_id=current_user.id, usuario_nombre=current_user.nombre_completo,
                 **fechas,

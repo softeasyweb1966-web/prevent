@@ -408,12 +408,14 @@ class CarteraACTest(unittest.TestCase):
         primero = http.post('/api/contable/seguimiento-cartera', json=datos)
         self.assertEqual(primero.status_code, 201)
         self.assertEqual(primero.json['seguimiento']['registrado_por'], 'Gestora cartera')
+        self.assertTrue(primero.json['seguimiento']['fecha_hora_gestion'].startswith('2026-01-15T'))
         segundo = http.post('/api/contable/seguimiento-cartera', json=dict(
             datos, fecha_gestion='2026-01-16', observaciones='Confirma el compromiso.'))
         self.assertEqual(segundo.status_code, 201)
         db.session.remove()
         historial = http.get('/api/contable/seguimiento-cartera?identificacion=9001').json['seguimientos']
         self.assertEqual([item['fecha_gestion'] for item in historial], ['2026-01-16', '2026-01-15'])
+        self.assertTrue(historial[1]['fecha_hora_gestion'].startswith('2026-01-15T'))
         self.assertEqual(historial[1]['valor_compromiso'], 50.25)
         self.assertEqual(historial[1]['observaciones'], datos['observaciones'])
         compromiso_id = primero.json['seguimiento']['id']
