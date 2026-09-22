@@ -680,6 +680,24 @@ class SiigoComprobantePago(db.Model):
     seguimiento = db.relationship('SiigoSeguimientoCartera', back_populates='comprobantes_pago')
 
 
+class SiigoComprobantePagoRecibido(db.Model):
+    """Comprobantes enviados por vendedores antes de cruzarlos contra SIIGO."""
+    __tablename__ = 'siigo_comprobantes_pago_recibidos'
+    id = db.Column(db.Integer, primary_key=True)
+    identificacion = db.Column(db.String(50), nullable=False, index=True)
+    cliente_nombre = db.Column(db.String(255), nullable=False)
+    paciente = db.Column(db.String(200))
+    valor = db.Column(Numeric(18, 2), nullable=False)
+    facturas = db.Column(db.JSON, nullable=False, default=list)
+    nombre = db.Column(db.String(255), nullable=False)
+    mime_type = db.Column(db.String(80), nullable=False)
+    tamano_bytes = db.Column(db.Integer, nullable=False)
+    contenido = db.deferred(db.Column(db.LargeBinary, nullable=False))
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    usuario_nombre = db.Column(db.String(200), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
 class ChatCarteraHilo(db.Model):
     """Conversaciones internas de cartera entre administrador y vendedor."""
     __tablename__ = 'chat_cartera_hilos'

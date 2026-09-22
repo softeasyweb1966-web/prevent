@@ -431,7 +431,7 @@ function crearPanelFacturasVencidasSiigo() {
     panel.id = 'siigoFacturasVencidasPanel';
     panel.className = 'recent-section';
     const hoy = fechaCorteAnualCarteraSiigo();
-    panel.innerHTML = `<div data-vencidas-filtros><h3>Facturas vencidas y por vencer por cliente</h3><form class="siigo-vencidas-filtros"><div class="form-group"><label for="siigoVencidasCorte">Fecha de corte</label><input id="siigoVencidasCorte" type="date" required value="${hoy}"></div><div class="form-group"><label for="siigoVencidasCliente">Cliente o identificación (opcional)</label><input id="siigoVencidasCliente" name="cliente" type="text"></div><div class="form-group"><label for="siigoEstadoFacturas">Facturas</label><select id="siigoEstadoFacturas" name="estado_facturas"><option value="todos">Todos</option><option value="vencidos">Solo vencidos</option><option value="por_vencer">Por vencer</option></select><small>Por vencer incluye las que vencen hoy. Cantidad y total corresponden al filtro.</small></div><button class="btn btn-primary" type="submit">Generar informe</button></form><p data-vencidas-estado role="status"></p></div><div class="siigo-vencidas-visor" hidden><header class="siigo-vencidas-cabecera"><div><h2 tabindex="-1">Facturas vencidas y por vencer por cliente</h2><p data-vencidas-meta></p><p data-alertas-cartera role="status" aria-live="polite"></p></div><button type="button" class="btn btn-secondary" data-vencidas-regresar>Regresar</button></header><div class="table-container siigo-vencidas-datos"></div><footer class="siigo-vencidas-pie"><div class="siigo-vencidas-barra" tabindex="0" role="region" aria-label="Desplazamiento horizontal de las facturas"><div></div></div><div class="siigo-vencidas-acciones"><button class="btn btn-primary" type="button" data-vencidas-generar>Generar informe</button><button class="btn btn-secondary" type="button" data-siigo-exportar-vencidas>Descargar Excel</button><button class="btn btn-secondary" type="button" id="siigoAlternarMenuVencidas">Mostrar menú lateral</button><button class="btn btn-secondary" type="button" data-vencidas-actualizar>Actualizar comprobantes</button></div><p id="siigoVencidasCargaResultado" role="status" aria-live="polite"></p></footer></div>`;
+    panel.innerHTML = `<div data-vencidas-filtros><h3>Facturas vencidas y por vencer por cliente</h3><form class="siigo-vencidas-filtros"><div class="form-group"><label for="siigoVencidasCorte">Fecha de corte</label><input id="siigoVencidasCorte" type="date" required value="${hoy}"></div><div class="form-group"><label for="siigoVencidasCliente">Cliente o identificación (opcional)</label><input id="siigoVencidasCliente" name="cliente" type="text"></div><div class="form-group"><label for="siigoEstadoFacturas">Facturas</label><select id="siigoEstadoFacturas" name="estado_facturas"><option value="todos">Todos</option><option value="vencidos">Solo vencidos</option><option value="por_vencer">Por vencer</option></select><small>Por vencer incluye las que vencen hoy. Cantidad y total corresponden al filtro.</small></div><button class="btn btn-primary" type="submit">Generar informe</button></form><form class="siigo-comprobante-recibido" data-comprobante-recibido><h4>Cargar comprobante de pago</h4><div class="form-row siigo-form-dos"><div class="form-group"><label>Empresa *</label><input name="cliente_nombre" required maxlength="255"><input name="identificacion" placeholder="NIT o identificación" required maxlength="50"></div><div class="form-group"><label>Paciente</label><input name="paciente" maxlength="200"></div></div><div class="form-row siigo-form-dos"><div class="form-group"><label>Valor *</label><input name="valor" type="number" min="0.01" step="0.01" required></div><div class="form-group"><label>Archivos *</label><input name="archivos" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple required></div></div><button type="submit" class="btn btn-primary">Guardar comprobante</button><p role="status"></p></form><p data-vencidas-estado role="status"></p></div><div class="siigo-vencidas-visor" hidden><header class="siigo-vencidas-cabecera"><div><h2 tabindex="-1">Facturas vencidas y por vencer por cliente</h2><p data-vencidas-meta></p><p data-alertas-cartera role="status" aria-live="polite"></p></div><button type="button" class="btn btn-secondary" data-vencidas-regresar>Regresar</button></header><div class="table-container siigo-vencidas-datos"></div><footer class="siigo-vencidas-pie"><div class="siigo-vencidas-barra" tabindex="0" role="region" aria-label="Desplazamiento horizontal de las facturas"><div></div></div><div class="siigo-vencidas-acciones"><button class="btn btn-primary" type="button" data-vencidas-generar>Generar informe</button><button class="btn btn-secondary" type="button" data-siigo-exportar-vencidas>Descargar Excel</button><button class="btn btn-secondary" type="button" id="siigoAlternarMenuVencidas">Mostrar menú lateral</button><button class="btn btn-secondary" type="button" data-vencidas-actualizar>Actualizar comprobantes</button></div><p id="siigoVencidasCargaResultado" role="status" aria-live="polite"></p></footer></div>`;
     panel.querySelector('[data-vencidas-filtros] h3').textContent = 'Seguimiento de cartera';
     panel.querySelector('.siigo-vencidas-cabecera h2').textContent = 'Seguimiento de cartera';
     panel.querySelector('#siigoVencidasCorte')?.closest('.form-group')?.remove();
@@ -1121,13 +1121,53 @@ function estadoCuentaClienteCarteraSiigo(cliente) {
     const facturas = cliente.facturas || [];
     if (!facturas.length) return '';
     const total = facturas.reduce((suma, factura) => suma + Number(factura.saldo || 0), 0);
-    const diasSaldo = factura => Number(factura.dias_vencido || 0) > 0 ? -Number(factura.dias_vencido || 0) : Math.abs(Number(factura.dias_vencido || 0));
-    const filas = facturas.map(factura => `<tr><td>${escapeSiigo(factura.referencia)}</td><td>${diasSaldo(factura)}</td><td>${formatoSiigoNumero(factura.saldo)}</td></tr>`).join('');
+    const filaFactura = factura => `<tr><td><label><input type="checkbox" name="facturas" value="${escapeSiigo(factura.referencia)}"> ${escapeSiigo(factura.referencia)}</label></td><td>${escapeSiigo(formatoSiigoFecha(factura.fecha_factura))}</td><td>${formatoSiigoNumero(factura.facturado)}</td><td>${escapeSiigo(formatoSiigoFecha(factura.fecha_vencimiento))}</td><td>${Number(factura.dias_vencido || 0)}</td><td>${formatoSiigoNumero(factura.saldo)}</td></tr>`;
+    const vencidas = facturas.filter(factura => Number(factura.dias_vencido || 0) > 0);
+    const porVencer = facturas.filter(factura => Number(factura.dias_vencido || 0) <= 0);
+    const tablaFacturas = items => items.length ? `<table class="data-table"><thead><tr><th>Factura</th><th>Fecha factura</th><th>Valor factura</th><th>Vencimiento</th><th>Dias</th><th>Saldo</th></tr></thead><tbody>${items.map(filaFactura).join('')}</tbody></table>` : '<p class="form-help">No hay facturas en esta pestaña.</p>';
     const recibos = cliente.recibos_caja || [];
-    const filasRecibos = recibos.map(recibo => `<tr><td>${escapeSiigo(recibo.recibo)}</td><td>${escapeSiigo(formatoSiigoFecha(recibo.fecha))}</td><td>${escapeSiigo(recibo.factura)}</td><td>${formatoSiigoNumero(recibo.valor)}</td></tr>`).join('');
-    const tablaRecibos = `<details class="siigo-recibos-caja"><summary>Recibos de caja aplicados (${recibos.length})</summary>${filasRecibos ? `<table class="data-table"><thead><tr><th>RC</th><th>Fecha</th><th>Factura pagada</th><th>Valor aplicado</th></tr></thead><tbody>${filasRecibos}</tbody></table>` : '<p class="form-help">No hay recibos de caja aplicados a las facturas del cliente en esta consulta.</p>'}</details>`;
-    return `<details class="siigo-estado-cuenta"><summary>Ver estado de cuenta</summary><p><strong>Total cartera: ${formatoSiigoNumero(total)}</strong></p><table class="data-table"><thead><tr><th>Factura</th><th>Dias</th><th>Saldo</th></tr></thead><tbody>${filas}</tbody></table>${tablaRecibos}</details>`;
+    const filasRecibos = recibos.map(recibo => `<tr><td>${escapeSiigo(recibo.tipo || '')}</td><td>${escapeSiigo(recibo.recibo)}</td><td>${escapeSiigo(formatoSiigoFecha(recibo.fecha))}</td><td>${escapeSiigo(recibo.factura)}</td><td>${escapeSiigo(formatoSiigoFecha(recibo.fecha_factura))}</td><td>${formatoSiigoNumero(recibo.valor_factura)}</td><td>${formatoSiigoNumero(recibo.valor)}</td></tr>`).join('');
+    const tablaRecibos = `<details class="siigo-recibos-caja"><summary>RC, NC, AC y cruces aplicados (${recibos.length})</summary>${filasRecibos ? `<table class="data-table"><thead><tr><th>Tipo</th><th>Comprobante</th><th>Fecha</th><th>Factura</th><th>Fecha factura</th><th>Valor factura</th><th>Valor aplicado</th></tr></thead><tbody>${filasRecibos}</tbody></table>` : '<p class="form-help">No hay movimientos aplicados a las facturas del cliente en esta consulta.</p>'}</details>`;
+    const comprobanteForm = `<form class="siigo-comprobante-recibido" data-comprobante-recibido><h4>Adjuntar comprobante de pago</h4><input type="hidden" name="identificacion" value="${escapeSiigo(cliente.identificacion || '')}"><input type="hidden" name="cliente_nombre" value="${escapeSiigo(cliente.cliente || '')}"><div class="form-row siigo-form-dos"><div class="form-group"><label>Paciente</label><input name="paciente" maxlength="200"></div><div class="form-group"><label>Valor *</label><input name="valor" type="number" min="0.01" step="0.01" required></div></div><div class="form-group"><label>Archivos *</label><input name="archivos" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple required></div><button type="submit" class="btn btn-primary">Guardar comprobante</button><p role="status"></p></form>`;
+    return `<details class="siigo-estado-cuenta"><summary>Ver estado de cuenta</summary><p><strong>Total cartera: ${formatoSiigoNumero(total)}</strong></p><div class="siigo-tabs-cartera"><details open><summary>Vencidas (${vencidas.length})</summary>${tablaFacturas(vencidas)}</details><details><summary>Por vencer (${porVencer.length})</summary>${tablaFacturas(porVencer)}</details></div>${tablaRecibos}${comprobanteForm}</details>`;
 }
+async function guardarComprobanteRecibidoSiigo(form) {
+    const estado = form.querySelector('[role="status"]');
+    const archivos = form.querySelector('input[type="file"]')?.files || [];
+    if (archivos.length > 5 || [...archivos].some(a => a.size > 10 * 1024 * 1024)) {
+        estado.textContent = 'Seleccione hasta 5 archivos de maximo 10 MB cada uno.';
+        return;
+    }
+    const datos = new FormData(form);
+    const seleccionadas = form.closest('.siigo-estado-cuenta')?.querySelectorAll('input[name="facturas"]:checked') || [];
+    datos.delete('facturas');
+    seleccionadas.forEach(item => datos.append('facturas', item.value));
+    estado.textContent = 'Guardando comprobante...';
+    form.querySelectorAll('button, input').forEach(item => { item.disabled = true; });
+    try {
+        const response = await fetch('/api/contable/comprobantes-pago-recibidos', {
+            method: 'POST',
+            credentials: 'include',
+            body: datos,
+        });
+        const data = await leerRespuestaSiigo(response);
+        if (!response.ok) throw new Error(data.error || 'No fue posible guardar el comprobante.');
+        form.reset();
+        estado.textContent = 'Comprobante guardado para conciliacion.';
+    } catch (error) {
+        estado.textContent = error.message;
+    } finally {
+        form.querySelectorAll('button, input').forEach(item => { item.disabled = false; });
+    }
+}
+
+document.addEventListener('submit', event => {
+    const form = event.target.closest('[data-comprobante-recibido]');
+    if (!form) return;
+    event.preventDefault();
+    guardarComprobanteRecibidoSiigo(form);
+});
+
 function actualizarAlertasCarteraSiigo(panel) {
     const clientes = panel._datosVencidas?.clientes || [];
     panel.querySelector('[data-alertas-cartera]').innerHTML = ordenEstadosGestionCarteraSiigo.map(estado => `<button type="button" class="siigo-alerta-cartera siigo-${estado}" data-alerta-cartera="${estado}">${estadosGestionCarteraSiigo[estado]}: ${clientes.filter(c => estadoClienteCarteraSiigo(c) === estado).length}</button>`).join(' ');

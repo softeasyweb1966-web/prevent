@@ -30,6 +30,7 @@ from app.models import (
     SiigoMovimiento,
     SiigoSeguimientoCartera,
     SiigoComprobantePago,
+    SiigoComprobantePagoRecibido,
     Vendedor,
     db,
 )
@@ -224,6 +225,28 @@ def _mismo_tercero_cartera(factura, movimiento):
         not factura['identificacion'] or not movimiento.identificacion
         or _nit_cartera(factura['identificacion']) == _nit_cartera(movimiento.identificacion)
     )
+
+
+def _archivo_comprobante_pago(archivo):
+    nombre = secure_filename(archivo.filename or '')
+    contenido = archivo.read(10 * 1024 * 1024 + 1)
+    if not nombre or len(nombre) > 255 or not contenido:
+        raise ValueError('El comprobante debe tener nombre y contenido.')
+    if len(contenido) > 10 * 1024 * 1024:
+        raise ValueError('Cada comprobante puede pesar mÃ¡ximo 10 MB.')
+    extension = nombre.rsplit('.', 1)[-1].lower()
+    mime = None
+    if extension == 'pdf' and contenido.startswith(b'%PDF-'):
+        mime = 'application/pdf'
+    elif extension in {'jpg', 'jpeg'} and contenido.startswith(b'\xff\xd8\xff'):
+        mime = 'image/jpeg'
+    elif extension == 'png' and contenido.startswith(b'\x89PNG\r\n\x1a\n'):
+        mime = 'image/png'
+    elif extension == 'webp' and contenido[:4] == b'RIFF' and contenido[8:12] == b'WEBP':
+        mime = 'image/webp'
+    if mime is None:
+        raise ValueError('Use un comprobante PDF o una imagen JPG, PNG o WebP vÃ¡lida.')
+    return nombre, mime, len(contenido), contenido
 
 
 def _estado_actualizacion_comprobantes():
@@ -1462,23 +1485,119 @@ def ver_comprobante_cartera(adjunto_id):
     return response
 
 
+def _serializar_comprobante_recibido(registro):
+    return {
+        'id': registro.id,
+        'identificacion': registro.identificacion,
+        'cliente_nombre': registro.cliente_nombre,
+        'paciente': registro.paciente,
+        'valor': float(registro.valor),
+        'facturas': registro.facturas or [],
+        'nombre': registro.nombre,
+        'tamano_bytes': registro.tamano_bytes,
+        'registrado_por': registro.usuario_nombre,
+        'created_at': registro.created_at.isoformat() + 'Z',
+        'url': f'/api/contable/comprobantes-pago-recibidos/{registro.id}',
+    }
+
+
+@contable_bp.route('/comprobantes-pago-recibidos', methods=['GET', 'POST'])
+@login_required
+def comprobantes_pago_recibidos():
+    try:
+        _requiere_ventas()
+        if request.method == 'GET':
+            identificacion_raw = _texto(request.args.get('identificacion'))
+            query = SiigoComprobantePagoRecibido.query
+            if identificacion_raw:
+                query = query.filter_by(identificacion=_nit_cartera(identificacion_raw))
+            registros = query.order_by(SiigoComprobantePagoRecibido.created_at.desc(),
+                                       SiigoComprobantePagoRecibido.id.desc()).limit(100).all()
+            return jsonify({'comprobantes': [_serializar_comprobante_recibido(item) for item in registros]})
+
+        identificacion_raw = _texto(request.form.get('identificacion'))
+        clave = _nit_cartera(identificacion_raw)
+        cliente_nombre = _texto(request.form.get('cliente_nombre'))
+        paciente = _texto(request.form.get('paciente'))
+        facturas = [_texto(item) for item in request.form.getlist('facturas') if _texto(item)]
+        valor = _decimal(request.form.get('valor'))
+        if not clave:
+            raise ValueError('Seleccione la empresa del comprobante.')
+        if not cliente_nombre:
+            cliente_nombre = identificacion_raw
+        if valor <= 0 or valor >= Decimal('10000000000000000'):
+            raise ValueError('Indique un valor positivo para el comprobante.')
+        if valor != valor.quantize(Decimal('0.01')):
+            raise ValueError('El valor admite hasta dos decimales.')
+        archivos = request.files.getlist('archivos')
+        if not 1 <= len(archivos) <= 5:
+            raise ValueError('Adjunte entre 1 y 5 comprobantes de pago.')
+        registros = []
+        for archivo in archivos:
+            nombre, mime, tamano, contenido = _archivo_comprobante_pago(archivo)
+            registro = SiigoComprobantePagoRecibido(
+                identificacion=clave,
+                cliente_nombre=cliente_nombre,
+                paciente=paciente or None,
+                valor=valor,
+                facturas=facturas,
+                nombre=nombre,
+                mime_type=mime,
+                tamano_bytes=tamano,
+                contenido=contenido,
+                usuario_id=current_user.id,
+                usuario_nombre=current_user.nombre_completo,
+            )
+            db.session.add(registro)
+            registros.append(registro)
+        db.session.commit()
+        return jsonify({'comprobantes': [_serializar_comprobante_recibido(item) for item in registros]}), 201
+    except (ValueError, PermissionError) as exc:
+        db.session.rollback()
+        return jsonify(error=str(exc)), 403 if isinstance(exc, PermissionError) else 400
+
+
+@contable_bp.route('/comprobantes-pago-recibidos/<int:comprobante_id>', methods=['GET'])
+@login_required
+def ver_comprobante_pago_recibido(comprobante_id):
+    try:
+        _requiere_ventas()
+    except PermissionError as exc:
+        return jsonify(error=str(exc)), 403
+    registro = db.session.get(SiigoComprobantePagoRecibido, comprobante_id)
+    if registro is None:
+        return jsonify(error='Comprobante no encontrado.'), 404
+    response = send_file(BytesIO(registro.contenido), mimetype=registro.mime_type,
+                         download_name=registro.nombre, as_attachment=request.args.get('descargar') == '1',
+                         max_age=0)
+    response.headers['Cache-Control'] = 'private, no-store'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Content-Security-Policy'] = "sandbox; default-src 'none'"
+    return response
+
+
 def _clientes_facturas_vencidas(cartera_clientes, vendedores, estado_facturas='todos'):
     if estado_facturas not in {'todos', 'vencidos', 'por_vencer'}:
         raise ValueError('Seleccione Todos, Solo vencidos o Por vencer.')
     resultado = []
     for cliente in cartera_clientes:
-        recibos_caja = []
+        movimientos_aplicados = []
         for factura_cliente in cliente['facturas']:
             for movimiento in factura_cliente.get('movimientos', []):
-                if _texto(movimiento.get('comprobante')).startswith('RC-'):
-                    valor = Decimal(str(movimiento.get('credito', 0))) - Decimal(str(movimiento.get('debito', 0)))
-                    if valor > 0:
-                        recibos_caja.append({
-                            'recibo': movimiento.get('comprobante'),
-                            'fecha': movimiento.get('fecha'),
-                            'factura': factura_cliente.get('referencia'),
-                            'valor': valor,
-                        })
+                comprobante = _texto(movimiento.get('comprobante'))
+                if comprobante.startswith('FV-'):
+                    continue
+                valor = Decimal(str(movimiento.get('credito', 0))) - Decimal(str(movimiento.get('debito', 0)))
+                if valor != 0:
+                    movimientos_aplicados.append({
+                        'recibo': comprobante,
+                        'tipo': comprobante.split('-', 1)[0],
+                        'fecha': movimiento.get('fecha'),
+                        'factura': factura_cliente.get('referencia'),
+                        'fecha_factura': factura_cliente.get('fecha_factura'),
+                        'valor_factura': factura_cliente.get('facturado'),
+                        'valor': valor,
+                    })
         facturas = sorted(
             (factura for factura in cliente['facturas']
              if factura['saldo'] > 0
@@ -1497,7 +1616,7 @@ def _clientes_facturas_vencidas(cartera_clientes, vendedores, estado_facturas='t
             'total_cliente': sum((factura['saldo'] for factura in facturas), Decimal('0')),
             'total_vencido': sum((f['saldo'] for f in facturas if f['dias_vencido'] > 0), Decimal('0')),
             'facturas': facturas,
-            'recibos_caja': sorted(recibos_caja, key=lambda item: (item['fecha'] or '', item['recibo'] or '', item['factura'] or '')),
+            'recibos_caja': sorted(movimientos_aplicados, key=lambda item: (item['fecha'] or '', item['recibo'] or '', item['factura'] or '')),
         })
     resultado.sort(key=lambda cliente: (
         -cliente['cantidad_facturas'],
@@ -1514,7 +1633,7 @@ def _excel_facturas_vencidas(clientes, fecha_corte, movimientos_sin_asignar=None
     from openpyxl.utils import get_column_letter
 
     cantidad = max((cliente['cantidad_facturas'] for cliente in clientes), default=0)
-    if 4 + cantidad * 3 > 16384:
+    if 4 + cantidad * 5 > 16384:
         raise ValueError('El detalle supera el límite de columnas de Excel; filtre por cliente.')
     libro = Workbook()
     hoja = libro.active
@@ -1526,17 +1645,19 @@ def _excel_facturas_vencidas(clientes, fecha_corte, movimientos_sin_asignar=None
                  'Sin vencimiento SIIGO se usa la fecha de factura. Vendedor actual de la ficha comercial.'])
     encabezados = ['Vendedor', 'Cliente', 'Cantidad', 'Valor total cliente']
     for indice in range(1, cantidad + 1):
-        encabezados.extend([f'N.º factura {indice}', f'Días vencida {indice}', f'Valor {indice}'])
+        encabezados.extend([f'Nro factura {indice}', f'Fecha factura {indice}', f'Valor factura {indice}',
+                            f'Dias {indice}', f'Saldo {indice}'])
     hoja.append(encabezados)
     for cliente in clientes:
         fila = [cliente['vendedor'], cliente['cliente'], cliente['cantidad_facturas'], cliente['total_cliente']]
         for factura in cliente['facturas']:
-            fila.extend([factura['referencia'], factura['dias_vencido'], factura['saldo']])
+            fila.extend([factura['referencia'], factura['fecha_factura'], factura['facturado'],
+                         factura['dias_vencido'], factura['saldo']])
         hoja.append(fila)
         for celda in hoja[hoja.max_row]:
             if isinstance(celda.value, str):
                 celda.data_type = 's'
-            if celda.column >= 4 and celda.column % 3 == 1:
+            if celda.column == 4 or (celda.column >= 7 and (celda.column - 7) % 5 in {0, 2}):
                 celda.number_format = '#,##0.00'
     for celda in hoja[3]:
         celda.font = Font(bold=True, color='FFFFFF')
@@ -1597,6 +1718,9 @@ def cartera_dinamica():
         desde = _fecha(request.args.get('desde')) if request.args.get('desde') else None
         hasta = _fecha(request.args.get('hasta')) if request.args.get('hasta') else None
         cliente = _texto(request.args.get('cliente'))
+        if request.args.get('informe') == 'vencidas':
+            desde = None
+            hasta = None
         if _normalizar(cliente) in {'todos', 'todos los clientes'}:
             cliente = ''
         if desde and hasta and desde > hasta:
