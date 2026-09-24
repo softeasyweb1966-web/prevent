@@ -2364,6 +2364,156 @@ def _construir_sabana_total_pistas_excel(archivos_incluidos, fecha_desde, fecha_
     return buf.read()
 
 
+def _construir_sabana_particulares_credito_excel(fecha_desde_dt, fecha_hasta_dt, vendedor_scope):
+    import openpyxl
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    catalogo_lookup = _construir_lookup_catalogo()
+    query = AtencionDiaDetalle.query.filter(
+        AtencionDiaDetalle.fecha_creacion_orden >= fecha_desde_dt,
+        AtencionDiaDetalle.fecha_creacion_orden <= fecha_hasta_dt.replace(hour=23, minute=59, second=59, microsecond=999999),
+    )
+    if not _is_admin_user():
+        query = query.filter(_condicion_scope_atenciones(vendedor_scope))
+
+    registros = []
+    for reg in query.order_by(
+        AtencionDiaDetalle.fecha_creacion_orden.asc().nullslast(),
+        AtencionDiaDetalle.nro_identificacion.asc().nullslast(),
+        AtencionDiaDetalle.nro_orden.asc().nullslast(),
+    ).all():
+        if _normalizar_forma_pago(reg.forma_pago) != 'CREDITO':
+            continue
+        if (reg.estado_orden or '').upper().strip() == 'ANULADA':
+            continue
+        if _clasificar_servicio(reg.servicio, catalogo_lookup) == 'ECOBABY':
+            continue
+        if reg.servicio and 'ECOBABY' in reg.servicio.upper():
+            continue
+        empresas = [
+            _normalizar_match(reg.acuerdo_comercial),
+            _normalizar_match(reg.empresa_mision),
+            _normalizar_match(reg.cliente.razon_social if reg.cliente else None),
+        ]
+        if any(valor in {'particular', 'particulares'} for valor in empresas if valor):
+            registros.append(reg)
+
+    if not registros:
+        return None, 0
+
+    ordenes_map = defaultdict(list)
+    for reg in registros:
+        key = (reg.nro_identificacion or '', reg.nro_orden or f'_sin_{reg.id}')
+        ordenes_map[key].append(reg)
+
+    filas_detalle = []
+    for (nro_id, _), regs_orden in ordenes_map.items():
+        fechas = [r.fecha_creacion_orden for r in regs_orden if r.fecha_creacion_orden]
+        fecha_str = min(fechas).strftime('%d/%m/%Y') if fechas else ''
+        examenes_str = _construir_examenes_str(regs_orden, catalogo_lookup)
+        valor = sum(float(r.precio) for r in regs_orden if r.precio is not None)
+        nombre_pac = (regs_orden[0].nombre_paciente or '').strip()
+        filas_detalle.append((fecha_str, nro_id, nombre_pac, examenes_str, valor))
+    filas_detalle.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
+
+    grupos = []
+    agrupados = defaultdict(list)
+    for fila in filas_detalle:
+        agrupados[(fila[3], fila[4])].append(fila)
+    for (examenes, valor_unitario), filas in sorted(agrupados.items(), key=lambda x: (x[0][0], x[0][1])):
+        grupos.append((examenes, len(filas), valor_unitario, valor_unitario * len(filas)))
+
+    wb = openpyxl.Workbook()
+    ws_rel = wb.active
+    ws_rel.title = 'relacion-pacientes'
+    ws_pref = wb.create_sheet('prefactura')
+
+    fill_titulo = PatternFill('solid', fgColor='FF1F4E79')
+    fill_header = PatternFill('solid', fgColor='FF2E75B6')
+    fill_total = PatternFill('solid', fgColor='FFBDD7EE')
+    font_titulo = Font(name='Calibri', bold=True, size=13, color='FFFFFFFF')
+    font_header = Font(name='Calibri', bold=True, color='FFFFFFFF')
+    font_total = Font(name='Calibri', bold=True, color='FF1F4E79')
+    align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    align_left = Alignment(horizontal='left', vertical='center', wrap_text=True)
+    align_right = Alignment(horizontal='right', vertical='center')
+
+    def titulo(ws, texto, columnas):
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=columnas)
+        cell = ws.cell(row=1, column=1, value=texto)
+        cell.fill = fill_titulo
+        cell.font = font_titulo
+        cell.alignment = align_center
+
+    titulo(ws_rel, f'PARTICULARES A CREDITO | {fecha_desde_dt:%Y-%m-%d} a {fecha_hasta_dt:%Y-%m-%d}', 5)
+    titulo(ws_pref, f'PREFACTURA PARTICULARES A CREDITO | {fecha_desde_dt:%Y-%m-%d} a {fecha_hasta_dt:%Y-%m-%d}', 4)
+
+    headers_rel = ['Fecha Atencion', 'ID Paciente', 'Paciente', 'Examenes', 'Valor']
+    headers_pref = ['Examenes', 'Cant. Pacientes', 'Valor Unit.', 'Total']
+    for col, header in enumerate(headers_rel, start=1):
+        cell = ws_rel.cell(row=2, column=col, value=header)
+        cell.fill = fill_header
+        cell.font = font_header
+        cell.alignment = align_center
+    for col, header in enumerate(headers_pref, start=1):
+        cell = ws_pref.cell(row=2, column=col, value=header)
+        cell.fill = fill_header
+        cell.font = font_header
+        cell.alignment = align_center
+
+    row_idx = 3
+    for fecha_str, nro_id, nombre_pac, examenes_str, valor in filas_detalle:
+        values = [fecha_str, nro_id, nombre_pac, examenes_str, valor]
+        for col, value in enumerate(values, start=1):
+            cell = ws_rel.cell(row=row_idx, column=col, value=value)
+            cell.alignment = align_right if col == 5 else (align_center if col in (1, 2) else align_left)
+            if col == 5:
+                cell.number_format = '#,##0.00'
+        row_idx += 1
+    total = sum(fila[4] for fila in filas_detalle)
+    ws_rel.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=4)
+    ws_rel.cell(row=row_idx, column=1, value='TOTAL').font = font_total
+    ws_rel.cell(row=row_idx, column=1).fill = fill_total
+    ws_rel.cell(row=row_idx, column=1).alignment = align_right
+    ws_rel.cell(row=row_idx, column=5, value=total).font = font_total
+    ws_rel.cell(row=row_idx, column=5).fill = fill_total
+    ws_rel.cell(row=row_idx, column=5).alignment = align_right
+    ws_rel.cell(row=row_idx, column=5).number_format = '#,##0.00'
+
+    row_idx = 3
+    for examenes, cantidad, valor_unitario, total_grupo in grupos:
+        values = [examenes, cantidad, valor_unitario, total_grupo]
+        for col, value in enumerate(values, start=1):
+            cell = ws_pref.cell(row=row_idx, column=col, value=value)
+            cell.alignment = align_left if col == 1 else align_right
+            if col in (3, 4):
+                cell.number_format = '#,##0.00'
+        row_idx += 1
+    ws_pref.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=3)
+    ws_pref.cell(row=row_idx, column=1, value='TOTAL').font = font_total
+    ws_pref.cell(row=row_idx, column=1).fill = fill_total
+    ws_pref.cell(row=row_idx, column=1).alignment = align_right
+    ws_pref.cell(row=row_idx, column=4, value=total).font = font_total
+    ws_pref.cell(row=row_idx, column=4).fill = fill_total
+    ws_pref.cell(row=row_idx, column=4).alignment = align_right
+    ws_pref.cell(row=row_idx, column=4).number_format = '#,##0.00'
+
+    ws_rel.column_dimensions['A'].width = 16
+    ws_rel.column_dimensions['B'].width = 16
+    ws_rel.column_dimensions['C'].width = 32
+    ws_rel.column_dimensions['D'].width = 70
+    ws_rel.column_dimensions['E'].width = 16
+    ws_pref.column_dimensions['A'].width = 70
+    ws_pref.column_dimensions['B'].width = 18
+    ws_pref.column_dimensions['C'].width = 16
+    ws_pref.column_dimensions['D'].width = 16
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.read(), len(filas_detalle)
+
+
 @comercial_bp.route('/prefacturas/generar-pistas', methods=['POST'])
 @login_required
 def generar_prefacturas_pistas():
@@ -2394,6 +2544,10 @@ def generar_prefacturas_pistas():
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
 
+    vendedor_scope = _resolver_vendedor_usuario_actual()
+    if not _is_admin_user() and vendedor_scope is None:
+        return jsonify({'error': 'No tienes un vendedor asociado para generar sabanas'}), 403
+
     usuario_actual = current_user._get_current_object()
     with current_app.test_request_context(
         f'/api/comercial/prefacturas/generar?fecha_desde={fecha_desde}&fecha_hasta={fecha_hasta}'
@@ -2418,6 +2572,7 @@ def generar_prefacturas_pistas():
     zip_filtrado = io.BytesIO()
     total_generadas = 0
     total_filtradas = 0
+    total_particulares_credito = 0
     reporte = [['incluida', 'archivo_sabana', 'empresa_sabana', 'empresa_pista', 'motivo']]
     reporte_filas = []
     archivos_incluidos = []
@@ -2459,6 +2614,13 @@ def generar_prefacturas_pistas():
                     'sabana_total_pistas.xlsx',
                     _construir_sabana_total_pistas_excel(archivos_incluidos, fecha_desde, fecha_hasta),
                 )
+            sabana_particulares, total_particulares_credito = _construir_sabana_particulares_credito_excel(
+                desde_dt,
+                hasta_dt,
+                vendedor_scope,
+            )
+            if sabana_particulares:
+                zout.writestr('sabana_particulares_credito.xlsx', sabana_particulares)
             reporte_txt = '\n'.join('\t'.join(str(c) for c in fila) for fila in reporte)
             zout.writestr('reporte_coincidencias_pista.tsv', reporte_txt)
             zout.writestr(
@@ -2478,6 +2640,7 @@ def generar_prefacturas_pistas():
                     f'Empresas en PISTA.xlsx: {len(empresas_pista)}\n'
                     f'Sabanas generadas antes de filtrar: {total_generadas}\n'
                     f'Sabanas incluidas: {total_filtradas}\n'
+                    f'Ordenes particulares a credito: {total_particulares_credito}\n'
                     f'Rango: {fecha_desde} a {fecha_hasta}\n'
                 ),
             )
