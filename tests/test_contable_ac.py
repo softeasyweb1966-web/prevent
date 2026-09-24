@@ -563,6 +563,31 @@ class CarteraACTest(unittest.TestCase):
         self.assertEqual(SiigoMovimiento.query.count(), 6)
         self.assertEqual(self.cartera()['cartera_clientes'][0]['saldo'], 0)
 
+    def test_cargue_comprobantes_crea_cliente_faltante_desde_excel(self):
+        db.session.query(ClienteComercial).filter(ClienteComercial.nit.in_(['9001', '9001-2'])).delete(synchronize_session=False)
+        db.session.commit()
+        self.addCleanup(db.session.commit)
+        self.addCleanup(lambda: db.session.query(ClienteComercial).filter(ClienteComercial.nit.in_(['9001', '9001-2'])).delete(synchronize_session=False))
+        self.assertIsNone(ClienteComercial.query.filter_by(nit='9001').first())
+        data, status = self.cargar(self.excel())
+        self.assertEqual(status, 200)
+        self.assertEqual(data['clientes_creados'], 1)
+        cliente = ClienteComercial.query.filter_by(nit='9001').one()
+        self.assertEqual(cliente.razon_social, 'Cliente prueba')
+        self.assertTrue(cliente.importado_siigo)
+
+    def test_cargue_comprobantes_no_duplica_cliente_existente_por_identificacion(self):
+        db.session.query(ClienteComercial).filter(ClienteComercial.nit.in_(['9001', '9001-2'])).delete(synchronize_session=False)
+        db.session.commit()
+        self.addCleanup(db.session.commit)
+        self.addCleanup(lambda: db.session.query(ClienteComercial).filter(ClienteComercial.nit.in_(['9001', '9001-2'])).delete(synchronize_session=False))
+        db.session.add(ClienteComercial(nit='9001-2', razon_social='Cliente existente'))
+        db.session.commit()
+        data, status = self.cargar(self.excel())
+        self.assertEqual(status, 200)
+        self.assertEqual(data['clientes_creados'], 0)
+        self.assertEqual(ClienteComercial.query.filter(ClienteComercial.nit.in_(['9001', '9001-2'])).count(), 1)
+
     def test_ac_descuadrado_revierte_toda_la_importacion(self):
         data, status = self.cargar(self.excel(ac_cuadrado=False))
         self.assertEqual(status, 400)

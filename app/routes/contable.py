@@ -39,7 +39,7 @@ from app.security import get_permission_names_for_user
 
 
 from app.clientes_scope import es_administrador, clientes_visibles, vendedor_actual
-from app.clientes_maestro import identificacion
+from app.clientes_maestro import bloquear_maestros, identificacion
 
 
 def _clientes_informe():
@@ -367,6 +367,43 @@ def _comprobante_relevante(documento, columns):
     )
 
 
+def _asegurar_clientes_comprobantes(documentos, columns, carga_id):
+    terceros = {}
+    for documento in documentos:
+        for linea in documento['lineas']:
+            nit = identificacion(_valor(linea, columns, 'Identificacion'))
+            nombre = _texto(_valor(linea, columns, 'Nombre tercero'))
+            if nit and nombre and nit not in terceros:
+                terceros[nit] = {
+                    'razon_social': nombre[:200],
+                    'sucursal': (_texto(_valor(linea, columns, 'Sucursal')) or '0')[:30],
+                }
+    if not terceros:
+        return 0
+
+    bloquear_maestros()
+    existentes = {
+        identificacion(cliente.nit)
+        for cliente in ClienteComercial.query.with_entities(ClienteComercial.nit).all()
+        if cliente.nit
+    }
+    creados = 0
+    for nit, datos in terceros.items():
+        if nit in existentes:
+            continue
+        db.session.add(ClienteComercial(
+            nit=nit,
+            razon_social=datos['razon_social'],
+            sucursal=datos['sucursal'],
+            importado_siigo=True,
+            carga_id=carga_id,
+            medio_autorizacion='WHATSAPP',
+        ))
+        existentes.add(nit)
+        creados += 1
+    return creados
+
+
 def _guardar_comprobantes_en_lote(carga, filas, header_row, columns):
     """Evita miles de consultas individuales que pueden agotar el tiempo web."""
     documentos = list(_extraer_comprobantes(filas, header_row + 1))
@@ -420,13 +457,14 @@ def _guardar_comprobantes_en_lote(carga, filas, header_row, columns):
 
     if not imported:
         raise ValueError('El archivo no contiene comprobantes nuevos de ventas o con movimientos de cartera. No se duplicaron registros.')
+    clientes_creados = _asegurar_clientes_comprobantes(permitidos, columns, carga.id)
     carga.registros_leidos = len(documentos)
     carga.registros_importados += imported
     carga.registros_omitidos = len(documentos) - carga.registros_importados
     carga.total_debito += total_debito
     carga.total_credito += total_credito
     db.session.commit()
-    return jsonify({'mensaje': 'Comprobantes cargados correctamente.', 'comprobantes': imported, 'movimientos': movements, 'omitidos': len(documentos) - imported})
+    return jsonify({'mensaje': 'Comprobantes cargados correctamente.', 'comprobantes': imported, 'movimientos': movements, 'omitidos': len(documentos) - imported, 'clientes_creados': clientes_creados})
 
 
 @contable_bp.route('/resumen', methods=['GET'])
@@ -1054,7 +1092,7 @@ def _estado_compromiso(registro, hoy=None):
     return 'vencido' if dias < 0 else 'proximo' if dias <= 3 else 'pendiente'
 
 
-ESTADOS_GESTION_CARTERA = {'SIN_GESTION', 'NO_LOCALIZADO', 'EN_PROCESO', 'CON_COMPROMISO'}
+ESTADOS_GESTION_CARTERA = {'SIN_GESTION', 'NO_LOCALIZADO', 'EN_PROCESO', 'CON_COMPROMISO', 'REVISION_INTERNA'}
 TIPOS_CHAT_CARTERA = {'AUTORIZACION_ARREGLO', 'SOLICITUD_INFO', 'GENERAL'}
 ESTADOS_CHAT_CARTERA = {'ABIERTO', 'AUTORIZADO', 'RECHAZADO', 'CERRADO'}
 

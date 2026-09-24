@@ -914,6 +914,7 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
 .siigo-sin_gestion { color: #475569; background: #e2e8f0; }
 .siigo-no_localizado { color: #991b1b; background: #fee2e2; }
 .siigo-en_proceso { color: #854d0e; background: #fef08a; }
+.siigo-revision_interna { color: #1e3a8a; background: #dbeafe; }
 .siigo-con_compromiso { color: #166534; background: #dcfce7; }
 
 .siigo-cartera-inicio {
