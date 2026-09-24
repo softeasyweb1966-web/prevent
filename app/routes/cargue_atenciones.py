@@ -2124,6 +2124,8 @@ def listar_empresas_generacion_prefacturas():
 _PALABRAS_RUIDO_PISTA = {
     's', 'sa', 'sas', 'ltda', 'limitada', 'cia', 'compania', 'compañia',
     'empresa', 'grupo', 'de', 'del', 'la', 'las', 'los', 'y', 'en', 'para', 'con',
+    'construccion', 'construcciones', 'constructora', 'constructores',
+    'ingenieria', 'soluciones', 'servicios', 'transportes', 'suministros',
 }
 
 
@@ -2490,7 +2492,7 @@ def generar_prefacturas_pistas():
                     contenido_archivo = zin.read(item.filename)
                     zout.writestr(item, contenido_archivo)
                     archivos_incluidos.append({
-                        'empresa': empresa_pista or empresa_sabana,
+                        'empresa': empresa_sabana,
                         'archivo': item.filename,
                         'contenido': contenido_archivo,
                     })
