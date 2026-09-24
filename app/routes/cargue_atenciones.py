@@ -2202,6 +2202,210 @@ def _coincidir_empresa_pista(nombre_sabana, empresas_pista):
     return False, mejor_empresa, mejor_motivo
 
 
+def _construir_reporte_pistas_excel(reporte_filas, empresas_pista, total_generadas, total_filtradas, fecha_desde, fecha_hasta):
+    import openpyxl
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    wb = openpyxl.Workbook()
+    ws_resumen = wb.active
+    ws_resumen.title = 'Resumen'
+    ws_incluidas = wb.create_sheet('Sabanas incluidas')
+    ws_detalle = wb.create_sheet('Detalle cruces')
+    ws_pista = wb.create_sheet('Empresas PISTA')
+
+    fill_header = PatternFill('solid', fgColor='FF1F4E79')
+    font_header = Font(name='Calibri', bold=True, color='FFFFFFFF')
+    font_title = Font(name='Calibri', bold=True, size=13, color='FF1F4E79')
+    align_wrap = Alignment(vertical='top', wrap_text=True)
+
+    def escribir_tabla(ws, encabezados, filas):
+        ws.append(encabezados)
+        for cell in ws[1]:
+            cell.fill = fill_header
+            cell.font = font_header
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        for fila in filas:
+            ws.append(fila)
+        for row in ws.iter_rows(min_row=2):
+            for cell in row:
+                cell.alignment = align_wrap
+        ws.freeze_panes = 'A2'
+
+    incluidas = sorted(
+        (fila for fila in reporte_filas if fila['incluida']),
+        key=lambda f: ((f['empresa_pista'] or f['empresa_sabana'] or '').upper(), (f['archivo_sabana'] or '').upper()),
+    )
+    detalle = sorted(
+        reporte_filas,
+        key=lambda f: (
+            '0' if f['incluida'] else '1',
+            (f['empresa_pista'] or f['empresa_sabana'] or '').upper(),
+            (f['archivo_sabana'] or '').upper(),
+        ),
+    )
+
+    ws_resumen['A1'] = 'Informe Sabanas Pistas'
+    ws_resumen['A1'].font = font_title
+    resumen = [
+        ('Fecha desde', fecha_desde),
+        ('Fecha hasta', fecha_hasta),
+        ('Empresas en PISTA.xlsx', len(empresas_pista)),
+        ('Sabanas generadas antes de filtrar', total_generadas),
+        ('Sabanas incluidas', total_filtradas),
+        ('Sabanas no incluidas', max(total_generadas - total_filtradas, 0)),
+    ]
+    for idx, (label, value) in enumerate(resumen, start=3):
+        ws_resumen.cell(row=idx, column=1, value=label).font = Font(bold=True)
+        ws_resumen.cell(row=idx, column=2, value=value)
+    ws_resumen.column_dimensions['A'].width = 38
+    ws_resumen.column_dimensions['B'].width = 24
+
+    escribir_tabla(
+        ws_incluidas,
+        ['Empresa PISTA', 'Empresa sabana', 'Archivo sabana', 'Motivo cruce'],
+        [[f['empresa_pista'], f['empresa_sabana'], f['archivo_sabana'], f['motivo']] for f in incluidas],
+    )
+    escribir_tabla(
+        ws_detalle,
+        ['Incluida', 'Empresa PISTA', 'Empresa sabana', 'Archivo sabana', 'Motivo cruce'],
+        [['SI' if f['incluida'] else 'NO', f['empresa_pista'], f['empresa_sabana'], f['archivo_sabana'], f['motivo']] for f in detalle],
+    )
+    escribir_tabla(
+        ws_pista,
+        ['Empresa PISTA normalizada'],
+        [[empresa] for empresa in sorted(empresas_pista)],
+    )
+
+    for ws in (ws_incluidas, ws_detalle):
+        ws.column_dimensions['A'].width = 55
+        ws.column_dimensions['B'].width = 55
+        ws.column_dimensions['C'].width = 70
+        ws.column_dimensions['D'].width = 38
+        ws.column_dimensions['E'].width = 38
+    ws_pista.column_dimensions['A'].width = 65
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
+def _construir_sabana_total_pistas_excel(archivos_incluidos, fecha_desde, fecha_hasta):
+    import openpyxl
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    wb_total = openpyxl.Workbook()
+    ws_rel_total = wb_total.active
+    ws_rel_total.title = 'relacion-pacientes'
+    ws_pref_total = wb_total.create_sheet('prefactura')
+
+    fill_empresa = PatternFill('solid', fgColor='FF1F4E79')
+    font_empresa = Font(name='Calibri', bold=True, color='FFFFFFFF')
+    fill_header = PatternFill('solid', fgColor='FF2E75B6')
+    font_header = Font(name='Calibri', bold=True, color='FFFFFFFF')
+    font_normal = Font(name='Calibri', size=10)
+    align_left = Alignment(horizontal='left', vertical='center', wrap_text=True)
+    align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    align_right = Alignment(horizontal='right', vertical='center')
+
+    def escribir_titulo(ws, titulo, columnas):
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=columnas)
+        cell = ws.cell(row=1, column=1, value=titulo)
+        cell.fill = fill_empresa
+        cell.font = Font(name='Calibri', bold=True, size=13, color='FFFFFFFF')
+        cell.alignment = align_center
+
+    escribir_titulo(ws_rel_total, f'SABANA TOTAL PISTAS | {fecha_desde} a {fecha_hasta}', 6)
+    escribir_titulo(ws_pref_total, f'PREFACTURA TOTAL PISTAS | {fecha_desde} a {fecha_hasta}', 5)
+
+    rel_header_written = False
+    pref_header_written = False
+
+    def copiar_hoja(ws_origen, ws_destino, empresa, header_written, ancho_extra):
+        fila_destino = ws_destino.max_row + 1
+        if fila_destino <= 2:
+            fila_destino = 2
+
+        ws_destino.merge_cells(
+            start_row=fila_destino,
+            start_column=1,
+            end_row=fila_destino,
+            end_column=ancho_extra,
+        )
+        cell_empresa = ws_destino.cell(row=fila_destino, column=1, value=empresa.upper())
+        cell_empresa.fill = fill_empresa
+        cell_empresa.font = font_empresa
+        cell_empresa.alignment = align_center
+        fila_destino += 1
+
+        if not header_written:
+            headers = ['Empresa'] + [ws_origen.cell(row=3, column=col).value for col in range(1, ws_origen.max_column + 1)]
+            for col, value in enumerate(headers, start=1):
+                cell = ws_destino.cell(row=fila_destino, column=col, value=value)
+                cell.fill = fill_header
+                cell.font = font_header
+                cell.alignment = align_center
+            fila_destino += 1
+            header_written = True
+
+        for row in ws_origen.iter_rows(min_row=4, values_only=True):
+            if not row or all(value in (None, '') for value in row):
+                continue
+            valores = [empresa] + list(row)
+            for col, value in enumerate(valores, start=1):
+                cell = ws_destino.cell(row=fila_destino, column=col, value=value)
+                cell.font = font_normal
+                if isinstance(value, (int, float)) and col > 1:
+                    cell.alignment = align_right
+                    cell.number_format = '#,##0.00'
+                elif col in (1, 2, 3):
+                    cell.alignment = align_center
+                else:
+                    cell.alignment = align_left
+            fila_destino += 1
+
+        return header_written
+
+    for item in sorted(archivos_incluidos, key=lambda f: f['empresa'].upper()):
+        wb = openpyxl.load_workbook(io.BytesIO(item['contenido']), data_only=True)
+        empresa = item['empresa']
+        if 'relacion-pacientes' in wb.sheetnames:
+            rel_header_written = copiar_hoja(
+                wb['relacion-pacientes'],
+                ws_rel_total,
+                empresa,
+                rel_header_written,
+                6,
+            )
+        if 'prefactura' in wb.sheetnames:
+            pref_header_written = copiar_hoja(
+                wb['prefactura'],
+                ws_pref_total,
+                empresa,
+                pref_header_written,
+                5,
+            )
+
+    ws_rel_total.column_dimensions['A'].width = 45
+    ws_rel_total.column_dimensions['B'].width = 16
+    ws_rel_total.column_dimensions['C'].width = 16
+    ws_rel_total.column_dimensions['D'].width = 32
+    ws_rel_total.column_dimensions['E'].width = 70
+    ws_rel_total.column_dimensions['F'].width = 16
+    ws_pref_total.column_dimensions['A'].width = 45
+    ws_pref_total.column_dimensions['B'].width = 70
+    ws_pref_total.column_dimensions['C'].width = 18
+    ws_pref_total.column_dimensions['D'].width = 16
+    ws_pref_total.column_dimensions['E'].width = 16
+    ws_rel_total.freeze_panes = 'A3'
+    ws_pref_total.freeze_panes = 'A3'
+
+    buf = io.BytesIO()
+    wb_total.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
 @comercial_bp.route('/prefacturas/generar-pistas', methods=['POST'])
 @login_required
 def generar_prefacturas_pistas():
@@ -2257,6 +2461,8 @@ def generar_prefacturas_pistas():
     total_generadas = 0
     total_filtradas = 0
     reporte = [['incluida', 'archivo_sabana', 'empresa_sabana', 'empresa_pista', 'motivo']]
+    reporte_filas = []
+    archivos_incluidos = []
 
     with zipfile.ZipFile(io.BytesIO(respuesta_obj.get_data()), 'r') as zin:
         with zipfile.ZipFile(zip_filtrado, 'w', zipfile.ZIP_DEFLATED) as zout:
@@ -2273,12 +2479,41 @@ def generar_prefacturas_pistas():
                     empresa_pista,
                     motivo,
                 ])
+                reporte_filas.append({
+                    'incluida': incluida,
+                    'archivo_sabana': item.filename,
+                    'empresa_sabana': empresa_sabana,
+                    'empresa_pista': empresa_pista,
+                    'motivo': motivo,
+                })
                 if incluida:
-                    zout.writestr(item, zin.read(item.filename))
+                    contenido_archivo = zin.read(item.filename)
+                    zout.writestr(item, contenido_archivo)
+                    archivos_incluidos.append({
+                        'empresa': empresa_pista or empresa_sabana,
+                        'archivo': item.filename,
+                        'contenido': contenido_archivo,
+                    })
                     total_filtradas += 1
 
+            if archivos_incluidos:
+                zout.writestr(
+                    'sabana_total_pistas.xlsx',
+                    _construir_sabana_total_pistas_excel(archivos_incluidos, fecha_desde, fecha_hasta),
+                )
             reporte_txt = '\n'.join('\t'.join(str(c) for c in fila) for fila in reporte)
             zout.writestr('reporte_coincidencias_pista.tsv', reporte_txt)
+            zout.writestr(
+                'reporte_coincidencias_pista.xlsx',
+                _construir_reporte_pistas_excel(
+                    reporte_filas,
+                    empresas_pista,
+                    total_generadas,
+                    total_filtradas,
+                    fecha_desde,
+                    fecha_hasta,
+                ),
+            )
             zout.writestr(
                 'resumen_sabanas_pistas.txt',
                 (
