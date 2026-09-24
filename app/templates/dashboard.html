@@ -1286,6 +1286,9 @@
             <button type="button" class="btn btn-secondary" id="ingresoInfoNavCorrecciones" onclick="setIngresoInformacionSection('correcciones')">
                 <span class="btn-label">Sábanas corregidas</span>
             </button>
+            <button type="button" class="btn btn-secondary" id="ingresoInfoNavSabanasPistas" onclick="setIngresoInformacionSection('sabanas_pistas')">
+                <span class="btn-label">Sabanas Pistas</span>
+            </button>
             <button type="button" class="btn btn-secondary" id="ingresoInfoNavCartera" onclick="setIngresoInformacionSection('cartera')">
                 <span class="btn-label">Cartera</span>
             </button>
@@ -1490,6 +1493,32 @@
                 </div>
             </div>
             <div id="prefacturasResultado" style="margin-top:10px; color:#555;"></div>
+        </div>
+        <div id="ingresoInfoSabanasPistasPanel" class="recent-section ingreso-info-panel" style="display:none; margin-bottom:16px;">
+            <h3 style="margin-top:0;">Sabanas Pistas</h3>
+            <p style="margin-top:0; color:#555;">
+                Sube el archivo PISTA.xlsx, selecciona el rango de fechas y descarga las sabanas que coincidan con esas empresas usando el mismo formato de Generar Prefacturas.
+            </p>
+            <div class="form-row" style="align-items:flex-end; gap:12px; flex-wrap:wrap;">
+                <div class="form-group" style="flex:1.6; min-width:260px;">
+                    <label for="sabanasPistasArchivo">Archivo PISTA.xlsx *</label>
+                    <input type="file" id="sabanasPistasArchivo" accept=".xlsx">
+                </div>
+                <div class="form-group" style="flex:1; min-width:160px;">
+                    <label for="sabanasPistasFechaDesde">Fecha inicio *</label>
+                    <input type="date" id="sabanasPistasFechaDesde">
+                </div>
+                <div class="form-group" style="flex:1; min-width:160px;">
+                    <label for="sabanasPistasFechaHasta">Fecha fin *</label>
+                    <input type="date" id="sabanasPistasFechaHasta">
+                </div>
+                <div class="form-group" style="display:flex; align-items:flex-end;">
+                    <button type="button" class="btn btn-primary" id="btnGenerarSabanasPistas" onclick="generarSabanasPistas()">
+                        <span id="btnGenerarSabanasPistasLabel">Generar y Descargar ZIP</span>
+                    </button>
+                </div>
+            </div>
+            <div id="sabanasPistasResultado" style="margin-top:10px; color:#555;"></div>
         </div>
         <div id="ingresoInfoCorreccionesPanel" class="recent-section ingreso-info-panel" style="display:none; margin-bottom:16px;">
             <h3>Cargar sábanas corregidas</h3>

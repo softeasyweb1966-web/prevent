@@ -13,7 +13,9 @@ import uuid
 import zipfile
 from collections import defaultdict
 from datetime import datetime
+from difflib import SequenceMatcher
 from decimal import Decimal, InvalidOperation
+from unittest.mock import patch
 from xml.etree import ElementTree as ET
 
 from flask import current_app, jsonify, request, send_file
@@ -2117,6 +2119,187 @@ def listar_empresas_generacion_prefacturas():
     ).order_by(ClienteComercial.razon_social).all()
     return jsonify([{'id': c.id, 'razon_social': c.razon_social,
                      'nombre_comercial': c.nombre_comercial, 'nit': c.nit} for c in clientes])
+
+
+_PALABRAS_RUIDO_PISTA = {
+    's', 'sa', 'sas', 'ltda', 'limitada', 'cia', 'compania', 'compañia',
+    'empresa', 'grupo', 'de', 'del', 'la', 'las', 'los', 'y', 'en', 'para', 'con',
+}
+
+
+def _tokens_empresa_pista(nombre):
+    return {
+        token
+        for token in re.split(r'\s+', _normalizar_match(nombre))
+        if len(token) >= 3 and token not in _PALABRAS_RUIDO_PISTA
+    }
+
+
+def _leer_empresas_pista_excel(archivo):
+    try:
+        import openpyxl
+    except ImportError as exc:
+        raise ValueError('openpyxl no esta disponible para leer el archivo PISTA') from exc
+
+    try:
+        wb = openpyxl.load_workbook(archivo, read_only=True, data_only=True)
+    except Exception as exc:
+        raise ValueError(f'No se pudo leer PISTA.xlsx: {exc}') from exc
+
+    ws = wb.active
+    empresas = []
+    vistas = set()
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not row or row[0] in (None, ''):
+            continue
+        nombre = _normalizar_match(str(row[0]).strip())
+        if nombre and nombre not in vistas:
+            empresas.append(nombre)
+            vistas.add(nombre)
+    if not empresas:
+        raise ValueError('PISTA.xlsx no contiene empresas para cruzar')
+    return empresas
+
+
+def _empresa_desde_nombre_archivo_prefactura(nombre_archivo):
+    stem = os.path.splitext(os.path.basename(nombre_archivo))[0]
+    stem = re.sub(r'^(cred|efec|mixto)-', '', stem, flags=re.IGNORECASE)
+    stem = re.sub(r'-\d{8}-\d{8}$', '', stem)
+    return _normalizar_match(stem.replace('_', ' '))
+
+
+def _coincidir_empresa_pista(nombre_sabana, empresas_pista):
+    tokens_sabana = _tokens_empresa_pista(nombre_sabana)
+    mejor_empresa = ''
+    mejor_motivo = ''
+    mejor_puntaje = 0.0
+
+    for empresa in empresas_pista:
+        if nombre_sabana == empresa:
+            return True, empresa, 'exacta'
+        if nombre_sabana in empresa or empresa in nombre_sabana:
+            return True, empresa, 'contenida'
+
+        tokens_pista = _tokens_empresa_pista(empresa)
+        comunes = tokens_sabana & tokens_pista
+        if comunes:
+            cobertura_pista = len(comunes) / max(len(tokens_pista), 1)
+            cobertura_sabana = len(comunes) / max(len(tokens_sabana), 1)
+            puntaje_tokens = min(cobertura_pista, cobertura_sabana)
+            if puntaje_tokens > mejor_puntaje:
+                mejor_puntaje = puntaje_tokens
+                mejor_empresa = empresa
+                mejor_motivo = f'palabras {puntaje_tokens:.0%}: {", ".join(sorted(comunes))}'
+
+        puntaje_texto = SequenceMatcher(None, nombre_sabana, empresa).ratio()
+        if puntaje_texto > mejor_puntaje:
+            mejor_puntaje = puntaje_texto
+            mejor_empresa = empresa
+            mejor_motivo = f'similitud {puntaje_texto:.0%}'
+
+    if mejor_puntaje >= 0.82:
+        return True, mejor_empresa, mejor_motivo
+    return False, mejor_empresa, mejor_motivo
+
+
+@comercial_bp.route('/prefacturas/generar-pistas', methods=['POST'])
+@login_required
+def generar_prefacturas_pistas():
+    """Genera sabanas usando el generador actual y filtrando por PISTA.xlsx."""
+    try:
+        _require_commercial_permission(PERMISO_CONSULTA_ATENCIONES)
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+
+    archivo = request.files.get('archivo')
+    if archivo is None or not (archivo.filename or '').lower().endswith('.xlsx'):
+        return jsonify({'error': 'Debes adjuntar el archivo PISTA.xlsx'}), 400
+
+    fecha_desde = (request.form.get('fecha_desde') or '').strip()
+    fecha_hasta = (request.form.get('fecha_hasta') or '').strip()
+    if not fecha_desde or not fecha_hasta:
+        return jsonify({'error': 'Debes seleccionar fecha inicio y fecha fin'}), 400
+    try:
+        desde_dt = datetime.strptime(fecha_desde, '%Y-%m-%d')
+        hasta_dt = datetime.strptime(fecha_hasta, '%Y-%m-%d')
+        if desde_dt > hasta_dt:
+            raise ValueError
+    except ValueError:
+        return jsonify({'error': 'Selecciona un rango de fechas valido'}), 400
+
+    try:
+        empresas_pista = _leer_empresas_pista_excel(archivo)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    usuario_actual = current_user._get_current_object()
+    with current_app.test_request_context(
+        f'/api/comercial/prefacturas/generar?fecha_desde={fecha_desde}&fecha_hasta={fecha_hasta}'
+    ):
+        with patch(f'{__name__}.current_user', usuario_actual):
+            respuesta = generar_prefacturas.__wrapped__()
+
+    if isinstance(respuesta, tuple):
+        respuesta_obj = respuesta[0]
+        status_code = respuesta[1] if len(respuesta) > 1 else getattr(respuesta_obj, 'status_code', 200)
+    else:
+        respuesta_obj = respuesta
+        status_code = getattr(respuesta_obj, 'status_code', 200)
+
+    if status_code != 200:
+        try:
+            return jsonify(respuesta_obj.get_json() or {'error': 'No se pudieron generar las sabanas'}), status_code
+        except Exception:
+            return jsonify({'error': 'No se pudieron generar las sabanas'}), 500
+
+    respuesta_obj.direct_passthrough = False
+    zip_filtrado = io.BytesIO()
+    total_generadas = 0
+    total_filtradas = 0
+    reporte = [['incluida', 'archivo_sabana', 'empresa_sabana', 'empresa_pista', 'motivo']]
+
+    with zipfile.ZipFile(io.BytesIO(respuesta_obj.get_data()), 'r') as zin:
+        with zipfile.ZipFile(zip_filtrado, 'w', zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                if item.filename == 'resumen_periodo.xlsx':
+                    continue
+                total_generadas += 1
+                empresa_sabana = _empresa_desde_nombre_archivo_prefactura(item.filename)
+                incluida, empresa_pista, motivo = _coincidir_empresa_pista(empresa_sabana, empresas_pista)
+                reporte.append([
+                    'SI' if incluida else 'NO',
+                    item.filename,
+                    empresa_sabana,
+                    empresa_pista,
+                    motivo,
+                ])
+                if incluida:
+                    zout.writestr(item, zin.read(item.filename))
+                    total_filtradas += 1
+
+            reporte_txt = '\n'.join('\t'.join(str(c) for c in fila) for fila in reporte)
+            zout.writestr('reporte_coincidencias_pista.tsv', reporte_txt)
+            zout.writestr(
+                'resumen_sabanas_pistas.txt',
+                (
+                    f'Empresas en PISTA.xlsx: {len(empresas_pista)}\n'
+                    f'Sabanas generadas antes de filtrar: {total_generadas}\n'
+                    f'Sabanas incluidas: {total_filtradas}\n'
+                    f'Rango: {fecha_desde} a {fecha_hasta}\n'
+                ),
+            )
+
+    if total_filtradas == 0:
+        return jsonify({'error': 'No se encontraron sabanas que coincidan con PISTA.xlsx en el rango seleccionado'}), 404
+
+    zip_filtrado.seek(0)
+    periodo = f"{desde_dt.strftime('%d%m%Y')}-{hasta_dt.strftime('%d%m%Y')}"
+    return send_file(
+        zip_filtrado,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=f'Sabanas-Pistas-{periodo}.zip',
+    )
 
 
 @comercial_bp.route('/prefacturas/generar', methods=['GET'])

@@ -1857,6 +1857,7 @@ function setIngresoInformacionSection(section = 'inicio') {
         catalogo: ['ingresoInfoCatalogoPanel'],
         cargue_atenciones: ['ingresoInfoCarguePanel', 'ingresoInfoHistorialPanel'],
         prefacturas: ['ingresoInfoPrefacturasPanel'],
+        sabanas_pistas: ['ingresoInfoSabanasPistasPanel'],
         correcciones: ['ingresoInfoCorreccionesPanel'],
         consulta_prefacturas: ['ingresoInfoConsultaPrefacturasPanel'],
         cartera: ['ingresoInfoCarteraPanel'],
@@ -1867,6 +1868,7 @@ function setIngresoInformacionSection(section = 'inicio') {
         catalogo: 'ingresoInfoNavCatalogo',
         cargue_atenciones: 'ingresoInfoNavCargueAtenciones',
         prefacturas: 'ingresoInfoNavPrefacturas',
+        sabanas_pistas: 'ingresoInfoNavSabanasPistas',
         correcciones: 'ingresoInfoNavCorrecciones',
         consulta_prefacturas: 'ingresoInfoNavConsultaPrefacturas',
         cartera: 'ingresoInfoNavCartera',
@@ -2061,6 +2063,75 @@ async function generarPrefacturas() {
     }
 }
 
+async function generarSabanasPistas() {
+    const archivoInput = document.getElementById('sabanasPistasArchivo');
+    const fechaDesde = (document.getElementById('sabanasPistasFechaDesde') || {}).value || '';
+    const fechaHasta = (document.getElementById('sabanasPistasFechaHasta') || {}).value || '';
+    const resultado = document.getElementById('sabanasPistasResultado');
+    const btn = document.getElementById('btnGenerarSabanasPistas');
+    const label = document.getElementById('btnGenerarSabanasPistasLabel');
+    const archivo = archivoInput && archivoInput.files ? archivoInput.files[0] : null;
+
+    if (!archivo) {
+        if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">&#9888; Debes adjuntar PISTA.xlsx.</span>';
+        return;
+    }
+    if (!fechaDesde || !fechaHasta) {
+        if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">&#9888; Debes seleccionar fecha inicio y fecha fin.</span>';
+        return;
+    }
+    if (fechaDesde > fechaHasta) {
+        if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">&#9888; La fecha inicio no puede ser mayor que la fecha fin.</span>';
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+    formData.append('fecha_desde', fechaDesde);
+    formData.append('fecha_hasta', fechaHasta);
+
+    if (btn) btn.disabled = true;
+    if (label) label.textContent = 'Generando...';
+    if (resultado) resultado.innerHTML = '<span style="color:#555;">Cruzando PISTA.xlsx y generando sabanas...</span>';
+
+    try {
+        const response = await fetch('/api/comercial/prefacturas/generar-pistas', {
+            method: 'POST',
+            credentials: 'same-origin',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            let msg = 'Error generando sabanas pistas.';
+            try { const data = await response.json(); msg = data.error || msg; } catch (_) {}
+            if (resultado) resultado.innerHTML = `<span style="color:#c0392b;">&#9888; ${msg}</span>`;
+            return;
+        }
+
+        const disposition = response.headers.get('Content-Disposition') || '';
+        let filename = 'Sabanas-Pistas.zip';
+        const match = disposition.match(/filename[^;=\n]*=(?:(['"])([^'"]*)\1|([^;\n]*))/i);
+        if (match) filename = (match[2] || match[3] || filename).trim();
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
+
+        if (resultado) resultado.innerHTML = `<span style="color:#27ae60;">&#10004; Descarga iniciada: <strong>${filename}</strong></span>`;
+    } catch (err) {
+        console.error('generarSabanasPistas error:', err);
+        if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">&#9888; Error de conexion al generar sabanas pistas.</span>';
+    } finally {
+        if (btn) btn.disabled = false;
+        if (label) label.textContent = 'Generar y Descargar ZIP';
+    }
+}
+
 function abrirCargueAtencionDia() {
     if (!canManageComercial('atenciones', 'read') && !canManageComercial('atenciones', 'create')) {
         showError('No tienes permisos para consultar o cargar atenciones comerciales.');
@@ -2071,7 +2142,7 @@ function abrirCargueAtencionDia() {
     [
         'ingresoInfoInicioPanel', 'ingresoInfoCarguePanel', 'ingresoInfoHistorialPanel',
         'ingresoInfoPrefacturasPanel', 'ingresoInfoConsultaPrefacturasPanel',
-        'ingresoInfoCarteraPanel', 'ingresoInfoConsultaPanel',
+        'ingresoInfoSabanasPistasPanel', 'ingresoInfoCarteraPanel', 'ingresoInfoConsultaPanel',
     ].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
