@@ -13,7 +13,6 @@ import uuid
 import zipfile
 from collections import defaultdict
 from datetime import datetime
-from difflib import SequenceMatcher
 from decimal import Decimal, InvalidOperation
 from unittest.mock import patch
 from xml.etree import ElementTree as ET
@@ -2121,22 +2120,6 @@ def listar_empresas_generacion_prefacturas():
                      'nombre_comercial': c.nombre_comercial, 'nit': c.nit} for c in clientes])
 
 
-_PALABRAS_RUIDO_PISTA = {
-    's', 'sa', 'sas', 'ltda', 'limitada', 'cia', 'compania', 'compañia',
-    'empresa', 'grupo', 'de', 'del', 'la', 'las', 'los', 'y', 'en', 'para', 'con',
-    'construccion', 'construcciones', 'constructora', 'constructores',
-    'ingenieria', 'soluciones', 'servicios', 'transportes', 'suministros',
-}
-
-
-def _tokens_empresa_pista(nombre):
-    return {
-        token
-        for token in re.split(r'\s+', _normalizar_match(nombre))
-        if len(token) >= 3 and token not in _PALABRAS_RUIDO_PISTA
-    }
-
-
 def _leer_empresas_pista_excel(archivo):
     try:
         import openpyxl
@@ -2171,37 +2154,10 @@ def _empresa_desde_nombre_archivo_prefactura(nombre_archivo):
 
 
 def _coincidir_empresa_pista(nombre_sabana, empresas_pista):
-    tokens_sabana = _tokens_empresa_pista(nombre_sabana)
-    mejor_empresa = ''
-    mejor_motivo = ''
-    mejor_puntaje = 0.0
-
     for empresa in empresas_pista:
         if nombre_sabana == empresa:
             return True, empresa, 'exacta'
-        if nombre_sabana in empresa or empresa in nombre_sabana:
-            return True, empresa, 'contenida'
-
-        tokens_pista = _tokens_empresa_pista(empresa)
-        comunes = tokens_sabana & tokens_pista
-        if comunes:
-            cobertura_pista = len(comunes) / max(len(tokens_pista), 1)
-            cobertura_sabana = len(comunes) / max(len(tokens_sabana), 1)
-            puntaje_tokens = min(cobertura_pista, cobertura_sabana)
-            if puntaje_tokens > mejor_puntaje:
-                mejor_puntaje = puntaje_tokens
-                mejor_empresa = empresa
-                mejor_motivo = f'palabras {puntaje_tokens:.0%}: {", ".join(sorted(comunes))}'
-
-        puntaje_texto = SequenceMatcher(None, nombre_sabana, empresa).ratio()
-        if puntaje_texto > mejor_puntaje:
-            mejor_puntaje = puntaje_texto
-            mejor_empresa = empresa
-            mejor_motivo = f'similitud {puntaje_texto:.0%}'
-
-    if mejor_puntaje >= 0.82:
-        return True, mejor_empresa, mejor_motivo
-    return False, mejor_empresa, mejor_motivo
+    return False, '', 'sin coincidencia exacta'
 
 
 def _construir_reporte_pistas_excel(reporte_filas, empresas_pista, total_generadas, total_filtradas, fecha_desde, fecha_hasta):
