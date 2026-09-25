@@ -2517,6 +2517,14 @@ def _construir_sabana_particulares_credito_excel(fecha_desde_dt, fecha_hasta_dt,
 @comercial_bp.route('/prefacturas/generar-pistas', methods=['POST'])
 @login_required
 def generar_prefacturas_pistas():
+    try:
+        return _generar_prefacturas_pistas_impl()
+    except Exception as exc:
+        logger.exception('Error interno generando sabanas PISTA')
+        return jsonify({'error': f'Error interno generando sabanas PISTA: {type(exc).__name__}: {exc}'}), 500
+
+
+def _generar_prefacturas_pistas_impl():
     """Genera sabanas usando el generador actual y filtrando por PISTA.xlsx."""
     try:
         _require_commercial_permission(PERMISO_CONSULTA_ATENCIONES)
