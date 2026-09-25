@@ -147,6 +147,26 @@ class PrefacturasEmpresaTest(unittest.TestCase):
             self.assertIn('Sabanas incluidas: 0', resumen)
             self.assertIn('Ordenes particulares a credito: 1', resumen)
 
+    def test_pistas_solo_genera_clientes_del_archivo_cargado(self):
+        response = self.http.post(
+            '/generar-pistas',
+            data={
+                'fecha_desde': '2026-09-01',
+                'fecha_hasta': '2026-09-15',
+                'archivo': (self._pista_excel(['Empresa 1']), 'PISTA.xlsx'),
+            },
+            content_type='multipart/form-data',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with ZipFile(BytesIO(response.data)) as archivo:
+            nombres = ' '.join(archivo.namelist()).replace(' ', '_')
+            self.assertIn('Empresa_1', nombres)
+            self.assertNotIn('Empresa_2', nombres)
+            resumen = archivo.read('resumen_sabanas_pistas.txt').decode('utf-8')
+            self.assertIn('Clientes PISTA encontrados: 1', resumen)
+            self.assertIn('Sabanas incluidas: 1', resumen)
+
 
 if __name__ == '__main__':
     unittest.main()
