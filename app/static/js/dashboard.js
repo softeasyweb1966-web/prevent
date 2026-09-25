@@ -1933,6 +1933,25 @@ let empresasGeneracionPrefacturas = [];
 let solicitudEmpresasPrefacturas = 0;
 let empresasPrefacturasListas = false;
 
+function actualizarArchivoSabanasPistas() {
+    const archivoInput = document.getElementById('sabanasPistasArchivo');
+    const nombreEl = document.getElementById('sabanasPistasArchivoNombre');
+    const resultado = document.getElementById('sabanasPistasResultado');
+    const archivo = archivoInput && archivoInput.files ? archivoInput.files[0] : null;
+    if (nombreEl) {
+        nombreEl.textContent = archivo ? `Archivo seleccionado: ${archivo.name}` : 'Ningun archivo seleccionado.';
+    }
+    if (resultado && archivo) {
+        resultado.innerHTML = `<span style="color:#555;">Listo para procesar: <strong>${escapeHtml(archivo.name)}</strong></span>`;
+    }
+}
+
+function limpiarArchivoSabanasPistas() {
+    const archivoInput = document.getElementById('sabanasPistasArchivo');
+    if (archivoInput) archivoInput.value = '';
+    actualizarArchivoSabanasPistas();
+}
+
 function filtrarEmpresasGeneracionPrefacturas() {
     const select = document.getElementById('prefacturaEmpresaSelect');
     const buscador = document.getElementById('prefacturaEmpresaBuscar');
@@ -2071,9 +2090,11 @@ async function generarSabanasPistas() {
     const btn = document.getElementById('btnGenerarSabanasPistas');
     const label = document.getElementById('btnGenerarSabanasPistasLabel');
     const archivo = archivoInput && archivoInput.files ? archivoInput.files[0] : null;
+    const nombreArchivo = archivo ? archivo.name : '';
 
     if (!archivo) {
         if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">&#9888; Debes adjuntar PISTA.xlsx.</span>';
+        actualizarArchivoSabanasPistas();
         return;
     }
     if (!fechaDesde || !fechaHasta) {
@@ -2092,7 +2113,7 @@ async function generarSabanasPistas() {
 
     if (btn) btn.disabled = true;
     if (label) label.textContent = 'Generando...';
-    if (resultado) resultado.innerHTML = '<span style="color:#555;">Cruzando PISTA.xlsx y generando sabanas...</span>';
+    if (resultado) resultado.innerHTML = `<span style="color:#555;">Procesando <strong>${escapeHtml(nombreArchivo)}</strong> y generando sabanas...</span>`;
 
     try {
         const response = await fetch('/api/comercial/prefacturas/generar-pistas', {
@@ -2103,7 +2124,15 @@ async function generarSabanasPistas() {
 
         if (!response.ok) {
             let msg = 'Error generando sabanas pistas.';
-            try { const data = await response.json(); msg = data.error || msg; } catch (_) {}
+            try {
+                const data = await response.json();
+                msg = data.error || msg;
+            } catch (_) {
+                try {
+                    const text = await response.text();
+                    if (text) msg = text.slice(0, 500);
+                } catch (_) {}
+            }
             if (resultado) resultado.innerHTML = `<span style="color:#c0392b;">&#9888; ${msg}</span>`;
             return;
         }
@@ -2122,7 +2151,8 @@ async function generarSabanasPistas() {
         a.click();
         setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
 
-        if (resultado) resultado.innerHTML = `<span style="color:#27ae60;">&#10004; Descarga iniciada: <strong>${filename}</strong></span>`;
+        if (resultado) resultado.innerHTML = `<span style="color:#27ae60;">&#10004; Descarga iniciada: <strong>${escapeHtml(filename)}</strong>. Archivo procesado: <strong>${escapeHtml(nombreArchivo)}</strong></span>`;
+        limpiarArchivoSabanasPistas();
     } catch (err) {
         console.error('generarSabanasPistas error:', err);
         if (resultado) resultado.innerHTML = '<span style="color:#c0392b;">&#9888; Error de conexion al generar sabanas pistas.</span>';
@@ -3642,6 +3672,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         input.dataset.boundPeriodoManual = 'true';
     });
+
+    const sabanasPistasArchivo = document.getElementById('sabanasPistasArchivo');
+    if (sabanasPistasArchivo && !sabanasPistasArchivo.dataset.boundArchivoPista) {
+        sabanasPistasArchivo.addEventListener('change', actualizarArchivoSabanasPistas);
+        sabanasPistasArchivo.dataset.boundArchivoPista = 'true';
+        actualizarArchivoSabanasPistas();
+    }
 
     const anticipoForm = document.getElementById('programarAnticipoForm');
     if (anticipoForm && !anticipoForm.dataset.boundAnticipoProgramado) {

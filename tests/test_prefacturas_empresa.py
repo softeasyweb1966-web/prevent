@@ -20,6 +20,7 @@ class PrefacturasEmpresaTest(unittest.TestCase):
         self.ctx.push()
         db.create_all()
         self.app.add_url_rule('/generar', view_func=routes.generar_prefacturas.__wrapped__)
+        self.app.add_url_rule('/generar-pistas', view_func=routes.generar_prefacturas_pistas.__wrapped__, methods=['POST'])
         self.app.add_url_rule('/empresas', view_func=routes.listar_empresas_generacion_prefacturas.__wrapped__)
         self.http = self.app.test_client()
         self.patches = [
@@ -55,6 +56,19 @@ class PrefacturasEmpresaTest(unittest.TestCase):
 
     def generar(self, extra=''):
         return self.http.get('/generar?fecha_desde=2026-09-01&fecha_hasta=2026-09-15' + extra)
+
+    def _pista_excel(self, empresas):
+        import openpyxl
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(['Empresa'])
+        for empresa in empresas:
+            ws.append([empresa])
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf
 
     def test_empresa_seleccionada_filtra_zip_y_registros(self):
         response = self.generar('&cliente_id=1')
@@ -103,6 +117,35 @@ class PrefacturasEmpresaTest(unittest.TestCase):
              patch.object(routes, '_condicion_scope_atenciones', return_value=AtencionDiaDetalle.cliente_id == 1):
             response = self.http.get('/empresas?fecha_desde=2026-09-01&fecha_hasta=2026-09-15')
             self.assertEqual([c['id'] for c in response.json], [1])
+
+    def test_pistas_descarga_particulares_credito_sin_empresas_coincidentes(self):
+        db.session.add(AtencionDiaDetalle(
+            cargue_id=1, cliente_id=None, nro_orden='P1',
+            nro_identificacion='999', nombre_paciente='Paciente Particular',
+            fecha_creacion_orden=datetime(2026, 9, 2), servicio='Consulta',
+            precio=150, forma_pago='CREDITO', estado_orden='ACTIVA',
+            acuerdo_comercial='PARTICULAR', archivo_origen='test.xlsx'))
+        db.session.commit()
+
+        response = self.http.post(
+            '/generar-pistas',
+            data={
+                'fecha_desde': '2026-09-01',
+                'fecha_hasta': '2026-09-15',
+                'archivo': (self._pista_excel(['Empresa sin movimiento']), 'PISTA.xlsx'),
+            },
+            content_type='multipart/form-data',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with ZipFile(BytesIO(response.data)) as archivo:
+            nombres = archivo.namelist()
+            self.assertIn('sabana_particulares_credito.xlsx', nombres)
+            self.assertIn('resumen_sabanas_pistas.txt', nombres)
+            resumen = archivo.read('resumen_sabanas_pistas.txt').decode('utf-8')
+            self.assertIn('Archivo PISTA procesado: PISTA.xlsx', resumen)
+            self.assertIn('Sabanas incluidas: 0', resumen)
+            self.assertIn('Ordenes particulares a credito: 1', resumen)
 
 
 if __name__ == '__main__':

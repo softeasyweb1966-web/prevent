@@ -2526,6 +2526,7 @@ def generar_prefacturas_pistas():
     archivo = request.files.get('archivo')
     if archivo is None or not (archivo.filename or '').lower().endswith('.xlsx'):
         return jsonify({'error': 'Debes adjuntar el archivo PISTA.xlsx'}), 400
+    nombre_archivo_pista = archivo.filename or 'PISTA.xlsx'
 
     fecha_desde = (request.form.get('fecha_desde') or '').strip()
     fecha_hasta = (request.form.get('fecha_hasta') or '').strip()
@@ -2573,6 +2574,7 @@ def generar_prefacturas_pistas():
     total_generadas = 0
     total_filtradas = 0
     total_particulares_credito = 0
+    error_particulares_credito = ''
     reporte = [['incluida', 'archivo_sabana', 'empresa_sabana', 'empresa_pista', 'motivo']]
     reporte_filas = []
     archivos_incluidos = []
@@ -2614,13 +2616,17 @@ def generar_prefacturas_pistas():
                     'sabana_total_pistas.xlsx',
                     _construir_sabana_total_pistas_excel(archivos_incluidos, fecha_desde, fecha_hasta),
                 )
-            sabana_particulares, total_particulares_credito = _construir_sabana_particulares_credito_excel(
-                desde_dt,
-                hasta_dt,
-                vendedor_scope,
-            )
-            if sabana_particulares:
-                zout.writestr('sabana_particulares_credito.xlsx', sabana_particulares)
+            try:
+                sabana_particulares, total_particulares_credito = _construir_sabana_particulares_credito_excel(
+                    desde_dt,
+                    hasta_dt,
+                    vendedor_scope,
+                )
+                if sabana_particulares:
+                    zout.writestr('sabana_particulares_credito.xlsx', sabana_particulares)
+            except Exception as exc:
+                logger.exception('No se pudo generar sabana_particulares_credito.xlsx')
+                error_particulares_credito = str(exc)
             reporte_txt = '\n'.join('\t'.join(str(c) for c in fila) for fila in reporte)
             zout.writestr('reporte_coincidencias_pista.tsv', reporte_txt)
             zout.writestr(
@@ -2638,14 +2644,16 @@ def generar_prefacturas_pistas():
                 'resumen_sabanas_pistas.txt',
                 (
                     f'Empresas en PISTA.xlsx: {len(empresas_pista)}\n'
+                    f'Archivo PISTA procesado: {nombre_archivo_pista}\n'
                     f'Sabanas generadas antes de filtrar: {total_generadas}\n'
                     f'Sabanas incluidas: {total_filtradas}\n'
                     f'Ordenes particulares a credito: {total_particulares_credito}\n'
+                    f'Error particulares a credito: {error_particulares_credito or "N/A"}\n'
                     f'Rango: {fecha_desde} a {fecha_hasta}\n'
                 ),
             )
 
-    if total_filtradas == 0:
+    if total_filtradas == 0 and total_particulares_credito == 0:
         return jsonify({'error': 'No se encontraron sabanas que coincidan con PISTA.xlsx en el rango seleccionado'}), 404
 
     zip_filtrado.seek(0)
