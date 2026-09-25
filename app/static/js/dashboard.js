@@ -2123,14 +2123,14 @@ async function generarSabanasPistas() {
         });
 
         if (!response.ok) {
-            let msg = 'Error generando sabanas pistas.';
+            let msg = `Error generando sabanas pistas. HTTP ${response.status}`;
             try {
-                const data = await response.json();
-                msg = data.error || msg;
+                const data = await response.clone().json();
+                msg = data.error || data.message || data.detail || msg;
             } catch (_) {
                 try {
                     const text = await response.text();
-                    if (text) msg = text.slice(0, 500);
+                    if (text) msg = `${msg}: ${text.slice(0, 500)}`;
                 } catch (_) {}
             }
             if (resultado) resultado.innerHTML = `<span style="color:#c0392b;">&#9888; ${msg}</span>`;

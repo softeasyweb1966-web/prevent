@@ -2550,11 +2550,15 @@ def generar_prefacturas_pistas():
         return jsonify({'error': 'No tienes un vendedor asociado para generar sabanas'}), 403
 
     usuario_actual = current_user._get_current_object()
-    with current_app.test_request_context(
-        f'/api/comercial/prefacturas/generar?fecha_desde={fecha_desde}&fecha_hasta={fecha_hasta}'
-    ):
-        with patch(f'{__name__}.current_user', usuario_actual):
-            respuesta = generar_prefacturas.__wrapped__()
+    try:
+        with current_app.test_request_context(
+            f'/api/comercial/prefacturas/generar?fecha_desde={fecha_desde}&fecha_hasta={fecha_hasta}'
+        ):
+            with patch(f'{__name__}.current_user', usuario_actual):
+                respuesta = generar_prefacturas.__wrapped__()
+    except Exception as exc:
+        logger.exception('No se pudieron generar las sabanas base para PISTA')
+        return jsonify({'error': f'No se pudieron generar las sabanas base para cruzar con PISTA: {exc}'}), 500
 
     if isinstance(respuesta, tuple):
         respuesta_obj = respuesta[0]
@@ -2579,7 +2583,19 @@ def generar_prefacturas_pistas():
     reporte_filas = []
     archivos_incluidos = []
 
-    with zipfile.ZipFile(io.BytesIO(respuesta_obj.get_data()), 'r') as zin:
+    try:
+        zip_base_data = respuesta_obj.get_data()
+    except Exception as exc:
+        logger.exception('No se pudo leer el ZIP base de sabanas para PISTA')
+        return jsonify({'error': f'No se pudo leer el ZIP base de sabanas para PISTA: {exc}'}), 500
+
+    try:
+        zin_ctx = zipfile.ZipFile(io.BytesIO(zip_base_data), 'r')
+    except Exception as exc:
+        logger.exception('La respuesta base no es un ZIP valido para PISTA')
+        return jsonify({'error': f'La respuesta base no es un ZIP valido para PISTA: {exc}'}), 500
+
+    with zin_ctx as zin:
         with zipfile.ZipFile(zip_filtrado, 'w', zipfile.ZIP_DEFLATED) as zout:
             for item in zin.infolist():
                 if item.filename == 'resumen_periodo.xlsx':
