@@ -164,7 +164,7 @@ class PrefacturasEmpresaTest(unittest.TestCase):
             self.assertIn('Empresa_1', nombres)
             self.assertNotIn('Empresa_2', nombres)
             resumen = archivo.read('resumen_sabanas_pistas.txt').decode('utf-8')
-            self.assertIn('Clientes PISTA encontrados: 1', resumen)
+            self.assertIn('Empresas PISTA encontradas en sabanas: 1', resumen)
             self.assertIn('Sabanas incluidas: 1', resumen)
 
     def test_pistas_cruce_estricto_tolera_sas_con_puntos_y_mayusculas(self):
@@ -188,7 +188,7 @@ class PrefacturasEmpresaTest(unittest.TestCase):
             self.assertIn('clinica_prevent', nombres)
             self.assertNotIn('empresa_2', nombres)
             resumen = archivo.read('resumen_sabanas_pistas.txt').decode('utf-8')
-            self.assertIn('Clientes PISTA encontrados: 1', resumen)
+            self.assertIn('Empresas PISTA encontradas en sabanas: 1', resumen)
             self.assertIn('Sabanas incluidas: 1', resumen)
 
     def test_pistas_no_cruza_por_nombre_parcial(self):
@@ -208,6 +208,33 @@ class PrefacturasEmpresaTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json['error'], 'No se encontraron sabanas que coincidan con PISTA.xlsx en el rango seleccionado')
+
+    def test_pistas_genera_empresa_cargada_desde_atenciones_sin_cliente_maestro(self):
+        db.session.add(AtencionDiaDetalle(
+            cargue_id=1, cliente_id=None, nro_orden='A1',
+            nro_identificacion='777', nombre_paciente='Paciente Empresa Excel',
+            fecha_creacion_orden=datetime(2026, 9, 3), servicio='Consulta',
+            precio=180, forma_pago='CREDITO', estado_orden='ACTIVA',
+            acuerdo_comercial='Empresa Excel S.A.S.', archivo_origen='test.xlsx'))
+        db.session.commit()
+
+        response = self.http.post(
+            '/generar-pistas',
+            data={
+                'fecha_desde': '2026-09-01',
+                'fecha_hasta': '2026-09-15',
+                'archivo': (self._pista_excel(['empresa excel sas']), 'PISTA.xlsx'),
+            },
+            content_type='multipart/form-data',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with ZipFile(BytesIO(response.data)) as archivo:
+            nombres = ' '.join(archivo.namelist()).replace(' ', '_').lower()
+            self.assertIn('empresa_excel', nombres)
+            resumen = archivo.read('resumen_sabanas_pistas.txt').decode('utf-8')
+            self.assertIn('Empresas PISTA encontradas en sabanas: 1', resumen)
+            self.assertIn('Sabanas incluidas: 1', resumen)
 
 
 if __name__ == '__main__':
