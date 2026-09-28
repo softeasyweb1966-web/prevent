@@ -308,6 +308,18 @@ def _normalizar_match(valor):
     return re.sub(r'\s+', ' ', texto).strip()
 
 
+def _normalizar_nombre_empresa_estricto(valor):
+    """Llave de cruce exacto tolerante a puntuacion y sufijos societarios."""
+    texto = _normalizar_match(valor)
+    if not texto:
+        return ''
+    texto = re.sub(r'\bs\s*a\s*s\b', 'sas', texto)
+    texto = re.sub(r'\bs\s*a\b', 'sa', texto)
+    texto = re.sub(r'\bl\s*t\s*d\s*a\b', 'ltda', texto)
+    texto = re.sub(r'\bc\s*i\s*a\b', 'cia', texto)
+    return re.sub(r'\s+', ' ', texto).strip()
+
+
 def _normalizar_encabezado_atencion(valor):
     texto = _normalizar(valor) or ''
     reemplazos = {
@@ -2137,7 +2149,7 @@ def _leer_empresas_pista_excel(archivo):
     for row in ws.iter_rows(min_row=2, values_only=True):
         if not row or row[0] in (None, ''):
             continue
-        nombre = _normalizar_match(str(row[0]).strip())
+        nombre = _normalizar_nombre_empresa_estricto(str(row[0]).strip())
         if nombre and nombre not in vistas:
             empresas.append(nombre)
             vistas.add(nombre)
@@ -2150,7 +2162,7 @@ def _empresa_desde_nombre_archivo_prefactura(nombre_archivo):
     stem = os.path.splitext(os.path.basename(nombre_archivo))[0]
     stem = re.sub(r'^(cred|efec|mixto)-', '', stem, flags=re.IGNORECASE)
     stem = re.sub(r'-\d{8}-\d{8}$', '', stem)
-    return _normalizar_match(stem.replace('_', ' '))
+    return _normalizar_nombre_empresa_estricto(stem.replace('_', ' '))
 
 
 def _coincidir_empresa_pista(nombre_sabana, empresas_pista):
@@ -2170,10 +2182,9 @@ def _clientes_para_empresas_pista(empresas_pista, vendedor_scope):
         nombres = [
             cliente.razon_social,
             cliente.nombre_comercial,
-            cliente.nit,
             *(cliente.nombres_alternativos or []),
         ]
-        normalizados = [_normalizar_match(nombre) for nombre in nombres]
+        normalizados = [_normalizar_nombre_empresa_estricto(nombre) for nombre in nombres]
         coincidencias = [nombre for nombre in normalizados if nombre and nombre in empresas_set]
         if not coincidencias or cliente.id in vistos:
             continue

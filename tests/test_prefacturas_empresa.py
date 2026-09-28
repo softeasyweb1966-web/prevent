@@ -167,6 +167,48 @@ class PrefacturasEmpresaTest(unittest.TestCase):
             self.assertIn('Clientes PISTA encontrados: 1', resumen)
             self.assertIn('Sabanas incluidas: 1', resumen)
 
+    def test_pistas_cruce_estricto_tolera_sas_con_puntos_y_mayusculas(self):
+        cliente = db.session.get(ClienteComercial, 1)
+        cliente.razon_social = 'Clinica Prevent S.A.S.'
+        db.session.commit()
+
+        response = self.http.post(
+            '/generar-pistas',
+            data={
+                'fecha_desde': '2026-09-01',
+                'fecha_hasta': '2026-09-15',
+                'archivo': (self._pista_excel(['clinica prevent sas']), 'PISTA.xlsx'),
+            },
+            content_type='multipart/form-data',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with ZipFile(BytesIO(response.data)) as archivo:
+            nombres = ' '.join(archivo.namelist()).replace(' ', '_').lower()
+            self.assertIn('clinica_prevent', nombres)
+            self.assertNotIn('empresa_2', nombres)
+            resumen = archivo.read('resumen_sabanas_pistas.txt').decode('utf-8')
+            self.assertIn('Clientes PISTA encontrados: 1', resumen)
+            self.assertIn('Sabanas incluidas: 1', resumen)
+
+    def test_pistas_no_cruza_por_nombre_parcial(self):
+        cliente = db.session.get(ClienteComercial, 1)
+        cliente.razon_social = 'Empresa 1 Sucursal Norte'
+        db.session.commit()
+
+        response = self.http.post(
+            '/generar-pistas',
+            data={
+                'fecha_desde': '2026-09-01',
+                'fecha_hasta': '2026-09-15',
+                'archivo': (self._pista_excel(['Empresa 1']), 'PISTA.xlsx'),
+            },
+            content_type='multipart/form-data',
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json['error'], 'No se encontraron sabanas que coincidan con PISTA.xlsx en el rango seleccionado')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -10,7 +10,6 @@ import os
 import io
 import re
 import zipfile
-from difflib import SequenceMatcher
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -71,7 +70,7 @@ def leer_empresas_pista() -> list[str]:
     vistas = set()
     for row in ws.iter_rows(min_row=2, values_only=True):
         if row and row[0]:
-            normalizada = ca._normalizar_match(str(row[0]).strip())
+            normalizada = ca._normalizar_nombre_empresa_estricto(str(row[0]).strip())
             if normalizada and normalizada not in vistas:
                 empresas.append(normalizada)
                 vistas.add(normalizada)
@@ -82,50 +81,14 @@ def _normalizar_nombre_archivo_sabana(nombre_archivo: str) -> str:
     stem = Path(nombre_archivo).stem
     stem = re.sub(r"^(cred|efec|mixto)-", "", stem, flags=re.IGNORECASE)
     stem = re.sub(r"-\d{8}-\d{8}$", "", stem)
-    return ca._normalizar_match(stem.replace("_", " "))
-
-
-def _tokens_empresa(nombre: str) -> set[str]:
-    return {
-        token
-        for token in re.split(r"\s+", ca._normalizar_match(nombre))
-        if len(token) >= 3 and token not in PALABRAS_RUIDO_EMPRESA
-    }
+    return ca._normalizar_nombre_empresa_estricto(stem.replace("_", " "))
 
 
 def _coincide_empresa(nombre_sabana: str, empresas_pista: list[str]) -> tuple[bool, str, str]:
-    tokens_sabana = _tokens_empresa(nombre_sabana)
-    mejor_empresa = ""
-    mejor_motivo = ""
-    mejor_puntaje = 0.0
-
     for empresa in empresas_pista:
         if nombre_sabana == empresa:
             return True, empresa, "exacta"
-
-        if nombre_sabana in empresa or empresa in nombre_sabana:
-            return True, empresa, "contenida"
-
-        tokens_pista = _tokens_empresa(empresa)
-        comunes = tokens_sabana & tokens_pista
-        if comunes:
-            cobertura_pista = len(comunes) / max(len(tokens_pista), 1)
-            cobertura_sabana = len(comunes) / max(len(tokens_sabana), 1)
-            puntaje_tokens = min(cobertura_pista, cobertura_sabana)
-            if puntaje_tokens > mejor_puntaje:
-                mejor_puntaje = puntaje_tokens
-                mejor_empresa = empresa
-                mejor_motivo = f"palabras {puntaje_tokens:.0%}: {', '.join(sorted(comunes))}"
-
-        puntaje_texto = SequenceMatcher(None, nombre_sabana, empresa).ratio()
-        if puntaje_texto > mejor_puntaje:
-            mejor_puntaje = puntaje_texto
-            mejor_empresa = empresa
-            mejor_motivo = f"similitud {puntaje_texto:.0%}"
-
-    if mejor_puntaje >= 0.82:
-        return True, mejor_empresa, mejor_motivo
-    return False, mejor_empresa, mejor_motivo
+    return False, "", "sin coincidencia exacta"
 
 
 def _guardar_reporte_coincidencias(reporte: list[dict]) -> Path:
