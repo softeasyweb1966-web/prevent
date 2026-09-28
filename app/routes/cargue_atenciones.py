@@ -2811,12 +2811,13 @@ def _generar_prefacturas_pistas_impl():
                         continue
                     total_generadas += 1
                     empresa_sabana = _empresa_desde_nombre_archivo_prefactura(item.filename)
+                    empresa_encontrada = empresa_info['nombre_empresa']
                     incluida, empresa_pista_archivo, motivo = _coincidir_empresa_pista(empresa_sabana, [empresa_pista])
-                    reporte.append(['SI' if incluida else 'NO', item.filename, empresa_sabana, empresa_pista_archivo, motivo])
+                    reporte.append(['SI' if incluida else 'NO', item.filename, empresa_encontrada, empresa_pista_archivo, motivo])
                     reporte_filas.append({
                         'incluida': incluida,
                         'archivo_sabana': item.filename,
-                        'empresa_sabana': empresa_sabana,
+                        'empresa_sabana': empresa_encontrada,
                         'empresa_pista': empresa_pista_archivo,
                         'motivo': motivo,
                     })
@@ -2825,7 +2826,7 @@ def _generar_prefacturas_pistas_impl():
                     contenido_archivo = zin.read(item.filename)
                     zout.writestr(item, contenido_archivo)
                     archivos_incluidos.append({
-                        'empresa': empresa_sabana,
+                        'empresa': empresa_encontrada,
                         'archivo': item.filename,
                         'contenido': contenido_archivo,
                     })
