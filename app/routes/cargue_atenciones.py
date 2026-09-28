@@ -2195,6 +2195,48 @@ def _clientes_para_empresas_pista(empresas_pista, vendedor_scope):
     return clientes, sorted(empresas_set - pista_encontradas)
 
 
+def _nombre_empresa_atencion(reg):
+    if reg.cliente:
+        return reg.cliente.razon_social or reg.acuerdo_comercial or 'SIN_EMPRESA'
+    return reg.acuerdo_comercial or reg.empresa_mision or 'SIN_EMPRESA'
+
+
+def _empresas_atenciones_para_pista(empresas_pista, fecha_desde_dt, fecha_hasta_dt, vendedor_scope):
+    empresas_set = set(empresas_pista or [])
+    encontrados = {}
+    query = (
+        AtencionDiaDetalle.query
+        .outerjoin(AtencionDiaDetalle.cliente)
+        .filter(
+            AtencionDiaDetalle.fecha_creacion_orden >= fecha_desde_dt,
+            AtencionDiaDetalle.fecha_creacion_orden <= fecha_hasta_dt.replace(hour=23, minute=59, second=59, microsecond=999999),
+        )
+    )
+    if not _is_admin_user():
+        query = query.filter(_condicion_scope_atenciones(vendedor_scope))
+
+    for reg in query.order_by(
+        AtencionDiaDetalle.cliente_id.asc().nullslast(),
+        AtencionDiaDetalle.acuerdo_comercial.asc().nullslast(),
+        AtencionDiaDetalle.empresa_mision.asc().nullslast(),
+    ).all():
+        estado_norm = (reg.estado_orden or '').upper().strip()
+        if estado_norm == 'ANULADA':
+            continue
+        if _normalizar_forma_pago(reg.forma_pago) not in ('CREDITO', 'EFECTIVO', 'CONTADO', 'PARTICULAR', 'PARTICULARES'):
+            continue
+        nombre_empresa = _nombre_empresa_atencion(reg)
+        nombre_norm = _normalizar_nombre_empresa_estricto(nombre_empresa)
+        if nombre_norm not in empresas_set or nombre_norm in encontrados:
+            continue
+        encontrados[nombre_norm] = {
+            'empresa_pista': nombre_norm,
+            'nombre_empresa': nombre_empresa,
+            'cliente_id': reg.cliente_id,
+        }
+    return list(encontrados.values()), sorted(empresas_set - set(encontrados))
+
+
 def _construir_reporte_pistas_excel(reporte_filas, empresas_pista, total_generadas, total_filtradas, fecha_desde, fecha_hasta):
     import openpyxl
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -2603,69 +2645,104 @@ def _generar_prefacturas_pistas_impl():
 
     usuario_actual = current_user._get_current_object()
     empresas_pista_encontradas = set()
+    empresas_pista_atenciones, empresas_sin_sabana = _empresas_atenciones_para_pista(
+        empresas_pista,
+        desde_dt,
+        hasta_dt,
+        vendedor_scope,
+    )
 
     with zipfile.ZipFile(zip_filtrado, 'w', zipfile.ZIP_DEFLATED) as zout:
-        try:
-            with current_app.test_request_context(
-                f'/api/comercial/prefacturas/generar?fecha_desde={fecha_desde}&fecha_hasta={fecha_hasta}'
-            ):
-                with patch(f'{__name__}.current_user', usuario_actual):
-                    respuesta = generar_prefacturas.__wrapped__()
-        except Exception as exc:
-            logger.exception('No se pudo generar sabana base PISTA')
-            return jsonify({'error': f'No se pudo generar la sabana base: {exc}'}), 500
-
-        if isinstance(respuesta, tuple):
-            respuesta_obj = respuesta[0]
-            status_code = respuesta[1] if len(respuesta) > 1 else getattr(respuesta_obj, 'status_code', 200)
-        else:
-            respuesta_obj = respuesta
-            status_code = getattr(respuesta_obj, 'status_code', 200)
-
-        if status_code != 200:
+        for empresa_info in empresas_pista_atenciones:
+            empresa_pista = empresa_info['empresa_pista']
+            if empresa_info.get('cliente_id'):
+                filtro = f'cliente_id={empresa_info["cliente_id"]}'
+            else:
+                from urllib.parse import quote_plus
+                filtro = f'empresa_nombre={quote_plus(empresa_info["nombre_empresa"])}'
             try:
-                data_error = respuesta_obj.get_json() or {}
-                motivo_error = data_error.get('error') or 'no se pudo generar la sabana base'
-            except Exception:
-                motivo_error = 'no se pudo generar la sabana base'
-            return jsonify({'error': motivo_error}), status_code
-
-        respuesta_obj.direct_passthrough = False
-        try:
-            zip_base_data = respuesta_obj.get_data()
-            zin_ctx = zipfile.ZipFile(io.BytesIO(zip_base_data), 'r')
-        except Exception as exc:
-            logger.exception('La sabana base PISTA no es un ZIP valido')
-            return jsonify({'error': f'La sabana base no es un ZIP valido: {exc}'}), 500
-
-        with zin_ctx as zin:
-            for item in zin.infolist():
-                if item.filename == 'resumen_periodo.xlsx':
-                    continue
-                total_generadas += 1
-                empresa_sabana = _empresa_desde_nombre_archivo_prefactura(item.filename)
-                incluida, empresa_pista, motivo = _coincidir_empresa_pista(empresa_sabana, empresas_pista)
-                reporte.append(['SI' if incluida else 'NO', item.filename, empresa_sabana, empresa_pista, motivo])
+                with current_app.test_request_context(
+                    f'/api/comercial/prefacturas/generar?fecha_desde={fecha_desde}&fecha_hasta={fecha_hasta}&{filtro}'
+                ):
+                    with patch(f'{__name__}.current_user', usuario_actual):
+                        respuesta = generar_prefacturas.__wrapped__()
+            except Exception as exc:
+                logger.exception('No se pudo generar sabana PISTA para %s', empresa_info['nombre_empresa'])
+                reporte.append(['NO', '', empresa_info['nombre_empresa'], empresa_pista, f'error generando empresa: {exc}'])
                 reporte_filas.append({
-                    'incluida': incluida,
-                    'archivo_sabana': item.filename,
-                    'empresa_sabana': empresa_sabana,
+                    'incluida': False,
+                    'archivo_sabana': '',
+                    'empresa_sabana': _normalizar_nombre_empresa_estricto(empresa_info['nombre_empresa']),
                     'empresa_pista': empresa_pista,
-                    'motivo': motivo,
+                    'motivo': f'error generando empresa: {exc}',
                 })
-                if not incluida:
-                    continue
-                contenido_archivo = zin.read(item.filename)
-                zout.writestr(item, contenido_archivo)
-                archivos_incluidos.append({
-                    'empresa': empresa_sabana,
-                    'archivo': item.filename,
-                    'contenido': contenido_archivo,
-                })
-                empresas_pista_encontradas.add(empresa_pista)
-                total_filtradas += 1
+                continue
 
-        empresas_sin_sabana = sorted(set(empresas_pista) - empresas_pista_encontradas)
+            if isinstance(respuesta, tuple):
+                respuesta_obj = respuesta[0]
+                status_code = respuesta[1] if len(respuesta) > 1 else getattr(respuesta_obj, 'status_code', 200)
+            else:
+                respuesta_obj = respuesta
+                status_code = getattr(respuesta_obj, 'status_code', 200)
+
+            if status_code != 200:
+                try:
+                    data_error = respuesta_obj.get_json() or {}
+                    motivo_error = data_error.get('error') or 'no se pudo generar la sabana'
+                except Exception:
+                    motivo_error = 'no se pudo generar la sabana'
+                reporte.append(['NO', '', empresa_info['nombre_empresa'], empresa_pista, motivo_error])
+                reporte_filas.append({
+                    'incluida': False,
+                    'archivo_sabana': '',
+                    'empresa_sabana': _normalizar_nombre_empresa_estricto(empresa_info['nombre_empresa']),
+                    'empresa_pista': empresa_pista,
+                    'motivo': motivo_error,
+                })
+                continue
+
+            respuesta_obj.direct_passthrough = False
+            try:
+                zin_ctx = zipfile.ZipFile(io.BytesIO(respuesta_obj.get_data()), 'r')
+            except Exception as exc:
+                logger.exception('La sabana base PISTA no es un ZIP valido para %s', empresa_info['nombre_empresa'])
+                reporte.append(['NO', '', empresa_info['nombre_empresa'], empresa_pista, f'zip invalido: {exc}'])
+                reporte_filas.append({
+                    'incluida': False,
+                    'archivo_sabana': '',
+                    'empresa_sabana': _normalizar_nombre_empresa_estricto(empresa_info['nombre_empresa']),
+                    'empresa_pista': empresa_pista,
+                    'motivo': f'zip invalido: {exc}',
+                })
+                continue
+
+            with zin_ctx as zin:
+                for item in zin.infolist():
+                    if item.filename == 'resumen_periodo.xlsx':
+                        continue
+                    total_generadas += 1
+                    empresa_sabana = _empresa_desde_nombre_archivo_prefactura(item.filename)
+                    incluida, empresa_pista_archivo, motivo = _coincidir_empresa_pista(empresa_sabana, [empresa_pista])
+                    reporte.append(['SI' if incluida else 'NO', item.filename, empresa_sabana, empresa_pista_archivo, motivo])
+                    reporte_filas.append({
+                        'incluida': incluida,
+                        'archivo_sabana': item.filename,
+                        'empresa_sabana': empresa_sabana,
+                        'empresa_pista': empresa_pista_archivo,
+                        'motivo': motivo,
+                    })
+                    if not incluida:
+                        continue
+                    contenido_archivo = zin.read(item.filename)
+                    zout.writestr(item, contenido_archivo)
+                    archivos_incluidos.append({
+                        'empresa': empresa_sabana,
+                        'archivo': item.filename,
+                        'contenido': contenido_archivo,
+                    })
+                    empresas_pista_encontradas.add(empresa_pista_archivo)
+                    total_filtradas += 1
+
         for empresa_pista in empresas_sin_sabana:
             reporte.append(['NO', '', '', empresa_pista, 'sin sabana generada para ese nombre en el rango'])
             reporte_filas.append({
@@ -2803,6 +2880,8 @@ def generar_prefacturas():
     if cliente_id is not None:
         query = query.filter(AtencionDiaDetalle.cliente_id == cliente_id)
 
+    empresa_nombre_filtro = _normalizar_nombre_empresa_estricto(request.args.get('empresa_nombre'))
+
     todos = query.order_by(
         AtencionDiaDetalle.cliente_id.asc().nullslast(),
         AtencionDiaDetalle.acuerdo_comercial.asc().nullslast(),
@@ -2843,6 +2922,12 @@ def generar_prefacturas():
         if reg.servicio and 'ECOBABY' in reg.servicio.upper():
             continue
         empresa_buckets[_nombre_empresa(reg)][bucket].append(reg)
+
+    if empresa_nombre_filtro:
+        empresa_buckets = {
+            emp: buckets for emp, buckets in empresa_buckets.items()
+            if _normalizar_nombre_empresa_estricto(emp) == empresa_nombre_filtro
+        }
 
     if not empresa_buckets:
         return jsonify({'error': 'No se encontraron atenciones en el rango de fechas indicado'}), 404
