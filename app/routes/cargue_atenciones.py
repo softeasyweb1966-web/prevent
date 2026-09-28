@@ -328,6 +328,41 @@ def _tokens_busqueda_empresa(valor):
     ][:4]
 
 
+def _normalizar_empresa_sin_sufijo(valor):
+    tokens = _normalizar_nombre_empresa_estricto(valor).split()
+    sufijos = {'sa', 'sas', 'ltda', 'cia'}
+    while tokens and tokens[-1] in sufijos:
+        tokens.pop()
+    return ' '.join(tokens)
+
+
+def _tokens_empresa_significativos(valor):
+    ignorar = {'s', 'sa', 'sas', 'ltda', 'cia', 'de', 'del', 'la', 'las', 'los', 'y', 'en', 'para', 'con'}
+    return [
+        token for token in _normalizar_nombre_empresa_estricto(valor).split()
+        if len(token) >= 3 and token not in ignorar
+    ]
+
+
+def _coincidir_nombre_empresa_pista(nombre_atencion, empresas_pista):
+    nombre_norm = _normalizar_nombre_empresa_estricto(nombre_atencion)
+    nombre_base = _normalizar_empresa_sin_sufijo(nombre_atencion)
+    tokens_atencion = set(_tokens_empresa_significativos(nombre_atencion))
+
+    for empresa in empresas_pista:
+        empresa_norm = _normalizar_nombre_empresa_estricto(empresa)
+        if nombre_norm == empresa_norm:
+            return empresa_norm, 'exacta'
+        if nombre_base and nombre_base == _normalizar_empresa_sin_sufijo(empresa_norm):
+            return empresa_norm, 'exacta sin sufijo societario'
+
+        tokens_pista = _tokens_empresa_significativos(empresa_norm)
+        if len(tokens_pista) >= 2 and set(tokens_pista).issubset(tokens_atencion):
+            return empresa_norm, 'palabras del Excel contenidas en atencion'
+
+    return '', 'sin coincidencia'
+
+
 def _filtro_sql_nombre_empresa(nombre):
     tokens = _tokens_busqueda_empresa(nombre)
     if not tokens:
@@ -2189,10 +2224,8 @@ def _empresa_desde_nombre_archivo_prefactura(nombre_archivo):
 
 
 def _coincidir_empresa_pista(nombre_sabana, empresas_pista):
-    for empresa in empresas_pista:
-        if nombre_sabana == empresa:
-            return True, empresa, 'exacta'
-    return False, '', 'sin coincidencia exacta'
+    empresa, motivo = _coincidir_nombre_empresa_pista(nombre_sabana, empresas_pista)
+    return bool(empresa), empresa, motivo
 
 
 def _clientes_para_empresas_pista(empresas_pista, vendedor_scope):
@@ -2254,11 +2287,11 @@ def _empresas_atenciones_para_pista(empresas_pista, fecha_desde_dt, fecha_hasta_
         if _normalizar_forma_pago(reg.forma_pago) not in ('CREDITO', 'EFECTIVO', 'CONTADO', 'PARTICULAR', 'PARTICULARES'):
             continue
         nombre_empresa = _nombre_empresa_atencion(reg)
-        nombre_norm = _normalizar_nombre_empresa_estricto(nombre_empresa)
-        if nombre_norm not in empresas_set or nombre_norm in encontrados:
+        empresa_pista, _ = _coincidir_nombre_empresa_pista(nombre_empresa, empresas_set)
+        if not empresa_pista or empresa_pista in encontrados:
             continue
-        encontrados[nombre_norm] = {
-            'empresa_pista': nombre_norm,
+        encontrados[empresa_pista] = {
+            'empresa_pista': empresa_pista,
             'nombre_empresa': nombre_empresa,
             'cliente_id': reg.cliente_id,
         }

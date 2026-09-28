@@ -269,6 +269,55 @@ class PrefacturasEmpresaTest(unittest.TestCase):
             self.assertEqual(pref.cell(row=3, column=5).value, 'Valor PISTA Unit.')
             self.assertEqual(pref.cell(row=4, column=5).value, 50000)
 
+    def test_pistas_cruza_nombre_sin_sufijo_societario(self):
+        db.session.add(AtencionDiaDetalle(
+            cargue_id=1, cliente_id=None, nro_orden='C1',
+            nro_identificacion='9991', nombre_paciente='Paciente Colprevencion',
+            fecha_creacion_orden=datetime(2026, 9, 5), servicio='Consulta',
+            precio=10, forma_pago='CREDITO', estado_orden='ACTIVA',
+            empresa_mision='Colprevencion S.A.S.', archivo_origen='test.xlsx'))
+        db.session.commit()
+
+        response = self.http.post(
+            '/generar-pistas',
+            data={
+                'fecha_desde': '2026-09-01',
+                'fecha_hasta': '2026-09-15',
+                'archivo': (self._pista_excel(['colprevencion']), 'PISTA.xlsx'),
+            },
+            content_type='multipart/form-data',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with ZipFile(BytesIO(response.data)) as archivo:
+            nombres = ' '.join(archivo.namelist()).lower()
+            self.assertIn('colprevencion', nombres)
+
+    def test_pistas_cruza_nombre_corto_con_nombre_largo_en_atenciones(self):
+        db.session.add(AtencionDiaDetalle(
+            cargue_id=1, cliente_id=None, nro_orden='B1',
+            nro_identificacion='9992', nombre_paciente='Paciente Boliranas',
+            fecha_creacion_orden=datetime(2026, 9, 6), servicio='Consulta',
+            precio=10, forma_pago='CREDITO', estado_orden='ACTIVA',
+            empresa_mision='Boliranas de Colombia Tecnologia Emacom SAS',
+            archivo_origen='test.xlsx'))
+        db.session.commit()
+
+        response = self.http.post(
+            '/generar-pistas',
+            data={
+                'fecha_desde': '2026-09-01',
+                'fecha_hasta': '2026-09-15',
+                'archivo': (self._pista_excel(['boliranas de colombia']), 'PISTA.xlsx'),
+            },
+            content_type='multipart/form-data',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with ZipFile(BytesIO(response.data)) as archivo:
+            nombres = ' '.join(archivo.namelist()).lower()
+            self.assertIn('boliranas', nombres)
+
 
 if __name__ == '__main__':
     unittest.main()
