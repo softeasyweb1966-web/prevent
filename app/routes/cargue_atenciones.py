@@ -333,8 +333,6 @@ def _filtro_sql_nombre_empresa(nombre):
     if not tokens:
         return None
     columnas = (
-        ClienteComercial.razon_social,
-        ClienteComercial.nombre_comercial,
         AtencionDiaDetalle.acuerdo_comercial,
         AtencionDiaDetalle.empresa_mision,
     )
@@ -2221,9 +2219,7 @@ def _clientes_para_empresas_pista(empresas_pista, vendedor_scope):
 
 
 def _nombre_empresa_atencion(reg):
-    if reg.cliente:
-        return reg.cliente.razon_social or reg.acuerdo_comercial or 'SIN_EMPRESA'
-    return reg.acuerdo_comercial or reg.empresa_mision or 'SIN_EMPRESA'
+    return reg.empresa_mision or reg.acuerdo_comercial or 'SIN_EMPRESA'
 
 
 def _empresas_atenciones_para_pista(empresas_pista, fecha_desde_dt, fecha_hasta_dt, vendedor_scope):
@@ -2382,13 +2378,14 @@ def _construir_sabana_total_pistas_excel(archivos_incluidos, fecha_desde, fecha_
         cell.font = Font(name='Calibri', bold=True, size=13, color='FFFFFFFF')
         cell.alignment = align_center
 
-    escribir_titulo(ws_rel_total, f'SABANA TOTAL PISTAS | {fecha_desde} a {fecha_hasta}', 6)
-    escribir_titulo(ws_pref_total, f'PREFACTURA TOTAL PISTAS | {fecha_desde} a {fecha_hasta}', 5)
+    escribir_titulo(ws_rel_total, f'SABANA TOTAL PISTAS | {fecha_desde} a {fecha_hasta}', 7)
+    escribir_titulo(ws_pref_total, f'PREFACTURA TOTAL PISTAS | {fecha_desde} a {fecha_hasta}', 7)
 
     rel_header_written = False
     pref_header_written = False
 
     def copiar_hoja(ws_origen, ws_destino, empresa, header_written, ancho_extra):
+        ancho_extra = ws_origen.max_column + 1
         fila_destino = ws_destino.max_row + 1
         if fila_destino <= 2:
             fila_destino = 2
@@ -2450,8 +2447,32 @@ def _construir_sabana_total_pistas_excel(archivos_incluidos, fecha_desde, fecha_
                 ws_pref_total,
                 empresa,
                 pref_header_written,
-                5,
+                7,
             )
+
+    def agregar_total_general(ws, columna_total):
+        total = 0
+        for row in ws.iter_rows(min_row=3, values_only=True):
+            if len(row) >= columna_total and str(row[1] or '').strip().upper() == 'TOTAL':
+                valor = row[columna_total - 1]
+                if isinstance(valor, (int, float)):
+                    total += valor
+        if not total:
+            return
+        fila = ws.max_row + 1
+        ws.merge_cells(start_row=fila, start_column=1, end_row=fila, end_column=columna_total - 1)
+        cell = ws.cell(row=fila, column=1, value='TOTAL GENERAL PISTA')
+        cell.fill = fill_empresa
+        cell.font = font_empresa
+        cell.alignment = align_right
+        total_cell = ws.cell(row=fila, column=columna_total, value=total)
+        total_cell.fill = fill_empresa
+        total_cell.font = font_empresa
+        total_cell.alignment = align_right
+        total_cell.number_format = '#,##0.00'
+
+    agregar_total_general(ws_rel_total, 7)
+    agregar_total_general(ws_pref_total, 7)
 
     ws_rel_total.column_dimensions['A'].width = 45
     ws_rel_total.column_dimensions['B'].width = 16
@@ -2459,11 +2480,14 @@ def _construir_sabana_total_pistas_excel(archivos_incluidos, fecha_desde, fecha_
     ws_rel_total.column_dimensions['D'].width = 32
     ws_rel_total.column_dimensions['E'].width = 70
     ws_rel_total.column_dimensions['F'].width = 16
+    ws_rel_total.column_dimensions['G'].width = 16
     ws_pref_total.column_dimensions['A'].width = 45
     ws_pref_total.column_dimensions['B'].width = 70
     ws_pref_total.column_dimensions['C'].width = 18
     ws_pref_total.column_dimensions['D'].width = 16
     ws_pref_total.column_dimensions['E'].width = 16
+    ws_pref_total.column_dimensions['F'].width = 18
+    ws_pref_total.column_dimensions['G'].width = 18
     ws_rel_total.freeze_panes = 'A3'
     ws_pref_total.freeze_panes = 'A3'
 
@@ -2694,7 +2718,7 @@ def _generar_prefacturas_pistas_impl():
                 filtro = f'empresa_nombre={quote_plus(empresa_info["nombre_empresa"])}'
             try:
                 with current_app.test_request_context(
-                    f'/api/comercial/prefacturas/generar?fecha_desde={fecha_desde}&fecha_hasta={fecha_hasta}&{filtro}'
+                    f'/api/comercial/prefacturas/generar?fecha_desde={fecha_desde}&fecha_hasta={fecha_hasta}&modo_pista=1&{filtro}'
                 ):
                     with patch(f'{__name__}.current_user', usuario_actual):
                         respuesta = generar_prefacturas.__wrapped__()
@@ -2913,6 +2937,8 @@ def generar_prefacturas():
         query = query.filter(AtencionDiaDetalle.cliente_id == cliente_id)
 
     empresa_nombre_filtro = _normalizar_nombre_empresa_estricto(request.args.get('empresa_nombre'))
+    modo_pista = request.args.get('modo_pista') == '1'
+    valor_pista_unitario = 50000.0
     if empresa_nombre_filtro:
         filtro_nombre_sql = _filtro_sql_nombre_empresa(empresa_nombre_filtro)
         if filtro_nombre_sql is not None:
@@ -2931,6 +2957,8 @@ def generar_prefacturas():
     def _bucket_forma(valor):
         """Clasifica la forma de pago en 'CREDITO' o 'EFECTIVO' (bucket)."""
         norm = _normalizar_forma_pago(valor)
+        if modo_pista and norm in ('CREDITO', 'EFECTIVO', 'CONTADO', 'PARTICULAR', 'PARTICULARES'):
+            return 'CREDITO'
         if norm == 'CREDITO':
             return 'CREDITO'
         if norm in ('EFECTIVO', 'CONTADO', 'PARTICULAR', 'PARTICULARES'):
@@ -2938,6 +2966,8 @@ def generar_prefacturas():
         return None   # ignorar el resto
 
     def _nombre_empresa(reg):
+        if modo_pista:
+            return reg.empresa_mision or reg.acuerdo_comercial or 'SIN_EMPRESA'
         if reg.cliente:
             return reg.cliente.razon_social or reg.acuerdo_comercial or 'SIN_EMPRESA'
         return reg.acuerdo_comercial or reg.empresa_mision or 'SIN_EMPRESA'
@@ -3023,7 +3053,8 @@ def generar_prefacturas():
             examenes_str = _construir_examenes_str(regs_orden, catalogo_lookup)
             valor        = sum(float(r.precio) for r in regs_orden if r.precio is not None)
             nombre_pac   = (regs_orden[0].nombre_paciente or '').strip()
-            filas_detalle.append((valor, examenes_str, fecha_str, nro_id, nombre_pac))
+            valor_pista = valor_pista_unitario if modo_pista else None
+            filas_detalle.append((valor, examenes_str, fecha_str, nro_id, nombre_pac, valor_pista))
 
         filas_detalle.sort(key=lambda x: (x[0], x[1], x[2]))
         return filas_detalle
@@ -3073,20 +3104,25 @@ def generar_prefacturas():
         # Separador de seccion si no es la primera (fila_inicio > 4)
         if fila_inicio > 4:
             fill_sep = PatternFill('solid', fgColor='FF1F4E79')
-            ws.merge_cells(f'A{fila_inicio}:E{fila_inicio}')
+            col_fin = 'F' if modo_pista else 'E'
+            ws.merge_cells(f'A{fila_inicio}:{col_fin}{fila_inicio}')
             c = ws.cell(row=fila_inicio, column=1, value=label_seccion)
             c.font = st['font_subtitulo']; c.fill = fill_sep
             c.alignment = st['center']; c.border = border
             ws.row_dimensions[fila_inicio].height = 20
             fila_inicio += 1
 
-        for (valor, examenes_str, fecha_str, nro_id, nombre_pac) in filas_detalle:
-            for ci, v in enumerate([fecha_str, nro_id, nombre_pac, examenes_str, valor], start=1):
+        for fila in filas_detalle:
+            valor, examenes_str, fecha_str, nro_id, nombre_pac = fila[:5]
+            valores = [fecha_str, nro_id, nombre_pac, examenes_str, valor]
+            if modo_pista:
+                valores.append(fila[5])
+            for ci, v in enumerate(valores, start=1):
                 c = ws.cell(row=fila_inicio, column=ci, value=v)
                 c.font = st['font_normal']; c.border = border
                 if ci in (1, 2):
                     c.alignment = st['center']
-                elif ci == 5:
+                elif ci in (5, 6):
                     c.alignment = st['right_al']; c.number_format = '#,##0.00'
                 else:
                     c.alignment = st['left_al']
@@ -3100,6 +3136,11 @@ def generar_prefacturas():
         c2 = ws.cell(row=fila_inicio, column=5, value=total)
         c2.font = st['font_total_empresa']; c2.fill = st['fill_total']
         c2.alignment = st['right_al']; c2.number_format = '#,##0.00'; c2.border = border
+        if modo_pista:
+            total_pista = len(filas_detalle) * valor_pista_unitario
+            c3 = ws.cell(row=fila_inicio, column=6, value=total_pista)
+            c3.font = st['font_total_empresa']; c3.fill = st['fill_total']
+            c3.alignment = st['right_al']; c3.number_format = '#,##0.00'; c3.border = border
         return fila_inicio + 1
 
     def _escribir_seccion_prefactura(ws, fila_inicio, grupos, total, label_seccion, st):
@@ -3109,7 +3150,8 @@ def generar_prefacturas():
 
         if fila_inicio > 4:
             fill_sep = PatternFill('solid', fgColor='FF1F4E79')
-            ws.merge_cells(f'A{fila_inicio}:D{fila_inicio}')
+            col_fin = 'F' if modo_pista else 'D'
+            ws.merge_cells(f'A{fila_inicio}:{col_fin}{fila_inicio}')
             c = ws.cell(row=fila_inicio, column=1, value=label_seccion)
             c.font = st['font_subtitulo']; c.fill = fill_sep
             c.alignment = st['center']; c.border = border
@@ -3118,7 +3160,10 @@ def generar_prefacturas():
 
         for (vg, eg, gf) in grupos:
             cant = len(gf)
-            for ci, v in enumerate([eg, cant, vg, vg * cant], start=1):
+            valores = [eg, cant, vg, vg * cant]
+            if modo_pista:
+                valores.extend([valor_pista_unitario, valor_pista_unitario * cant])
+            for ci, v in enumerate(valores, start=1):
                 c = ws.cell(row=fila_inicio, column=ci, value=v)
                 c.font = st['font_normal']; c.border = border
                 if ci == 1:
@@ -3136,6 +3181,11 @@ def generar_prefacturas():
         c2 = ws.cell(row=fila_inicio, column=4, value=total)
         c2.font = st['font_total_empresa']; c2.fill = st['fill_total']
         c2.alignment = st['right_al']; c2.number_format = '#,##0.00'; c2.border = border
+        if modo_pista:
+            total_pista = sum(len(gf) for _, _, gf in grupos) * valor_pista_unitario
+            c3 = ws.cell(row=fila_inicio, column=6, value=total_pista)
+            c3.font = st['font_total_empresa']; c3.fill = st['fill_total']
+            c3.alignment = st['right_al']; c3.number_format = '#,##0.00'; c3.border = border
         return fila_inicio + 1
 
     def _construir_workbook(nombre_empresa, secciones):
@@ -3146,14 +3196,20 @@ def generar_prefacturas():
         ws_rel.title = 'relacion-pacientes'
         ws_pf  = wb.create_sheet(title='prefactura')
 
+        headers_rel = ['Fecha Atencion', 'ID Paciente', 'Paciente', 'Examenes', 'Valor']
+        headers_pf = ['Examenes', 'Cant. Pacientes', 'Valor Unit.', 'Total']
+        if modo_pista:
+            headers_rel.append('Valor PISTA')
+            headers_pf.extend(['Valor PISTA Unit.', 'Total PISTA'])
+
         _escribir_cabecera_ws(
             ws_rel, nombre_empresa.upper(),
             f'RELACION DE PACIENTES  |  Periodo: {periodo_label}',
-            ['Fecha Atencion', 'ID Paciente', 'Paciente', 'Examenes', 'Valor'], st)
+            headers_rel, st)
         _escribir_cabecera_ws(
             ws_pf, nombre_empresa.upper(),
             f'PREFACTURA  |  Periodo: {periodo_label}',
-            ['Examenes', 'Cant. Pacientes', 'Valor Unit.', 'Total'], st)
+            headers_pf, st)
 
         fila_rel = 4
         fila_pf  = 4
@@ -3170,11 +3226,14 @@ def generar_prefacturas():
         ws_rel.column_dimensions['C'].width = 32
         ws_rel.column_dimensions['D'].width = 70
         ws_rel.column_dimensions['E'].width = 16
+        ws_rel.column_dimensions['F'].width = 16
 
         ws_pf.column_dimensions['A'].width = 70
         ws_pf.column_dimensions['B'].width = 18
         ws_pf.column_dimensions['C'].width = 16
         ws_pf.column_dimensions['D'].width = 16
+        ws_pf.column_dimensions['E'].width = 18
+        ws_pf.column_dimensions['F'].width = 18
 
         return wb
 
@@ -3183,7 +3242,10 @@ def generar_prefacturas():
         tiene_cred = bool(buckets.get('CREDITO'))
         tiene_efec = bool(buckets.get('EFECTIVO'))
 
-        if tiene_cred and tiene_efec:
+        if modo_pista:
+            prefijo = 'cred'
+            secciones = [('CREDITO', buckets['CREDITO'])]
+        elif tiene_cred and tiene_efec:
             prefijo   = 'mixto'
             secciones = [
                 ('-- CREDITO --',  buckets['CREDITO']),

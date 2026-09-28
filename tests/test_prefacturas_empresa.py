@@ -44,7 +44,7 @@ class PrefacturasEmpresaTest(unittest.TestCase):
                 nro_identificacion=str(i), nombre_paciente=f'Paciente {i}',
                 fecha_creacion_orden=datetime(2026, 9, 1), servicio='Consulta',
                 precio=100 * i, forma_pago='CREDITO', estado_orden='ACTIVA',
-                archivo_origen='test.xlsx'))
+                empresa_mision=f'Empresa {i}', archivo_origen='test.xlsx'))
         db.session.commit()
 
     def tearDown(self):
@@ -170,6 +170,7 @@ class PrefacturasEmpresaTest(unittest.TestCase):
     def test_pistas_cruce_estricto_tolera_sas_con_puntos_y_mayusculas(self):
         cliente = db.session.get(ClienteComercial, 1)
         cliente.razon_social = 'Clinica Prevent S.A.S.'
+        AtencionDiaDetalle.query.filter_by(cliente_id=1).first().empresa_mision = 'Clinica Prevent S.A.S.'
         db.session.commit()
 
         response = self.http.post(
@@ -194,6 +195,7 @@ class PrefacturasEmpresaTest(unittest.TestCase):
     def test_pistas_no_cruza_por_nombre_parcial(self):
         cliente = db.session.get(ClienteComercial, 1)
         cliente.razon_social = 'Empresa 1 Sucursal Norte'
+        AtencionDiaDetalle.query.filter_by(cliente_id=1).first().empresa_mision = 'Empresa 1 Sucursal Norte'
         db.session.commit()
 
         response = self.http.post(
@@ -235,6 +237,37 @@ class PrefacturasEmpresaTest(unittest.TestCase):
             resumen = archivo.read('resumen_sabanas_pistas.txt').decode('utf-8')
             self.assertIn('Empresas PISTA encontradas en sabanas: 1', resumen)
             self.assertIn('Sabanas incluidas: 1', resumen)
+
+    def test_pistas_incluye_efectivo_como_credito_y_valor_pista(self):
+        db.session.add(AtencionDiaDetalle(
+            cargue_id=1, cliente_id=None, nro_orden='E1',
+            nro_identificacion='888', nombre_paciente='Paciente Efectivo',
+            fecha_creacion_orden=datetime(2026, 9, 4), servicio='Consulta',
+            precio=10, forma_pago='EFECTIVO', estado_orden='ACTIVA',
+            empresa_mision='Empresa Pista Efectivo', archivo_origen='test.xlsx'))
+        db.session.commit()
+
+        response = self.http.post(
+            '/generar-pistas',
+            data={
+                'fecha_desde': '2026-09-01',
+                'fecha_hasta': '2026-09-15',
+                'archivo': (self._pista_excel(['Empresa Pista Efectivo']), 'PISTA.xlsx'),
+            },
+            content_type='multipart/form-data',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        with ZipFile(BytesIO(response.data)) as archivo:
+            nombre = next(n for n in archivo.namelist() if 'Empresa_Pista_Efectivo' in n)
+            wb = __import__('openpyxl').load_workbook(BytesIO(archivo.read(nombre)), data_only=True)
+            rel = wb['relacion-pacientes']
+            pref = wb['prefactura']
+            self.assertTrue(nombre.startswith('cred-'))
+            self.assertEqual(rel.cell(row=3, column=6).value, 'Valor PISTA')
+            self.assertEqual(rel.cell(row=4, column=6).value, 50000)
+            self.assertEqual(pref.cell(row=3, column=5).value, 'Valor PISTA Unit.')
+            self.assertEqual(pref.cell(row=4, column=5).value, 50000)
 
 
 if __name__ == '__main__':
