@@ -320,6 +320,31 @@ def _normalizar_nombre_empresa_estricto(valor):
     return re.sub(r'\s+', ' ', texto).strip()
 
 
+def _tokens_busqueda_empresa(valor):
+    ignorar = {'s', 'sa', 'sas', 'ltda', 'cia', 'de', 'del', 'la', 'las', 'los', 'y'}
+    return [
+        token for token in _normalizar_nombre_empresa_estricto(valor).split()
+        if len(token) >= 3 and token not in ignorar
+    ][:4]
+
+
+def _filtro_sql_nombre_empresa(nombre):
+    tokens = _tokens_busqueda_empresa(nombre)
+    if not tokens:
+        return None
+    columnas = (
+        ClienteComercial.razon_social,
+        ClienteComercial.nombre_comercial,
+        AtencionDiaDetalle.acuerdo_comercial,
+        AtencionDiaDetalle.empresa_mision,
+    )
+    condiciones = []
+    for token in tokens:
+        patron = f'%{token}%'
+        condiciones.append(or_(*[col.ilike(patron) for col in columnas]))
+    return and_(*condiciones)
+
+
 def _normalizar_encabezado_atencion(valor):
     texto = _normalizar(valor) or ''
     reemplazos = {
@@ -2215,6 +2240,13 @@ def _empresas_atenciones_para_pista(empresas_pista, fecha_desde_dt, fecha_hasta_
     if not _is_admin_user():
         query = query.filter(_condicion_scope_atenciones(vendedor_scope))
 
+    filtros_nombres = [
+        filtro for filtro in (_filtro_sql_nombre_empresa(empresa) for empresa in empresas_set)
+        if filtro is not None
+    ]
+    if filtros_nombres:
+        query = query.filter(or_(*filtros_nombres))
+
     for reg in query.order_by(
         AtencionDiaDetalle.cliente_id.asc().nullslast(),
         AtencionDiaDetalle.acuerdo_comercial.asc().nullslast(),
@@ -2881,6 +2913,10 @@ def generar_prefacturas():
         query = query.filter(AtencionDiaDetalle.cliente_id == cliente_id)
 
     empresa_nombre_filtro = _normalizar_nombre_empresa_estricto(request.args.get('empresa_nombre'))
+    if empresa_nombre_filtro:
+        filtro_nombre_sql = _filtro_sql_nombre_empresa(empresa_nombre_filtro)
+        if filtro_nombre_sql is not None:
+            query = query.filter(filtro_nombre_sql)
 
     todos = query.order_by(
         AtencionDiaDetalle.cliente_id.asc().nullslast(),
