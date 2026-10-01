@@ -98,6 +98,16 @@ class CorreccionesTest(TestCase):
         response = self.cargar(self.archivos)
         self.assertEqual(response.status_code, 200, response.json)
         self.assertEqual(response.json['atenciones'], 0)
+        self.assertTrue(response.json['token'])
+
+    def test_aplicar_excel_sin_cambios_permanece_idempotente(self):
+        preview = self.cargar(self.archivos)
+        self.assertEqual(preview.status_code, 200, preview.json)
+        response = self.cargar(self.archivos, preview.json['token'], reemplazo=True)
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(response.json['actualizadas'], 0)
+        self.assertEqual(AuditLog.query.count(), 0)
+        self.assertEqual(PrefacturaComercial.query.filter_by(cliente_id=1).one().valor_total, Decimal(100))
 
     def test_lote_invalido_no_modifica_ninguna_atencion(self):
         response = self.cargar([self.modificar(), self.modificar(1, {'D2': -1})])

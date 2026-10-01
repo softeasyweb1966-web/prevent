@@ -109,11 +109,11 @@ async function enviarCorreccionesExcel(aplicar, opciones = {}) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'No se pudo procesar el archivo');
         if (!aplicar) {
-            correccionesToken = data.atenciones ? data.token : '';
+            correccionesToken = data.token || '';
             tablaCorrecciones('correccionesVista', data.cambios || []);
             mensaje.textContent = data.atenciones
                 ? `${data.atenciones} atenciones listas. Ahora pulsa Generar sabana corregida.`
-                : 'No hay diferencias entre el Excel de Cargue Atenciones y las atenciones guardadas.';
+                : 'No hay diferencias entre el Excel de Cargue Atenciones y las atenciones guardadas. Puedes generar la sabana desde los datos guardados.';
         } else {
             correccionesToken = '';
             input.value = '';
@@ -163,7 +163,7 @@ async function cargarSabanaCorregida() {
 async function generarSabanaCorregida() {
     if (!correccionesToken) {
         const data = await enviarCorreccionesExcel(false);
-        if (!data?.atenciones) return;
+        if (!data?.token) return;
     }
     await enviarCorreccionesExcel(true, { descargar: true });
 }
