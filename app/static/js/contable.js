@@ -977,7 +977,13 @@ function tieneCarteraPendienteSiigo(cliente) {
 }
 
 function ultimoSeguimientoCarteraSiigo(cliente) {
-    return (cliente?.seguimientos || [])[0] || null;
+    const registros = [...(cliente?.seguimientos || [])];
+    registros.sort((a, b) => {
+        const fechaA = a.fecha_hora_gestion || a.created_at || a.fecha_gestion || '';
+        const fechaB = b.fecha_hora_gestion || b.created_at || b.fecha_gestion || '';
+        return String(fechaB).localeCompare(String(fechaA)) || Number(b.id || 0) - Number(a.id || 0);
+    });
+    return registros[0] || null;
 }
 
 function tieneSeguimientoHoyCarteraSiigo(cliente, hoy = fechaHoyCarteraSiigo()) {
@@ -1018,11 +1024,12 @@ function renderTablaFacturasVencidasSiigo(panel) {
     if (!resultado) return;
     const dataTabla = dataTablaFacturasVencidasSiigo(panel);
     panel._clientesSeguimientoVisibles = dataTabla.clientes || [];
+    panel._clientesSeguimientoBase = panel._datosVencidas?.clientes || [];
     resultado.innerHTML = tablaFacturasVencidasSiigo(dataTabla);
     resultado.onclick = event => {
         const boton = event.target.closest('[data-siigo-seguimiento]');
         if (!boton) return;
-        const cliente = (panel._clientesSeguimientoVisibles || [])[Number(boton.dataset.siigoSeguimiento)];
+        const cliente = (panel._clientesSeguimientoBase || [])[Number(boton.dataset.siigoSeguimiento)];
         if (cliente) abrirSeguimientoCarteraSiigo(cliente);
     };
     sincronizarBarraVencidasSiigo(panel);
@@ -1331,9 +1338,8 @@ function actualizarAlertasCarteraSiigo(panel) {
     const proximosHoy = clientes.filter(cliente => tieneSeguimientoHoyCarteraSiigo(cliente, hoy)).length;
     const seguimientosVencidos = clientes.filter(cliente => tieneSeguimientoVencidoCarteraSiigo(cliente, hoy)).length;
     panel.querySelector('[data-alertas-cartera]').innerHTML = `${ordenEstadosGestionCarteraSiigo.map(estado => `<button type="button" class="siigo-alerta-cartera siigo-${estado}" data-alerta-cartera="${estado}">${estadosGestionCarteraSiigo[estado]}: ${clientes.filter(c => estadoClienteCarteraSiigo(c) === estado).length}</button>`).join(' ')} <button type="button" class="siigo-alerta-cartera siigo-proximo-hoy" data-proximo-hoy>Próximo seguimiento hoy: ${proximosHoy}</button> <button type="button" class="siigo-alerta-cartera siigo-vencido" data-seguimiento-vencido>Seguimientos vencidos: ${seguimientosVencidos}</button>`;
-    const clientesVisibles = panel._clientesSeguimientoVisibles || clientes;
     panel.querySelectorAll('[data-siigo-seguimiento-icono]').forEach(boton => {
-        const cliente = clientesVisibles[Number(boton.dataset.siigoSeguimiento)];
+        const cliente = clientes[Number(boton.dataset.siigoSeguimiento)];
         const estado = estadoClienteCarteraSiigo(cliente);
         boton.className = `siigo-seguimiento-icono siigo-${estado}`;
         const etiqueta = `Seguimiento de cartera: ${estadosGestionCarteraSiigo[estado] || 'Sin Gestión'}`;
@@ -1377,14 +1383,21 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     const opcionesAlcance = empresasGrupo.length > 1 ? `<div class="form-group"><label for="siigoGestionAlcance">Aplicar compromiso</label><select id="siigoGestionAlcance" name="alcance"><option value="empresa">Solo esta empresa</option><option value="grupo">Todas las empresas del responsable (${empresasGrupo.length})</option></select></div>` : '';
     dialogo.innerHTML = `<div class="siigo-seguimiento-shell"><div class="siigo-seguimiento-cabecera"><div><h2 id="siigoSeguimientoTitulo">Seguimiento de cartera</h2><p><strong>${escapeSiigo(cliente.cliente)}</strong> · ${escapeSiigo(cliente.identificacion)} · Vendedor: ${escapeSiigo(cliente.vendedor)}</p></div><button type="button" class="btn btn-primary" data-cerrar>Regresar</button></div><div class="button-group siigo-seguimiento-toolbar"><button type="button" class="btn btn-primary" data-nuevo disabled>Nuevo seguimiento</button><button type="button" class="btn btn-primary" data-marcar-cumplido disabled>Marcar cumplido</button><button type="button" class="btn btn-primary" data-enviar-correo disabled>Enviar por correo</button><button type="button" class="btn btn-primary" data-enviar-whatsapp disabled>Enviar por WhatsApp</button></div>${resumenResponsableCarteraSiigo(cliente)}<p data-estado role="status" aria-live="polite"></p><button type="button" class="btn btn-primary" data-reintentar hidden>Reintentar consulta</button><section class="siigo-historial-cartera"><div class="siigo-seccion-titulo"><div><h3>Historial de seguimientos</h3><p class="form-help">Historial completo del cliente, independiente de la fecha de corte.</p></div></div><div data-historial></div></section><form hidden class="siigo-nuevo-seguimiento"><h3>Nuevo seguimiento</h3>${opcionesAlcance}<div class="form-row siigo-form-dos"><div class="form-group"><label for="siigoGestionFecha">Fecha de gestión *</label><input id="siigoGestionFecha" name="fecha_gestion" type="date" required value="${hoy}" max="${hoy}"></div><div class="form-group"><label for="siigoGestionContacto">Persona contactada</label><input id="siigoGestionContacto" name="contacto" maxlength="200"></div></div><div class="form-group"><label for="siigoGestionMedio">Medio de contacto *</label><select id="siigoGestionMedio" name="medio" required><option value="">Seleccione</option><option value="LLAMADA">Llamada</option><option value="WHATSAPP">WhatsApp</option><option value="CORREO">Correo</option><option value="VISITA">Visita</option><option value="OTRO">Otro</option></select></div><div class="form-group"><label for="siigoGestionNota">Gestión realizada y acuerdos *</label><textarea id="siigoGestionNota" name="observaciones" rows="4" maxlength="5000" required></textarea></div><div class="form-row siigo-form-dos"><div class="form-group"><label for="siigoGestionCompromiso">Fecha compromiso de pago</label><input id="siigoGestionCompromiso" name="fecha_compromiso" type="date"></div><div class="form-group"><label for="siigoGestionValor">Valor compromiso (COP)</label><input id="siigoGestionValor" name="valor_compromiso" type="number" min="0.01" step="0.01"></div></div><div class="form-row siigo-form-dos"><div class="form-group"><label for="siigoGestionEstado">Estado del seguimiento *</label><select id="siigoGestionEstado" name="estado_gestion" required><option value="">Seleccione</option><option value="SIN_GESTION">Sin Gestión</option><option value="NO_LOCALIZADO">No localizado</option><option value="EN_PROCESO">En proceso</option><option value="REVISION_INTERNA">Revision Interna</option><option value="CON_COMPROMISO">Con compromiso</option></select></div><div class="form-group"><label for="siigoGestionProximo">Próximo seguimiento</label><input id="siigoGestionProximo" name="proximo_seguimiento" type="date"></div></div><div class="button-group"><button type="submit" class="btn btn-primary">Guardar seguimiento</button><button type="button" class="btn btn-primary" data-cancelar>Cancelar</button></div></form></div>`;
     document.body.appendChild(dialogo);
-    dialogo.querySelector('.siigo-historial-cartera').insertAdjacentHTML('beforebegin', estadoCuentaClienteCarteraSiigo(cliente));
-    dialogo.querySelector('.siigo-seguimiento-shell').insertAdjacentHTML('beforeend', bloqueChatCarteraSiigo(cliente));
+    const shellSeguimiento = dialogo.querySelector('.siigo-seguimiento-shell');
+    const historialSection = dialogo.querySelector('.siigo-historial-cartera');
+    historialSection.insertAdjacentHTML('beforebegin', estadoCuentaClienteCarteraSiigo(cliente));
+    shellSeguimiento.insertAdjacentHTML('beforeend', bloqueChatCarteraSiigo(cliente));
     const form = dialogo.querySelector('form.siigo-nuevo-seguimiento');
     if (!form) {
         dialogo.remove();
         alert('No fue posible abrir el formulario de seguimiento. Actualice la pagina e intente de nuevo.');
         return;
     }
+    const estadoCuentaSection = dialogo.querySelector('.siigo-estado-cuenta');
+    const chatSection = dialogo.querySelector('.siigo-chat-cartera');
+    if (estadoCuentaSection) estadoCuentaSection.after(form);
+    if (chatSection) form.after(chatSection);
+    if (historialSection && chatSection) chatSection.after(historialSection);
     form.elements.proximo_seguimiento.required = true;
     dialogo.querySelector('label[for="siigoGestionProximo"]').textContent = 'Próximo seguimiento *';
     const estado = dialogo.querySelector('[data-estado]');
@@ -1703,7 +1716,7 @@ function movimientosSinAsignarSiigo(movimientos) {
 
 function tablaFacturasVencidasSiigo(data) {
     const clientesOriginales = data.clientes || [];
-    const clientes = clientesOriginales.map((cliente, indiceOriginal) => ({ cliente, indiceOriginal })).sort((a, b) => {
+    const clientes = clientesOriginales.map((cliente, indiceOriginal) => ({ cliente, indiceOriginal: Number.isInteger(cliente._indiceOriginal) ? cliente._indiceOriginal : indiceOriginal })).sort((a, b) => {
         const responsableA = a.cliente.agrupacion_responsable?.responsable || 'Sin responsable';
         const responsableB = b.cliente.agrupacion_responsable?.responsable || 'Sin responsable';
         return responsableA.localeCompare(responsableB, 'es') || (a.cliente.cliente || '').localeCompare(b.cliente.cliente || '', 'es');

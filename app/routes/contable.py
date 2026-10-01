@@ -2173,7 +2173,13 @@ def cartera_dinamica():
             claves = {_nit_cartera(c['identificacion']) for c in clientes}
             seguimientos = {}
             if claves:
-                for registro in SiigoSeguimientoCartera.query.filter(SiigoSeguimientoCartera.identificacion.in_(claves)).all():
+                for registro in SiigoSeguimientoCartera.query.filter(SiigoSeguimientoCartera.identificacion.in_(claves)).order_by(
+                    SiigoSeguimientoCartera.identificacion,
+                    SiigoSeguimientoCartera.fecha_gestion.desc(),
+                    SiigoSeguimientoCartera.fecha_hora_gestion.desc().nullslast(),
+                    SiigoSeguimientoCartera.created_at.desc(),
+                    SiigoSeguimientoCartera.id.desc(),
+                ).all():
                     seguimientos.setdefault(registro.identificacion, []).append(_serializar_seguimiento_cartera(registro))
             for cliente in clientes:
                 cliente['seguimientos'] = seguimientos.get(_nit_cartera(cliente['identificacion']), [])
