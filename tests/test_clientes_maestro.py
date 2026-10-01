@@ -145,6 +145,17 @@ class MaestroTest(unittest.TestCase):
         self.login(0)
         self.assertEqual(self.http.get(path).json['total_vencido'],1000)
 
+    def test_busqueda_cartera_usa_cliente_maestro_del_vendedor(self):
+        self.factura('9001','Nombre diferente en SIIGO',Decimal('100'),1)
+        self.factura('9002','Empresa Dos',Decimal('900'),2)
+        self.login(1)
+        path='/api/contable/cartera-dinamica?fecha_corte=2026-03-01&informe=vencidas&cliente=Empresa%20Uno'
+        data=self.http.get(path).json
+        self.assertEqual(data['cantidad_clientes'],1)
+        self.assertEqual(data['clientes'][0]['identificacion'],'9001')
+        self.assertEqual(data['clientes'][0]['vendedor'],self.v1.nombre)
+        self.assertEqual(data['total_vencido'],100)
+
     def test_admin_puede_filtrar_cartera_por_vendedor_seleccionado(self):
         self.factura('9001','Empresa Uno',Decimal('100'),1)
         self.factura('9002','Empresa Dos',Decimal('900'),2)

@@ -65,6 +65,33 @@ def _alcance_movimiento():
     return normalizado.in_(nits)
 
 
+def _coincidencias_cliente_cartera(texto):
+    texto = _texto(texto)
+    if not texto:
+        return set()
+    like = f'%{texto}%'
+    nit_normalizado = identificacion(texto)
+    nit_maestro_normalizado = func.upper(func.regexp_replace(
+        func.split_part(func.coalesce(ClienteComercial.nit, ''), '-', 1),
+        '[^a-zA-Z0-9]', '', 'g',
+    ))
+    condiciones = [
+        ClienteComercial.nit.ilike(like),
+        ClienteComercial.razon_social.ilike(like),
+        ClienteComercial.nombre_comercial.ilike(like),
+    ]
+    if nit_normalizado:
+        condiciones.append(nit_maestro_normalizado.ilike(f'%{nit_normalizado}%'))
+    return {
+        identificacion(nit)
+        for nit, in _clientes_informe()
+            .with_entities(ClienteComercial.nit)
+            .filter(or_(*condiciones))
+            .all()
+        if nit
+    }
+
+
 def _comprobantes_visibles(query=None):
     query = SiigoComprobante.query if query is None else query
     return query.filter(SiigoComprobante.movimientos.any(_alcance_movimiento()))
@@ -1780,9 +1807,19 @@ def cartera_dinamica():
             consulta_facturas = consulta_facturas.filter(SiigoComprobante.fecha_elaboracion <= hasta)
         if cliente:
             like = f'%{cliente}%'
-            consulta_facturas = consulta_facturas.filter(or_(
+            nits_cliente = _coincidencias_cliente_cartera(cliente)
+            identificacion_normalizada = func.upper(func.regexp_replace(
+                func.split_part(func.coalesce(SiigoMovimiento.identificacion, ''), '-', 1),
+                '[^a-zA-Z0-9]', '', 'g',
+            ))
+            condiciones_cliente = [
                 SiigoMovimiento.identificacion.ilike(like),
                 SiigoMovimiento.nombre_tercero.ilike(like),
+            ]
+            if nits_cliente:
+                condiciones_cliente.append(identificacion_normalizada.in_(nits_cliente))
+            consulta_facturas = consulta_facturas.filter(or_(
+                *condiciones_cliente,
             ))
         lineas_factura = consulta_facturas.all()
         for comprobante, movimiento in lineas_factura:
