@@ -14,13 +14,13 @@ function invalidarRevisionCorrecciones() {
     document.getElementById('correccionesAplicar').disabled = true;
     document.getElementById('correccionesVista').replaceChildren();
     document.getElementById('correccionesDescargas').replaceChildren();
-    document.getElementById('correccionesMensaje').textContent = 'Revisa los archivos seleccionados antes de aplicar los cambios.';
+    document.getElementById('correccionesMensaje').textContent = 'Carga el Excel corregido para validar los cambios.';
 }
 
 function tablaCorrecciones(containerId, filas, historial = false) {
     const columnas = historial
-        ? [['fecha', 'Fecha del cambio'], ['usuario', 'Usuario'], ['empresa', 'Empresa'], ['archivo', 'Archivo'], ['atencion_id', 'Atención'], ['campo', 'Campo'], ['antes', 'Antes'], ['despues', 'Después']]
-        : [['empresa', 'Empresa'], ['archivo', 'Archivo'], ['atencion_id', 'Atención'], ['campo', 'Campo'], ['antes', 'Antes'], ['despues', 'Después']];
+        ? [['fecha', 'Fecha del cambio'], ['usuario', 'Usuario'], ['empresa', 'Empresa'], ['archivo', 'Archivo'], ['atencion_id', 'Atencion'], ['campo', 'Campo'], ['antes', 'Antes'], ['despues', 'Despues']]
+        : [['empresa', 'Empresa'], ['archivo', 'Archivo'], ['atencion_id', 'Atencion'], ['campo', 'Campo'], ['antes', 'Antes'], ['despues', 'Despues']];
     const tabla = document.createElement('table');
     tabla.className = 'data-table';
     const cabecera = tabla.createTHead().insertRow();
@@ -34,7 +34,8 @@ function tablaCorrecciones(containerId, filas, historial = false) {
         const tr = cuerpo.insertRow();
         columnas.forEach(([campo]) => {
             tr.insertCell().textContent = campo === 'fecha'
-                ? new Date(fila[campo]).toLocaleString('es-CO') : String(fila[campo] ?? '');
+                ? new Date(fila[campo]).toLocaleString('es-CO')
+                : String(fila[campo] ?? '');
         });
     });
     document.getElementById(containerId).replaceChildren(tabla);
@@ -56,20 +57,38 @@ async function descargarArchivoCorrecciones(url, nombre) {
     setTimeout(() => { URL.revokeObjectURL(objectUrl); enlace.remove(); }, 2000);
 }
 
-async function enviarCorreccionesExcel(aplicar) {
-    if (correccionesOcupado) return;
+function nombreArchivoSabana(periodo) {
+    return `Sabana-corregida-${String(periodo.empresa || 'empresa').replace(/[^a-z0-9_-]+/gi, '_')}.zip`;
+}
+
+async function descargarSabanaPeriodoCorreccion(periodo, mensaje) {
+    const params = new URLSearchParams({ empresa: periodo.empresa, fecha_desde: periodo.fecha_desde, fecha_hasta: periodo.fecha_hasta });
+    const endpoint = periodo.cliente_id ? 'generar' : 'regenerar-empresa';
+    if (periodo.cliente_id) params.set('cliente_id', periodo.cliente_id);
+    await descargarArchivoCorrecciones(`/api/comercial/prefacturas/${endpoint}?${params}`, nombreArchivoSabana(periodo));
+    if (mensaje) mensaje.textContent = `Sabana corregida generada: ${periodo.empresa}.`;
+}
+
+async function descargarSabanasCorregidas(periodos, mensaje) {
+    for (const periodo of periodos || []) {
+        await descargarSabanaPeriodoCorreccion(periodo, mensaje);
+    }
+}
+
+async function enviarCorreccionesExcel(aplicar, opciones = {}) {
+    if (correccionesOcupado) return null;
     const input = document.getElementById('correccionesArchivos');
     const mensaje = document.getElementById('correccionesMensaje');
     if (!input.files.length || input.files.length > 20) {
         mensaje.textContent = 'Selecciona entre 1 y 20 archivos Excel.';
-        return;
+        return null;
     }
-    if (aplicar && !correccionesToken) return;
+    if (aplicar && !correccionesToken) return null;
     const desde = document.getElementById('correccionesPeriodoDesde').value;
     const hasta = document.getElementById('correccionesPeriodoHasta').value;
     if (!desde || !hasta || desde > hasta) {
         mensaje.textContent = 'Selecciona un periodo valido para las atenciones que vas a corregir.';
-        return;
+        return null;
     }
     const datos = new FormData();
     datos.append('periodo_desde', desde);
@@ -81,7 +100,7 @@ async function enviarCorreccionesExcel(aplicar) {
     input.disabled = true;
     document.getElementById('correccionesRevisar').disabled = true;
     document.getElementById('correccionesAplicar').disabled = true;
-    mensaje.textContent = aplicar ? 'Guardando correcciones y su historial...' : 'Validando archivos y comparando las atenciones...';
+    mensaje.textContent = aplicar ? 'Guardando correcciones y generando sabana...' : 'Validando Excel corregido...';
     try {
         const response = await fetch('/api/comercial/atenciones-dia/correcciones-excel', {
             method: 'POST', credentials: 'same-origin', body: datos
@@ -90,45 +109,62 @@ async function enviarCorreccionesExcel(aplicar) {
         if (!response.ok) throw new Error(data.error || 'No se pudo procesar el archivo');
         if (!aplicar) {
             correccionesToken = data.atenciones ? data.token : '';
-            tablaCorrecciones('correccionesVista', data.cambios);
+            tablaCorrecciones('correccionesVista', data.cambios || []);
             mensaje.textContent = data.atenciones
-                ? `${data.atenciones} atenciones por corregir. Revisa el antes y después y pulsa Aplicar cambios revisados.`
+                ? `${data.atenciones} atenciones listas. Ahora pulsa Generar sabana corregida.`
                 : 'No hay diferencias entre el Excel de Cargue Atenciones y las atenciones guardadas.';
         } else {
             correccionesToken = '';
             input.value = '';
-            mensaje.textContent = `${data.actualizadas} atenciones actualizadas con su historial. Descarga las prefacturas recalculadas a continuación.`;
+            mensaje.textContent = `${data.actualizadas} atenciones actualizadas. Generando sabana corregida...`;
             const descargas = document.getElementById('correccionesDescargas');
             descargas.replaceChildren();
-            data.periodos.forEach(periodo => {
+            (data.periodos || []).forEach(periodo => {
                 const boton = document.createElement('button');
                 boton.type = 'button';
-                boton.className = 'btn btn-primary';
-                boton.textContent = `Regenerar ${periodo.empresa} (${periodo.fecha_desde} a ${periodo.fecha_hasta})`;
+                boton.className = 'btn btn-secondary btn-sm';
+                boton.textContent = `Descargar ${periodo.empresa}`;
                 boton.onclick = async () => {
                     boton.disabled = true;
                     try {
-                        const params = new URLSearchParams({ empresa: periodo.empresa, fecha_desde: periodo.fecha_desde, fecha_hasta: periodo.fecha_hasta });
-                        const endpoint = periodo.cliente_id ? 'generar' : 'regenerar-empresa';
-                        if (periodo.cliente_id) params.set('cliente_id', periodo.cliente_id);
-                        await descargarArchivoCorrecciones(`/api/comercial/prefacturas/${endpoint}?${params}`, 'Prefacturas-corregidas.zip');
+                        await descargarSabanaPeriodoCorreccion(periodo, mensaje);
                     } catch (error) {
-                        mensaje.textContent = `Las correcciones están guardadas. ${error.message}`;
+                        mensaje.textContent = `Las correcciones estan guardadas. ${error.message}`;
                     } finally { boton.disabled = false; }
                 };
                 descargas.appendChild(boton);
             });
+            if (opciones.descargar) {
+                await descargarSabanasCorregidas(data.periodos, mensaje);
+                mensaje.textContent = `${data.actualizadas} atenciones actualizadas. Sabana corregida generada.`;
+            } else {
+                mensaje.textContent = `${data.actualizadas} atenciones actualizadas. Descarga la sabana corregida.`;
+            }
             await consultarInformeCorrecciones(1);
         }
+        return data;
     } catch (error) {
         correccionesToken = '';
         mensaje.textContent = error.message;
+        return null;
     } finally {
         correccionesOcupado = false;
         input.disabled = false;
         document.getElementById('correccionesRevisar').disabled = false;
         document.getElementById('correccionesAplicar').disabled = !correccionesToken;
     }
+}
+
+async function cargarSabanaCorregida() {
+    await enviarCorreccionesExcel(false);
+}
+
+async function generarSabanaCorregida() {
+    if (!correccionesToken) {
+        const data = await enviarCorreccionesExcel(false);
+        if (!data?.atenciones) return;
+    }
+    await enviarCorreccionesExcel(true, { descargar: true });
 }
 
 function filtrosInformeCorrecciones() {
@@ -151,7 +187,7 @@ async function consultarInformeCorrecciones(pagina = 1) {
         if (!response.ok) throw new Error(data.error || 'No se pudo consultar el historial');
         correccionesPagina = data.pagina;
         tablaCorrecciones('correccionesInforme', data.filas, true);
-        mensaje.textContent = data.total ? `${data.total} correcciones. Página ${data.pagina} de ${data.paginas}.` : 'No hay correcciones para estos filtros.';
+        mensaje.textContent = data.total ? `${data.total} correcciones. Pagina ${data.pagina} de ${data.paginas}.` : 'No hay correcciones para estos filtros.';
         document.getElementById('correccionesAnterior').disabled = data.pagina <= 1;
         document.getElementById('correccionesSiguiente').disabled = data.pagina >= data.paginas;
     } catch (error) { mensaje.textContent = error.message; }

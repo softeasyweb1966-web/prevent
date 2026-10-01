@@ -1521,42 +1521,45 @@
             </div>
             <div id="sabanasPistasResultado" style="margin-top:10px; color:#555;"></div>
         </div>
-        <div id="ingresoInfoCorreccionesPanel" class="recent-section ingreso-info-panel" style="display:none; margin-bottom:16px;">
-            <h3>Cargar sábanas corregidas</h3>
-            <p>Sube el <strong>Excel original de Cargue Atenciones con las correcciones</strong>, conservando sus columnas. Selecciona el periodo, revisa el antes y despues y aplica los cambios. La auditoria conserva el usuario, la fecha y el archivo de cada correccion.</p>
-            <p>Se actualizan atenciones existentes por orden, examen y documento. Conserva el numero de orden. Las filas nuevas o ambiguas se muestran como errores; quitar una fila del Excel no elimina la atencion. Para anularla, cambia su estado a ANULADA. Los Excel de prefacturas no se usan para este cargue.</p>
+        <div id="ingresoInfoCorreccionesPanel" class="recent-section ingreso-info-panel correcciones-panel" style="display:none; margin-bottom:16px;">
+            <h3>Sabanas corregidas</h3>
+            <p>Sube el Excel corregido de Cargue Atenciones y genera nuevamente la sabana. Conserva el numero de orden y las columnas originales.</p>
             <div class="form-row">
                 <div class="form-group"><label for="correccionesPeriodo">Periodo cargado</label><select id="correccionesPeriodo" onchange="aplicarPeriodoEnRango('correccionesPeriodo', 'correccionesPeriodoDesde', 'correccionesPeriodoHasta'); invalidarRevisionCorrecciones()"><option value="">Seleccione un periodo...</option></select></div>
                 <div class="form-group"><label for="correccionesPeriodoDesde">Atenciones desde</label><input type="date" id="correccionesPeriodoDesde" onchange="invalidarRevisionCorrecciones()"></div>
                 <div class="form-group"><label for="correccionesPeriodoHasta">Atenciones hasta</label><input type="date" id="correccionesPeriodoHasta" onchange="invalidarRevisionCorrecciones()"></div>
             </div>
             <div class="form-group">
-                <label for="correccionesArchivos">Excel corregidos (hasta 20 archivos)</label>
+                <label for="correccionesArchivos">Excel corregido</label>
                 <input id="correccionesArchivos" type="file" accept=".xlsx" multiple onchange="invalidarRevisionCorrecciones()">
             </div>
-            <div class="button-group">
-                <button type="button" class="btn btn-secondary" id="correccionesRevisar" onclick="enviarCorreccionesExcel(false)">Revisar cambios</button>
-                <button type="button" class="btn btn-primary" id="correccionesAplicar" onclick="enviarCorreccionesExcel(true)" disabled>Aplicar cambios revisados</button>
+            <div class="button-group correcciones-acciones">
+                <button type="button" class="btn btn-secondary" id="correccionesRevisar" onclick="cargarSabanaCorregida()">Cargar sabana corregida</button>
+                <button type="button" class="btn btn-primary" id="correccionesAplicar" onclick="generarSabanaCorregida()" disabled>Generar sabana corregida</button>
             </div>
             <p id="correccionesMensaje" role="status"></p>
-            <div id="correccionesVista" style="overflow:auto; max-height:420px;"></div>
-            <div id="correccionesDescargas" class="button-group"></div>
-            <hr>
-            <h3>Historial: antes y después</h3>
-            <div class="form-row">
-                <div class="form-group"><label for="correccionesDesde">Fecha de cambio desde</label><input type="date" id="correccionesDesde"></div>
-                <div class="form-group"><label for="correccionesHasta">Fecha de cambio hasta</label><input type="date" id="correccionesHasta"></div>
-            </div>
-            <div class="button-group">
-                <button type="button" class="btn btn-secondary" onclick="consultarInformeCorrecciones(1)">Consultar historial</button>
-                <button type="button" class="btn btn-secondary" onclick="descargarInformeCorrecciones()">Descargar informe Excel</button>
-            </div>
-            <p id="correccionesInformeMensaje" role="status"></p>
-            <div id="correccionesInforme" style="overflow:auto; max-height:480px;"></div>
-            <div class="button-group">
-                <button type="button" class="btn btn-secondary" id="correccionesAnterior" onclick="consultarInformeCorrecciones(correccionesPagina - 1)" disabled>Anterior</button>
-                <button type="button" class="btn btn-secondary" id="correccionesSiguiente" onclick="consultarInformeCorrecciones(correccionesPagina + 1)" disabled>Siguiente</button>
-            </div>
+            <details class="correcciones-detalle">
+                <summary>Ver antes y despues</summary>
+                <div id="correccionesVista" style="overflow:auto; max-height:420px;"></div>
+            </details>
+            <div id="correccionesDescargas" class="button-group correcciones-acciones"></div>
+            <details class="correcciones-detalle">
+                <summary>Historial de correcciones</summary>
+                <div class="form-row">
+                    <div class="form-group"><label for="correccionesDesde">Fecha de cambio desde</label><input type="date" id="correccionesDesde"></div>
+                    <div class="form-group"><label for="correccionesHasta">Fecha de cambio hasta</label><input type="date" id="correccionesHasta"></div>
+                </div>
+                <div class="button-group correcciones-acciones">
+                    <button type="button" class="btn btn-secondary" onclick="consultarInformeCorrecciones(1)">Consultar historial</button>
+                    <button type="button" class="btn btn-secondary" onclick="descargarInformeCorrecciones()">Descargar informe Excel</button>
+                </div>
+                <p id="correccionesInformeMensaje" role="status"></p>
+                <div id="correccionesInforme" style="overflow:auto; max-height:480px;"></div>
+                <div class="button-group correcciones-acciones">
+                    <button type="button" class="btn btn-secondary" id="correccionesAnterior" onclick="consultarInformeCorrecciones(correccionesPagina - 1)" disabled>Anterior</button>
+                    <button type="button" class="btn btn-secondary" id="correccionesSiguiente" onclick="consultarInformeCorrecciones(correccionesPagina + 1)" disabled>Siguiente</button>
+                </div>
+            </details>
         </div>
         <!-- CONSULTAR PREFACTURAS -->
         <div id="ingresoInfoConsultaPrefacturasPanel" class="recent-section ingreso-info-panel" style="display:none; margin-bottom:16px;">

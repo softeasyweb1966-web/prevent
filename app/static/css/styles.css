@@ -51,6 +51,34 @@ body.body-siigo-cartera-focus .main-content {
     width: 100%;
 }
 
+.correcciones-panel .btn {
+    width: auto;
+    min-width: 0;
+    justify-content: center;
+}
+
+.correcciones-panel .correcciones-acciones {
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.correcciones-panel .correcciones-acciones .btn {
+    flex: 0 0 auto;
+    white-space: normal;
+}
+
+.correcciones-panel .correcciones-detalle {
+    margin-top: 14px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 12px;
+}
+
+.correcciones-panel .correcciones-detalle summary {
+    cursor: pointer;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
 /* Login Page Styles */
 .login-container {
     min-height: 100vh;
