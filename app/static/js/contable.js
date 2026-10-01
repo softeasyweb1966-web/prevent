@@ -436,6 +436,7 @@ function crearPanelFacturasVencidasSiigo() {
     panel.innerHTML = `<div data-vencidas-filtros><h3>Facturas vencidas y por vencer por cliente</h3><form class="siigo-vencidas-filtros"><div class="form-group"><label for="siigoVencidasCorte">Fecha de corte</label><input id="siigoVencidasCorte" type="date" required value="${hoy}"></div><div class="form-group"><label for="siigoVencidasCliente">Cliente o identificación (opcional)</label><input id="siigoVencidasCliente" name="cliente" type="text"></div><div class="form-group"><label for="siigoEstadoFacturas">Facturas</label><select id="siigoEstadoFacturas" name="estado_facturas"><option value="todos">Todos</option><option value="vencidos">Solo vencidos</option><option value="por_vencer">Por vencer</option></select><small>Por vencer incluye las que vencen hoy. Cantidad y total corresponden al filtro.</small></div><button class="btn btn-primary" type="submit">Generar informe</button></form><form class="siigo-comprobante-recibido" data-comprobante-recibido><h4>Cargar comprobante de pago</h4><div class="form-row siigo-form-dos"><div class="form-group"><label>Empresa *</label><input name="cliente_nombre" required maxlength="255"><input name="identificacion" placeholder="NIT o identificación" required maxlength="50"></div><div class="form-group"><label>Paciente</label><input name="paciente" maxlength="200"></div></div><div class="form-row siigo-form-dos"><div class="form-group"><label>Valor *</label><input name="valor" type="number" min="0.01" step="0.01" required></div><div class="form-group"><label>Archivos *</label><input name="archivos" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple required></div></div><button type="submit" class="btn btn-primary">Guardar comprobante</button><p role="status"></p></form><p data-vencidas-estado role="status"></p></div><div class="siigo-vencidas-visor" hidden><header class="siigo-vencidas-cabecera"><div><h2 tabindex="-1">Facturas vencidas y por vencer por cliente</h2><p data-vencidas-meta></p><p data-alertas-cartera role="status" aria-live="polite"></p></div><button type="button" class="btn btn-secondary" data-vencidas-regresar>Regresar</button></header><div class="table-container siigo-vencidas-datos"></div><footer class="siigo-vencidas-pie"><div class="siigo-vencidas-barra" tabindex="0" role="region" aria-label="Desplazamiento horizontal de las facturas"><div></div></div><div class="siigo-vencidas-acciones"><button class="btn btn-primary" type="button" data-vencidas-generar>Generar informe</button><button class="btn btn-secondary" type="button" data-siigo-exportar-vencidas>Descargar Excel</button><button class="btn btn-secondary" type="button" id="siigoAlternarMenuVencidas">Mostrar menú lateral</button><button class="btn btn-secondary" type="button" data-vencidas-actualizar>Actualizar comprobantes</button></div><p id="siigoVencidasCargaResultado" role="status" aria-live="polite"></p></footer></div>`;
     panel.querySelector('[data-vencidas-filtros] h3').textContent = 'Seguimiento de cartera';
     panel.querySelector('.siigo-vencidas-cabecera h2').textContent = 'Seguimiento de cartera';
+    panel.querySelector('[data-alertas-cartera]')?.insertAdjacentHTML('afterend', '<div class="siigo-vencidas-busqueda"><label for="siigoVencidasBuscarResultado">Buscar cliente</label><input id="siigoVencidasBuscarResultado" type="search" autocomplete="off" placeholder="Cliente, NIT, vendedor o factura"></div>');
     panel.querySelector('#siigoVencidasCorte')?.closest('.form-group')?.remove();
     panel.querySelector('form')?.insertAdjacentHTML('afterbegin', `<input id="siigoVencidasCorte" name="fecha_corte" type="hidden" value="${fechaCorteAnualCarteraSiigo()}">`);
     const clienteInput = panel.querySelector('#siigoVencidasCliente');
@@ -471,7 +472,14 @@ function crearPanelFacturasVencidasSiigo() {
         consultarFacturasVencidasSiigo(form);
     });
     panel.querySelector('[data-vencidas-generar]').addEventListener('click', () => form.requestSubmit());
-    panel.querySelector('[data-vencidas-regresar]').addEventListener('click', () => mostrarFiltrosVencidasSiigo(true));
+    panel.querySelector('[data-vencidas-regresar]').addEventListener('click', () => {
+        if (panel.dataset.origen === 'comercial-cartera') {
+            mostrarInicioGestionCarteraSiigo(panel);
+            return;
+        }
+        mostrarFiltrosVencidasSiigo(true);
+    });
+    panel.querySelector('#siigoVencidasBuscarResultado')?.addEventListener('input', () => renderTablaFacturasVencidasSiigo(panel));
     panel.querySelector('#siigoAlternarMenuVencidas').addEventListener('click', () => {
         actualizarModoCarteraSiigo(!document.body.classList.contains('body-siigo-cartera-focus'));
     });
@@ -535,6 +543,8 @@ function asegurarInicioGestionCarteraSiigo(panel) {
     panel.querySelector('[data-ver-cartera]').addEventListener('click', () => {
         panel._filtroAlertaCartera = '';
         panel._filtroProximoHoyCartera = false;
+        panel._filtroSeguimientoVencidoCartera = false;
+        panel._filtroAnexosPendientesCartera = false;
         panel.querySelector('[data-cartera-inicio]').hidden = true;
         mostrarFiltrosVencidasSiigo(true);
         aplicarFiltroVendedorCarteraInicio(panel);
@@ -694,6 +704,8 @@ function aplicarFiltroVendedorCarteraInicio(panel) {
 function mostrarInicioGestionCarteraSiigo(panel) {
     panel._filtroAlertaCartera = '';
     panel._filtroProximoHoyCartera = false;
+    panel._filtroSeguimientoVencidoCartera = false;
+    panel._filtroAnexosPendientesCartera = false;
     mostrarFiltrosVencidasSiigo(false);
     panel.querySelector('[data-cartera-inicio]').hidden = false;
     panel.querySelector('[data-vencidas-filtros]').hidden = true;
@@ -728,7 +740,10 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
         panel._resumenInicioCartera = { anio: resumenData, anioSeleccionado: anio };
         const hoy = fechaHoyCarteraSiigo();
         const proximosHoy = (data.clientes || []).filter(cliente => (cliente.seguimientos || []).some(item => item.proximo_seguimiento === hoy)).length;
+        const seguimientosVencidos = (data.clientes || []).filter(cliente => tieneSeguimientoVencidoCarteraSiigo(cliente, hoy)).length;
+        const anexosPendientes = (data.clientes || []).reduce((total, cliente) => total + anexosPendientesClienteCarteraSiigo(cliente), 0);
         alertas.innerHTML = `${ordenEstadosGestionCarteraSiigo.map(estadoClave => `<button type="button" class="siigo-alerta-card siigo-${estadoClave}" data-alerta-inicio="${estadoClave}"><span>${estadosGestionCarteraSiigo[estadoClave]}:</span><strong>${(data.clientes || []).filter(cliente => estadoClienteCarteraSiigo(cliente) === estadoClave).length}</strong></button>`).join('')}<button type="button" class="siigo-alerta-card siigo-proximo-hoy" data-proximo-hoy><span>Próximo seguimiento hoy:</span><strong>${proximosHoy}</strong></button>`;
+        alertas.insertAdjacentHTML('beforeend', `<button type="button" class="siigo-alerta-card siigo-vencido" data-seguimiento-vencido><span>Seguimientos vencidos:</span><strong>${seguimientosVencidos}</strong></button><button type="button" class="siigo-alerta-card siigo-pendiente" data-anexos-pendientes><span>Anexos por validar:</span><strong>${anexosPendientes}</strong></button>`);
         if (resumen) resumen.innerHTML = renderResumenInicioCarteraSiigo(resumenData, anio);
         resumen?.querySelectorAll('[data-cartera-resumen-detalle]').forEach(boton => {
             boton.addEventListener('click', () => abrirDetalleResumenInicioCarteraSiigo(panel, boton.dataset.carteraResumenDetalle));
@@ -737,6 +752,8 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
             boton.addEventListener('click', () => {
                 panel._filtroAlertaCartera = boton.dataset.alertaInicio;
                 panel._filtroProximoHoyCartera = false;
+                panel._filtroSeguimientoVencidoCartera = false;
+                panel._filtroAnexosPendientesCartera = false;
                 panel.querySelector('[data-cartera-inicio]').hidden = true;
                 mostrarFiltrosVencidasSiigo(true);
                 aplicarFiltroVendedorCarteraInicio(panel);
@@ -746,6 +763,28 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
         alertas.querySelector('[data-proximo-hoy]')?.addEventListener('click', () => {
             panel._filtroAlertaCartera = '';
             panel._filtroProximoHoyCartera = true;
+            panel._filtroSeguimientoVencidoCartera = false;
+            panel._filtroAnexosPendientesCartera = false;
+            panel.querySelector('[data-cartera-inicio]').hidden = true;
+            mostrarFiltrosVencidasSiigo(true);
+            aplicarFiltroVendedorCarteraInicio(panel);
+            panel.querySelector('form')?.requestSubmit();
+        });
+        alertas.querySelector('[data-seguimiento-vencido]')?.addEventListener('click', () => {
+            panel._filtroAlertaCartera = '';
+            panel._filtroProximoHoyCartera = false;
+            panel._filtroSeguimientoVencidoCartera = true;
+            panel._filtroAnexosPendientesCartera = false;
+            panel.querySelector('[data-cartera-inicio]').hidden = true;
+            mostrarFiltrosVencidasSiigo(true);
+            aplicarFiltroVendedorCarteraInicio(panel);
+            panel.querySelector('form')?.requestSubmit();
+        });
+        alertas.querySelector('[data-anexos-pendientes]')?.addEventListener('click', () => {
+            panel._filtroAlertaCartera = '';
+            panel._filtroProximoHoyCartera = false;
+            panel._filtroSeguimientoVencidoCartera = false;
+            panel._filtroAnexosPendientesCartera = true;
             panel.querySelector('[data-cartera-inicio]').hidden = true;
             mostrarFiltrosVencidasSiigo(true);
             aplicarFiltroVendedorCarteraInicio(panel);
@@ -878,6 +917,82 @@ function sincronizarBarraVencidasSiigo(panel) {
     ajustar();
 }
 
+function normalizarBusquedaCarteraSiigo(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+}
+
+function textoBusquedaClienteCarteraSiigo(cliente) {
+    const facturas = (cliente.facturas || []).flatMap(factura => [
+        factura.referencia,
+        factura.vencimiento,
+        factura.saldo,
+    ]);
+    return normalizarBusquedaCarteraSiigo([
+        cliente.cliente,
+        cliente.identificacion,
+        cliente.vendedor,
+        cliente.agrupacion_responsable?.responsable,
+        estadosGestionCarteraSiigo[estadoClienteCarteraSiigo(cliente)],
+        ...facturas,
+    ].join(' '));
+}
+
+function dataTablaFacturasVencidasSiigo(panel) {
+    const data = panel?._datosVencidas || {};
+    const clientesBase = (data.clientes || []).map((cliente, indiceOriginal) => ({ ...cliente, _indiceOriginal: indiceOriginal }));
+    let clientes = clientesBase;
+    if (panel._filtroAlertaCartera) {
+        clientes = clientes.filter(cliente => estadoClienteCarteraSiigo(cliente) === panel._filtroAlertaCartera);
+    }
+    if (panel._filtroProximoHoyCartera) {
+        const hoy = fechaHoyCarteraSiigo();
+        clientes = clientes.filter(cliente => (cliente.seguimientos || []).some(item => item.proximo_seguimiento === hoy));
+    }
+    if (panel._filtroSeguimientoVencidoCartera) {
+        clientes = clientes.filter(cliente => tieneSeguimientoVencidoCarteraSiigo(cliente));
+    }
+    if (panel._filtroAnexosPendientesCartera) {
+        clientes = clientes.filter(cliente => anexosPendientesClienteCarteraSiigo(cliente) > 0);
+    }
+    const busqueda = normalizarBusquedaCarteraSiigo(panel.querySelector('#siigoVencidasBuscarResultado')?.value);
+    if (busqueda) {
+        clientes = clientes.filter(cliente => textoBusquedaClienteCarteraSiigo(cliente).includes(busqueda));
+    }
+    return { ...data, clientes };
+}
+
+function esAdministradorCarteraSiigo() {
+    return !!(currentUser?.role === 'Administrador' || currentUser?.is_superuser || currentUser?.is_easy);
+}
+
+function anexosPendientesClienteCarteraSiigo(cliente) {
+    return (cliente?.seguimientos || []).reduce((total, seguimiento) => total + (seguimiento.comprobantes_pago || []).filter(anexo => (anexo.estado_validacion || 'PENDIENTE') === 'PENDIENTE').length, 0);
+}
+
+function tieneSeguimientoVencidoCarteraSiigo(cliente, hoy = fechaHoyCarteraSiigo()) {
+    return (cliente?.seguimientos || []).some(item => item.proximo_seguimiento && item.proximo_seguimiento < hoy);
+}
+
+function renderTablaFacturasVencidasSiigo(panel) {
+    if (!panel) return;
+    const resultado = panel.querySelector('.siigo-vencidas-datos');
+    if (!resultado) return;
+    const dataTabla = dataTablaFacturasVencidasSiigo(panel);
+    panel._clientesSeguimientoVisibles = dataTabla.clientes || [];
+    resultado.innerHTML = tablaFacturasVencidasSiigo(dataTabla);
+    resultado.onclick = event => {
+        const boton = event.target.closest('[data-siigo-seguimiento]');
+        if (!boton) return;
+        const cliente = (panel._clientesSeguimientoVisibles || [])[Number(boton.dataset.siigoSeguimiento)];
+        if (cliente) abrirSeguimientoCarteraSiigo(cliente);
+    };
+    sincronizarBarraVencidasSiigo(panel);
+}
+
 async function consultarFacturasVencidasSiigo(form) {
     if (!form.reportValidity()) return;
     const panel = form.closest('.recent-section');
@@ -914,27 +1029,15 @@ async function consultarFacturasVencidasSiigo(form) {
         const nombre = filtros.cliente && (data.clientes?.length === 1 ? data.clientes[0].cliente : filtros.cliente);
         const filtroExtra = panel._filtroProximoHoyCartera ? ' · Próximo seguimiento hoy' : '';
         panel.querySelector('[data-vencidas-meta]').textContent = `Cartera a corte: ${formatoSiigoFecha(data.fecha_corte)} | Días calculados al: ${formatoSiigoFecha(data.fecha_dias || data.fecha_corte)} | ${estadoFacturas}${nombre ? ` · Cliente: ${nombre}` : ''}${filtroExtra}`;
-        const resultado = panel.querySelector('.siigo-vencidas-datos');
         panel._datosVencidas = data;
-        const dataTabla = panel._filtroAlertaCartera
-            ? { ...data, clientes: (data.clientes || []).map((cliente, indiceOriginal) => ({ ...cliente, _indiceOriginal: indiceOriginal })).filter(cliente => estadoClienteCarteraSiigo(cliente) === panel._filtroAlertaCartera) }
-            : panel._filtroProximoHoyCartera
-                ? { ...data, clientes: (data.clientes || []).map((cliente, indiceOriginal) => ({ ...cliente, _indiceOriginal: indiceOriginal })).filter(cliente => (cliente.seguimientos || []).some(item => item.proximo_seguimiento === fechaHoyCarteraSiigo())) }
-                : data;
-        panel._clientesSeguimientoVisibles = dataTabla.clientes || [];
-        resultado.innerHTML = tablaFacturasVencidasSiigo(dataTabla);
         actualizarAlertasCarteraSiigo(panel);
-        resultado.onclick = event => {
-            const boton = event.target.closest('[data-siigo-seguimiento]');
-            if (!boton) return;
-            const cliente = (panel._clientesSeguimientoVisibles || [])[Number(boton.dataset.siigoSeguimiento)];
-            if (cliente) abrirSeguimientoCarteraSiigo(cliente);
-        };
+        const buscadorResultado = panel.querySelector('#siigoVencidasBuscarResultado');
+        if (buscadorResultado) buscadorResultado.value = '';
+        renderTablaFacturasVencidasSiigo(panel);
         estado.textContent = '';
         panel.querySelector('[data-vencidas-filtros]').hidden = true;
         visor.hidden = false;
         document.body.classList.add('body-siigo-vencidas-informe');
-        sincronizarBarraVencidasSiigo(panel);
         panel.querySelector('.siigo-vencidas-cabecera h2').focus({ preventScroll: true });
     } catch (error) {
         if (error.name !== 'AbortError') estado.textContent = error.message;
@@ -949,7 +1052,11 @@ async function consultarFacturasVencidasSiigo(form) {
 
 function comprobantesPagoCarteraSiigo(item) {
     const archivos = item.comprobantes_pago || [];
-    return `<section class="siigo-comprobantes-pago"><h5>Comprobantes de pago</h5>${archivos.length ? `<ul>${archivos.map(a => `<li>${escapeSiigo(a.nombre)} · ${Math.ceil(a.tamano_bytes / 1024)} KB <a href="${escapeSiigo(a.url)}" target="_blank" rel="noopener">Ver</a> · <a href="${escapeSiigo(a.url)}?descargar=1">Descargar</a></li>`).join('')}</ul>` : '<p>Sin comprobantes adjuntos.</p>'}<label for="siigoAdjuntos${item.id}">Subir comprobantes de pago</label><input id="siigoAdjuntos${item.id}" type="file" data-adjuntos-seguimiento="${item.id}" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple><small>PDF, JPG, PNG o WebP. Hasta 5 archivos, máximo 10 MB por archivo y 15 MB por carga.</small></section>`;
+    const opcionesAdmin = anexo => esAdministradorCarteraSiigo()
+        ? `<select data-validar-anexo="${anexo.id}" aria-label="Validar ${escapeSiigo(anexo.nombre)}"><option value="PENDIENTE"${(anexo.estado_validacion || 'PENDIENTE') === 'PENDIENTE' ? ' selected' : ''}>Pendiente</option><option value="VALIDADO"${anexo.estado_validacion === 'VALIDADO' ? ' selected' : ''}>Validado</option><option value="RECHAZADO"${anexo.estado_validacion === 'RECHAZADO' ? ' selected' : ''}>Rechazado</option></select>`
+        : '';
+    const fila = anexo => `<li><div><strong>${escapeSiigo(anexo.nombre)}</strong> · ${Math.ceil(anexo.tamano_bytes / 1024)} KB <span class="siigo-validacion-anexo siigo-${String(anexo.estado_validacion || 'PENDIENTE').toLowerCase()}">${escapeSiigo(anexo.estado_validacion || 'PENDIENTE')}</span>${anexo.validado_por ? `<small>Validado por ${escapeSiigo(anexo.validado_por)}</small>` : ''}</div><div class="siigo-anexo-acciones"><a href="${escapeSiigo(anexo.url)}" target="_blank" rel="noopener">Ver</a><a href="${escapeSiigo(anexo.url)}?descargar=1">Descargar</a>${opcionesAdmin(anexo)}</div></li>`;
+    return `<section class="siigo-comprobantes-pago"><h5>Comprobantes de pago</h5>${archivos.length ? `<ul>${archivos.map(fila).join('')}</ul>` : '<p>Sin comprobantes adjuntos.</p>'}<label for="siigoAdjuntos${item.id}">Subir comprobantes de pago</label><input id="siigoAdjuntos${item.id}" type="file" data-adjuntos-seguimiento="${item.id}" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple><small>PDF, JPG, PNG o WebP. Hasta 5 archivos, maximo 10 MB por archivo y 15 MB por carga.</small></section>`;
 }
 
 function datosComunicacionCompromisoSiigo(item, cliente) {
@@ -1197,6 +1304,9 @@ function actualizarAlertasCarteraSiigo(panel) {
     panel.querySelectorAll('[data-alerta-cartera]').forEach(boton => {
         boton.addEventListener('click', () => {
             panel._filtroAlertaCartera = boton.dataset.alertaCartera;
+            panel._filtroProximoHoyCartera = false;
+            panel._filtroSeguimientoVencidoCartera = false;
+            panel._filtroAnexosPendientesCartera = false;
             const form = panel.querySelector('form');
             if (form) consultarFacturasVencidasSiigo(form);
         });
@@ -1220,6 +1330,8 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
         alert('No fue posible abrir el formulario de seguimiento. Actualice la pagina e intente de nuevo.');
         return;
     }
+    form.elements.proximo_seguimiento.required = true;
+    dialogo.querySelector('label[for="siigoGestionProximo"]').textContent = 'Próximo seguimiento *';
     const estado = dialogo.querySelector('[data-estado]');
     const historial = dialogo.querySelector('[data-historial]');
     const nuevo = dialogo.querySelector('[data-nuevo]');
@@ -1417,6 +1529,35 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
         }
     });
     historial.addEventListener('change', async event => {
+        const selectorValidacion = event.target.closest('[data-validar-anexo]');
+        if (selectorValidacion && !guardando) {
+            guardando = true;
+            selectorValidacion.disabled = true;
+            estado.textContent = 'Actualizando validacion del anexo...';
+            try {
+                const response = await fetch(`/api/contable/seguimiento-cartera/comprobantes/${selectorValidacion.dataset.validarAnexo}/validacion`, {
+                    method: 'PATCH',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ estado_validacion: selectorValidacion.value }),
+                });
+                const data = await leerRespuestaSiigo(response);
+                if (!response.ok) throw new Error(data.error || 'No fue posible validar el anexo.');
+                registros = registros.map(r => r.id === data.seguimiento.id ? data.seguimiento : r);
+                cliente.seguimientos = registros;
+                historial.innerHTML = historialSeguimientoCarteraSiigo(registros, cliente);
+                agregarAccionesComunicacionCompromisoSiigo(historial, registros, cliente);
+                vincularSeleccionHistorialSiigo();
+                actualizarAlertasCarteraSiigo(document.getElementById('siigoFacturasVencidasPanel'));
+                estado.textContent = 'Validacion del anexo actualizada.';
+            } catch (error) {
+                estado.textContent = error.message;
+            } finally {
+                guardando = false;
+                selectorValidacion.disabled = false;
+            }
+            return;
+        }
         const input = event.target.closest('[data-adjuntos-seguimiento]');
         if (!input || !input.files.length || guardando) return;
         const archivos = [...input.files];

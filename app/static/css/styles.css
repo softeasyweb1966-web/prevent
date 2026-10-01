@@ -589,6 +589,27 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
 .siigo-vencidas-cabecera h2 { font-size: 22px; margin: 0; }
 .siigo-vencidas-cabecera p { margin: 4px 0 0; color: var(--text-light); }
 
+.siigo-vencidas-busqueda {
+    display: grid;
+    gap: 4px;
+    max-width: 420px;
+    margin-top: 10px;
+}
+
+.siigo-vencidas-busqueda label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.siigo-vencidas-busqueda input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font: inherit;
+}
+
 #siigoFacturasVencidasPanel .siigo-vencidas-datos {
     min-height: 0;
     min-width: 0;
@@ -1075,9 +1096,22 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
 
 .siigo-comprobantes-pago { margin-top: 14px; padding-top: 10px; border-top: 1px solid #e2e8f0; }
 .siigo-comprobantes-pago h5 { margin: 0 0 8px; font-size: 14px; }
-.siigo-comprobantes-pago li { margin-bottom: 6px; overflow-wrap: anywhere; }
+.siigo-comprobantes-pago ul { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }
+.siigo-comprobantes-pago li { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 0; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; overflow-wrap: anywhere; }
+.siigo-comprobantes-pago li small { display: block; color: var(--text-light); }
 .siigo-comprobantes-pago label, .siigo-comprobantes-pago small { display: block; margin: 6px 0; }
 .siigo-comprobantes-pago input { max-width: 100%; }
+.siigo-anexo-acciones { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.siigo-anexo-acciones select { min-width: 130px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 6px; background: #fff; }
+.siigo-validacion-anexo { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 5px; font-size: 12px; font-weight: 700; background: #fef3c7; color: #92400e; }
+.siigo-validacion-anexo.siigo-validado { background: #dcfce7; color: #166534; }
+.siigo-validacion-anexo.siigo-rechazado { background: #fee2e2; color: #991b1b; }
+
+@media (max-width: 640px) {
+    .siigo-comprobantes-pago li { align-items: stretch; flex-direction: column; }
+    .siigo-anexo-acciones { justify-content: flex-start; }
+    .siigo-anexo-acciones select { width: 100%; }
+}
 
 .siigo-detalle-cartera {
     margin-top: 20px;

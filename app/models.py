@@ -676,6 +676,10 @@ class SiigoComprobantePago(db.Model):
     contenido = db.deferred(db.Column(db.LargeBinary, nullable=False))
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     usuario_nombre = db.Column(db.String(200), nullable=False)
+    estado_validacion = db.Column(db.String(25), nullable=False, default='PENDIENTE', index=True)
+    validado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    validado_por_nombre = db.Column(db.String(200))
+    validado_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     seguimiento = db.relationship('SiigoSeguimientoCartera', back_populates='comprobantes_pago')
 
@@ -695,6 +699,10 @@ class SiigoComprobantePagoRecibido(db.Model):
     contenido = db.deferred(db.Column(db.LargeBinary, nullable=False))
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
     usuario_nombre = db.Column(db.String(200), nullable=False)
+    estado_validacion = db.Column(db.String(25), nullable=False, default='PENDIENTE', index=True)
+    validado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    validado_por_nombre = db.Column(db.String(200))
+    validado_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 

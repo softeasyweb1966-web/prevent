@@ -1140,6 +1140,7 @@ def _estado_compromiso(registro, hoy=None):
 
 
 ESTADOS_GESTION_CARTERA = {'SIN_GESTION', 'NO_LOCALIZADO', 'EN_PROCESO', 'CON_COMPROMISO', 'REVISION_INTERNA'}
+ESTADOS_VALIDACION_ANEXO_CARTERA = {'PENDIENTE', 'VALIDADO', 'RECHAZADO'}
 TIPOS_CHAT_CARTERA = {'AUTORIZACION_ARREGLO', 'SOLICITUD_INFO', 'GENERAL'}
 ESTADOS_CHAT_CARTERA = {'ABIERTO', 'AUTORIZADO', 'RECHAZADO', 'CERRADO'}
 
@@ -1151,6 +1152,9 @@ def _serializar_seguimiento_cartera(registro):
         'estado_gestion': registro.estado_gestion,
         'comprobantes_pago': [{'id': a.id, 'nombre': a.nombre, 'tamano_bytes': a.tamano_bytes,
                               'registrado_por': a.usuario_nombre,
+                              'estado_validacion': a.estado_validacion or 'PENDIENTE',
+                              'validado_por': a.validado_por_nombre,
+                              'validado_at': a.validado_at.isoformat() + 'Z' if a.validado_at else None,
                               'url': f'/api/contable/seguimiento-cartera/comprobantes/{a.id}'} for a in registro.comprobantes_pago],
         'estado_compromiso': _estado_compromiso(registro),
         'compromiso_cumplido_at': registro.compromiso_cumplido_at.isoformat() + 'Z' if registro.compromiso_cumplido_at else None,
@@ -1449,6 +1453,8 @@ def seguimiento_cartera():
             fechas[campo] = _fecha(datos[campo]) if datos.get(campo) else None
             if fechas[campo] and fechas[campo] < fecha_gestion:
                 raise ValueError('El compromiso y el próximo seguimiento no pueden ser anteriores a la gestión.')
+        if not fechas['proximo_seguimiento']:
+            raise ValueError('Indique la fecha del próximo seguimiento.')
         valor = None
         if datos.get('valor_compromiso') not in (None, ''):
             valor = _decimal(datos['valor_compromiso'])
@@ -1570,6 +1576,31 @@ def ver_comprobante_cartera(adjunto_id):
     return response
 
 
+@contable_bp.route('/seguimiento-cartera/comprobantes/<int:adjunto_id>/validacion', methods=['PATCH'])
+@login_required
+def validar_comprobante_cartera(adjunto_id):
+    try:
+        _requiere_ventas()
+        if not es_administrador():
+            raise PermissionError('Solo un administrador puede validar anexos de cartera.')
+        adjunto = db.session.get(SiigoComprobantePago, adjunto_id)
+        if adjunto is None or _seguimiento_cartera_visible(adjunto.seguimiento_id) is None:
+            return jsonify(error='Comprobante no encontrado.'), 404
+        datos = request.get_json(silent=True) or {}
+        estado = _texto(datos.get('estado_validacion')).upper()
+        if estado not in ESTADOS_VALIDACION_ANEXO_CARTERA:
+            raise ValueError('Seleccione Pendiente, Validado o Rechazado.')
+        adjunto.estado_validacion = estado
+        adjunto.validado_por_id = current_user.id if estado != 'PENDIENTE' else None
+        adjunto.validado_por_nombre = current_user.nombre_completo if estado != 'PENDIENTE' else None
+        adjunto.validado_at = datetime.utcnow() if estado != 'PENDIENTE' else None
+        db.session.commit()
+        return jsonify(seguimiento=_serializar_seguimiento_cartera(adjunto.seguimiento))
+    except (ValueError, PermissionError) as exc:
+        db.session.rollback()
+        return jsonify(error=str(exc)), 403 if isinstance(exc, PermissionError) else 400
+
+
 def _serializar_comprobante_recibido(registro):
     return {
         'id': registro.id,
@@ -1581,6 +1612,9 @@ def _serializar_comprobante_recibido(registro):
         'nombre': registro.nombre,
         'tamano_bytes': registro.tamano_bytes,
         'registrado_por': registro.usuario_nombre,
+        'estado_validacion': registro.estado_validacion or 'PENDIENTE',
+        'validado_por': registro.validado_por_nombre,
+        'validado_at': registro.validado_at.isoformat() + 'Z' if registro.validado_at else None,
         'created_at': registro.created_at.isoformat() + 'Z',
         'url': f'/api/contable/comprobantes-pago-recibidos/{registro.id}',
     }
@@ -1659,6 +1693,31 @@ def ver_comprobante_pago_recibido(comprobante_id):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Content-Security-Policy'] = "sandbox; default-src 'none'"
     return response
+
+
+@contable_bp.route('/comprobantes-pago-recibidos/<int:comprobante_id>/validacion', methods=['PATCH'])
+@login_required
+def validar_comprobante_pago_recibido(comprobante_id):
+    try:
+        _requiere_ventas()
+        if not es_administrador():
+            raise PermissionError('Solo un administrador puede validar anexos de cartera.')
+        registro = db.session.get(SiigoComprobantePagoRecibido, comprobante_id)
+        if registro is None:
+            return jsonify(error='Comprobante no encontrado.'), 404
+        datos = request.get_json(silent=True) or {}
+        estado = _texto(datos.get('estado_validacion')).upper()
+        if estado not in ESTADOS_VALIDACION_ANEXO_CARTERA:
+            raise ValueError('Seleccione Pendiente, Validado o Rechazado.')
+        registro.estado_validacion = estado
+        registro.validado_por_id = current_user.id if estado != 'PENDIENTE' else None
+        registro.validado_por_nombre = current_user.nombre_completo if estado != 'PENDIENTE' else None
+        registro.validado_at = datetime.utcnow() if estado != 'PENDIENTE' else None
+        db.session.commit()
+        return jsonify(comprobante=_serializar_comprobante_recibido(registro))
+    except (ValueError, PermissionError) as exc:
+        db.session.rollback()
+        return jsonify(error=str(exc)), 403 if isinstance(exc, PermissionError) else 400
 
 
 def _clientes_facturas_vencidas(cartera_clientes, vendedores, estado_facturas='todos'):
