@@ -95,6 +95,7 @@ async function enviarCorreccionesExcel(aplicar, opciones = {}) {
     datos.append('periodo_hasta', hasta);
     [...input.files].forEach(archivo => datos.append('archivos', archivo));
     datos.append('accion', aplicar ? 'aplicar' : 'revisar');
+    datos.append('modo_reemplazo', '1');
     if (aplicar) datos.append('token', correccionesToken);
     correccionesOcupado = true;
     input.disabled = true;

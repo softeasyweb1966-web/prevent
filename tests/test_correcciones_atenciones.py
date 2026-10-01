@@ -54,8 +54,10 @@ class CorreccionesTest(TestCase):
         wb.close()
         return nombre, buf.getvalue()
 
-    def cargar(self, archivos, token=None):
+    def cargar(self, archivos, token=None, reemplazo=False):
         data = {'periodo_desde': '2026-09-01', 'periodo_hasta': '2026-09-15', 'archivos': [(BytesIO(contenido), nombre) for nombre, contenido in archivos]}
+        if reemplazo:
+            data['modo_reemplazo'] = '1'
         if token:
             data.update(accion='aplicar', token=token)
         return self.f.http.post('/corregir', data=data, content_type='multipart/form-data')
@@ -161,6 +163,30 @@ class CorreccionesTest(TestCase):
         self.assertEqual(PrefacturaComercial.query.filter_by(cliente_id=1).one().valor_total, 0)
         self.assertEqual(PrefacturaComercial.query.filter_by(cliente_id=2).one().forma_pago, 'EFECTIVO')
         self.assertIsNotNone(db.session.get(AtencionDiaDetalle, 1).fecha_anulacion)
+
+    def test_sabana_corregida_reemplaza_y_anula_filas_omitidas(self):
+        reg = db.session.get(AtencionDiaDetalle, 1)
+        db.session.add(AtencionDiaDetalle(
+            cargue_id=reg.cargue_id, cliente_id=reg.cliente_id, nro_orden='extra-1',
+            nro_identificacion='doc-extra', nombre_paciente='Paciente que queda',
+            fecha_creacion_orden=reg.fecha_creacion_orden, servicio='Audiometria',
+            precio=50, forma_pago='CREDITO', estado_orden='ACTIVA', estado_gestion='CARGADA',
+            acuerdo_comercial=reg.acuerdo_comercial, empresa_mision=reg.empresa_mision,
+            archivo_origen='test.xlsx'))
+        db.session.commit()
+        archivo_nombre, contenido = self.excel_original(1)
+        wb = load_workbook(BytesIO(contenido))
+        wb.active.delete_rows(2)
+        buf = BytesIO(); wb.save(buf); wb.close()
+        archivo = (archivo_nombre, buf.getvalue())
+        preview = self.cargar([archivo], reemplazo=True)
+        self.assertEqual(preview.status_code, 200, preview.json)
+        self.assertEqual(preview.json['atenciones'], 1)
+        self.assertEqual(preview.json['cambios'][0]['campo'], 'Estado orden')
+        response = self.cargar([archivo], preview.json['token'], reemplazo=True)
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(db.session.get(AtencionDiaDetalle, 1).estado_orden, 'ANULADA')
+        self.assertEqual(PrefacturaComercial.query.filter_by(cliente_id=1).one().valor_total, Decimal(50))
 
     def test_rechaza_sin_permiso(self):
         with patch.object(ca, '_asegurar_acceso_registro_atencion', side_effect=PermissionError('Sin acceso')):

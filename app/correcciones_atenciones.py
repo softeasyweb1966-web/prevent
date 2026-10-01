@@ -70,6 +70,8 @@ def _leer_archivos(archivos, scope, bloquear=False):
     except ValueError:
         raise ValueError('Selecciona el periodo de las atenciones que vas a corregir')
     cambios, vistos, huellas = [], set(), []
+    reemplazar_sabana = request.form.get('modo_reemplazo') == '1'
+    empresas_archivo = set()
     clientes = ca._construir_lookup_clientes()
     vendedores = ca._construir_lookup_vendedores()
     for archivo in archivos:
@@ -134,6 +136,7 @@ def _leer_archivos(archivos, scope, bloquear=False):
                 if (valores['estado_orden'] or '').upper() == 'ANULADA' and valores['fecha_anulacion'] is None:
                     valores['fecha_anulacion'] = reg.fecha_anulacion or valores['fecha_creacion_orden']
                 empresa_anterior = reg.cliente.razon_social if reg.cliente else reg.acuerdo_comercial or reg.empresa_mision or 'SIN_EMPRESA'
+                empresas_archivo.add((reg.cliente_id, empresa_anterior))
                 # Reasociar empresa/vendedor solo cuando se corrigen sus columnas.
                 if valores['acuerdo_comercial'] != reg.acuerdo_comercial or valores['empresa_mision'] != reg.empresa_mision:
                     cliente = ca._cliente_desde_registro(registro, clientes)
@@ -160,6 +163,37 @@ def _leer_archivos(archivos, scope, bloquear=False):
                     'empresa_anterior': empresa_anterior}))
             except (ValueError, InvalidOperation) as exc:
                 raise ValueError(f'{nombre}, fila {numero}: {exc}')
+    if reemplazar_sabana and empresas_archivo:
+        for cliente_id, empresa_nombre in empresas_archivo:
+            query = AtencionDiaDetalle.query.filter(
+                AtencionDiaDetalle.fecha_creacion_orden >= desde,
+                AtencionDiaDetalle.fecha_creacion_orden <= hasta,
+            )
+            if cliente_id is not None:
+                query = query.filter(AtencionDiaDetalle.cliente_id == cliente_id)
+            else:
+                query = query.filter(
+                    AtencionDiaDetalle.cliente_id.is_(None),
+                    or_(
+                        AtencionDiaDetalle.acuerdo_comercial == empresa_nombre,
+                        AtencionDiaDetalle.empresa_mision == empresa_nombre,
+                    ),
+                )
+            if not ca._is_admin_user():
+                query = query.filter(ca._condicion_scope_atenciones(scope))
+            registros = (query.with_for_update() if bloquear else query).all()
+            for reg in registros:
+                if reg.id in vistos or (reg.estado_orden or '').upper().strip() == 'ANULADA':
+                    continue
+                _comprobar_editable(reg, scope)
+                original = snapshot(reg)
+                cambios_fila = {
+                    'estado_orden': 'ANULADA',
+                    'fecha_anulacion': reg.fecha_anulacion or reg.fecha_creacion_orden,
+                }
+                cambios.append((reg, cambios_fila, original, 'Filas omitidas en sabana corregida', {
+                    'desde': desde.strftime('%Y-%m-%d'), 'hasta': hasta.strftime('%Y-%m-%d'),
+                    'empresa_anterior': empresa_nombre}))
     return cambios, huellas
 
 
