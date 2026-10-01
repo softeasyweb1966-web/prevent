@@ -768,7 +768,8 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
             panel.querySelector('[data-cartera-inicio]').hidden = true;
             mostrarFiltrosVencidasSiigo(true);
             aplicarFiltroVendedorCarteraInicio(panel);
-            panel.querySelector('form')?.requestSubmit();
+            activarVistaInformeCarteraSiigo(panel);
+            renderTablaFacturasVencidasSiigo(panel);
         });
         alertas.querySelector('[data-seguimiento-vencido]')?.addEventListener('click', () => {
             panel._filtroAlertaCartera = '';
@@ -778,7 +779,8 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
             panel.querySelector('[data-cartera-inicio]').hidden = true;
             mostrarFiltrosVencidasSiigo(true);
             aplicarFiltroVendedorCarteraInicio(panel);
-            panel.querySelector('form')?.requestSubmit();
+            activarVistaInformeCarteraSiigo(panel);
+            renderTablaFacturasVencidasSiigo(panel);
         });
         alertas.querySelector('[data-anexos-pendientes]')?.addEventListener('click', () => {
             panel._filtroAlertaCartera = '';
@@ -936,7 +938,6 @@ function textoBusquedaClienteCarteraSiigo(cliente) {
         cliente.identificacion,
         cliente.vendedor,
         cliente.agrupacion_responsable?.responsable,
-        estadosGestionCarteraSiigo[estadoClienteCarteraSiigo(cliente)],
         ...facturas,
     ].join(' '));
 }
@@ -945,22 +946,18 @@ function dataTablaFacturasVencidasSiigo(panel) {
     const data = panel?._datosVencidas || {};
     const clientesBase = (data.clientes || []).map((cliente, indiceOriginal) => ({ ...cliente, _indiceOriginal: indiceOriginal }));
     let clientes = clientesBase;
-    if (panel._filtroAlertaCartera) {
-        clientes = clientes.filter(cliente => estadoClienteCarteraSiigo(cliente) === panel._filtroAlertaCartera);
-    }
-    if (panel._filtroProximoHoyCartera) {
-        const hoy = fechaHoyCarteraSiigo();
-        clientes = clientes.filter(cliente => tieneSeguimientoHoyCarteraSiigo(cliente, hoy));
-    }
-    if (panel._filtroSeguimientoVencidoCartera) {
-        clientes = clientes.filter(cliente => tieneSeguimientoVencidoCarteraSiigo(cliente));
-    }
-    if (panel._filtroAnexosPendientesCartera) {
-        clientes = clientes.filter(cliente => anexosPendientesClienteCarteraSiigo(cliente) > 0);
-    }
     const busqueda = normalizarBusquedaCarteraSiigo(panel.querySelector('#siigoVencidasBuscarResultado')?.value);
     if (busqueda) {
         clientes = clientes.filter(cliente => textoBusquedaClienteCarteraSiigo(cliente).includes(busqueda));
+    } else if (panel._filtroAlertaCartera) {
+        clientes = clientes.filter(cliente => estadoClienteCarteraSiigo(cliente) === panel._filtroAlertaCartera);
+    } else if (panel._filtroProximoHoyCartera) {
+        const hoy = fechaHoyCarteraSiigo();
+        clientes = clientes.filter(cliente => tieneSeguimientoHoyCarteraSiigo(cliente, hoy));
+    } else if (panel._filtroSeguimientoVencidoCartera) {
+        clientes = clientes.filter(cliente => tieneSeguimientoVencidoCarteraSiigo(cliente));
+    } else if (panel._filtroAnexosPendientesCartera) {
+        clientes = clientes.filter(cliente => anexosPendientesClienteCarteraSiigo(cliente) > 0);
     }
     return { ...data, clientes };
 }
@@ -991,6 +988,28 @@ function tieneSeguimientoHoyCarteraSiigo(cliente, hoy = fechaHoyCarteraSiigo()) 
 function tieneSeguimientoVencidoCarteraSiigo(cliente, hoy = fechaHoyCarteraSiigo()) {
     const ultimo = ultimoSeguimientoCarteraSiigo(cliente);
     return tieneCarteraPendienteSiigo(cliente) && !!ultimo?.proximo_seguimiento && ultimo.proximo_seguimiento < hoy;
+}
+
+function activarVistaInformeCarteraSiigo(panel) {
+    panel.querySelector('[data-cartera-inicio]')?.setAttribute('hidden', '');
+    const filtros = panel.querySelector('[data-vencidas-filtros]');
+    const visor = panel.querySelector('.siigo-vencidas-visor');
+    if (filtros) filtros.hidden = true;
+    if (visor) visor.hidden = false;
+    document.body.classList.add('body-siigo-vencidas-informe', 'body-siigo-vencidas-activo');
+}
+
+function botonProximoSeguimientoCarteraSiigo(cliente, indiceOriginal) {
+    const ultimo = ultimoSeguimientoCarteraSiigo(cliente);
+    if (!ultimo?.proximo_seguimiento || !tieneCarteraPendienteSiigo(cliente)) return '<span class="form-help">-</span>';
+    const hoy = fechaHoyCarteraSiigo();
+    if (ultimo.proximo_seguimiento === hoy) {
+        return `<button type="button" class="siigo-proximo-seguimiento-btn siigo-proximo-hoy" data-siigo-seguimiento="${indiceOriginal}" title="Próximo seguimiento hoy">Hoy</button>`;
+    }
+    if (ultimo.proximo_seguimiento < hoy) {
+        return `<button type="button" class="siigo-proximo-seguimiento-btn siigo-proximo-vencido" data-siigo-seguimiento="${indiceOriginal}" title="Seguimiento vencido desde ${escapeSiigo(formatoSiigoFecha(ultimo.proximo_seguimiento))}">${escapeSiigo(formatoSiigoFecha(ultimo.proximo_seguimiento))}</button>`;
+    }
+    return `<span class="siigo-proximo-seguimiento-fecha">${escapeSiigo(formatoSiigoFecha(ultimo.proximo_seguimiento))}</span>`;
 }
 
 function renderTablaFacturasVencidasSiigo(panel) {
@@ -1312,8 +1331,9 @@ function actualizarAlertasCarteraSiigo(panel) {
     const proximosHoy = clientes.filter(cliente => tieneSeguimientoHoyCarteraSiigo(cliente, hoy)).length;
     const seguimientosVencidos = clientes.filter(cliente => tieneSeguimientoVencidoCarteraSiigo(cliente, hoy)).length;
     panel.querySelector('[data-alertas-cartera]').innerHTML = `${ordenEstadosGestionCarteraSiigo.map(estado => `<button type="button" class="siigo-alerta-cartera siigo-${estado}" data-alerta-cartera="${estado}">${estadosGestionCarteraSiigo[estado]}: ${clientes.filter(c => estadoClienteCarteraSiigo(c) === estado).length}</button>`).join(' ')} <button type="button" class="siigo-alerta-cartera siigo-proximo-hoy" data-proximo-hoy>Próximo seguimiento hoy: ${proximosHoy}</button> <button type="button" class="siigo-alerta-cartera siigo-vencido" data-seguimiento-vencido>Seguimientos vencidos: ${seguimientosVencidos}</button>`;
-    panel.querySelectorAll('[data-siigo-seguimiento]').forEach(boton => {
-        const cliente = clientes[Number(boton.dataset.siigoSeguimiento)];
+    const clientesVisibles = panel._clientesSeguimientoVisibles || clientes;
+    panel.querySelectorAll('[data-siigo-seguimiento-icono]').forEach(boton => {
+        const cliente = clientesVisibles[Number(boton.dataset.siigoSeguimiento)];
         const estado = estadoClienteCarteraSiigo(cliente);
         boton.className = `siigo-seguimiento-icono siigo-${estado}`;
         const etiqueta = `Seguimiento de cartera: ${estadosGestionCarteraSiigo[estado] || 'Sin Gestión'}`;
@@ -1335,16 +1355,16 @@ function actualizarAlertasCarteraSiigo(panel) {
         panel._filtroProximoHoyCartera = true;
         panel._filtroSeguimientoVencidoCartera = false;
         panel._filtroAnexosPendientesCartera = false;
-        const form = panel.querySelector('form');
-        if (form) consultarFacturasVencidasSiigo(form);
+        activarVistaInformeCarteraSiigo(panel);
+        renderTablaFacturasVencidasSiigo(panel);
     });
     panel.querySelector('[data-seguimiento-vencido]')?.addEventListener('click', () => {
         panel._filtroAlertaCartera = '';
         panel._filtroProximoHoyCartera = false;
         panel._filtroSeguimientoVencidoCartera = true;
         panel._filtroAnexosPendientesCartera = false;
-        const form = panel.querySelector('form');
-        if (form) consultarFacturasVencidasSiigo(form);
+        activarVistaInformeCarteraSiigo(panel);
+        renderTablaFacturasVencidasSiigo(panel);
     });
 }
 
@@ -1701,19 +1721,19 @@ function tablaFacturasVencidasSiigo(data) {
             .filter(item => (item.cliente.agrupacion_responsable?.responsable || 'Sin responsable') === responsable)
             .reduce((suma, item) => suma + Number(item.cliente.total_cliente || 0), 0);
         const encabezadoResponsable = responsable !== responsableActual
-            ? `<tr class="siigo-responsable-fila"><th colspan="${cantidad * 3 + 6}">Responsable: ${escapeSiigo(responsable)} Â· Total cartera: ${formatoSiigoNumero(totalResponsable)}</th></tr>`
+            ? `<tr class="siigo-responsable-fila"><th colspan="${cantidad * 3 + 7}">Responsable: ${escapeSiigo(responsable)} Â· Total cartera: ${formatoSiigoNumero(totalResponsable)}</th></tr>`
             : '';
         responsableActual = responsable;
         const detalle = cliente.facturas.map(factura => `<td>${escapeSiigo(factura.referencia)}</td><td>${factura.dias_vencido > 0 ? `Vencida hace ${factura.dias_vencido} días` : factura.dias_vencido === 0 ? 'Vence hoy' : `Por vencer en ${-factura.dias_vencido} días`}</td><td>${detalleCrucesFacturaSiigo(factura)}</td>`).join('');
         const vacias = '<td></td><td></td><td></td>'.repeat(cantidad - cliente.facturas.length);
         const seguimiento = cliente.identificacion
-            ? `<button type="button" class="siigo-seguimiento-icono siigo-${estadoClienteCarteraSiigo(cliente)}" data-siigo-seguimiento="${indiceOriginal}" title="Seguimiento de cartera: ${estadosGestionCarteraSiigo[estadoClienteCarteraSiigo(cliente)] || 'Sin Gestión'}" aria-label="Seguimiento de cartera: ${estadosGestionCarteraSiigo[estadoClienteCarteraSiigo(cliente)] || 'Sin Gestión'}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11a8 8 0 0 1-8 8H6l-4 3V11a9 9 0 0 1 19 0Z"/><path d="M7 9h10M7 13h7"/></svg></button>`
+            ? `<button type="button" class="siigo-seguimiento-icono siigo-${estadoClienteCarteraSiigo(cliente)}" data-siigo-seguimiento="${indiceOriginal}" data-siigo-seguimiento-icono title="Seguimiento de cartera: ${estadosGestionCarteraSiigo[estadoClienteCarteraSiigo(cliente)] || 'Sin Gestión'}" aria-label="Seguimiento de cartera: ${estadosGestionCarteraSiigo[estadoClienteCarteraSiigo(cliente)] || 'Sin Gestión'}"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11a8 8 0 0 1-8 8H6l-4 3V11a9 9 0 0 1 19 0Z"/><path d="M7 9h10M7 13h7"/></svg></button>`
             : '<span class="form-help">Sin identificación para seguimiento</span>';
         const estadoSeguimiento = estadoClienteCarteraSiigo(cliente);
-        const claseFila = tieneSeguimientoVencidoCarteraSiigo(cliente) ? ' class="siigo-seguimiento-vencido-fila"' : '';
-        return `${encabezadoResponsable}<tr${claseFila}><td>${escapeSiigo(cliente.vendedor)}</td><td>${escapeSiigo(cliente.cliente)}</td><td>${cliente.cantidad_facturas}</td><td>${formatoSiigoNumero(cliente.total_cliente)}</td><td><span class="siigo-semaforo siigo-${estadoSeguimiento}">${estadosGestionCarteraSiigo[estadoSeguimiento] || 'Sin Gestión'}</span></td><td>${seguimiento}</td>${detalle}${vacias}</tr>`;
+        const proximoSeguimiento = botonProximoSeguimientoCarteraSiigo(cliente, indiceOriginal);
+        return `${encabezadoResponsable}<tr><td>${escapeSiigo(cliente.vendedor)}</td><td>${escapeSiigo(cliente.cliente)}</td><td>${cliente.cantidad_facturas}</td><td>${formatoSiigoNumero(cliente.total_cliente)}</td><td><span class="siigo-semaforo siigo-${estadoSeguimiento}">${estadosGestionCarteraSiigo[estadoSeguimiento] || 'Sin Gestión'}</span></td><td>${proximoSeguimiento}</td><td>${seguimiento}</td>${detalle}${vacias}</tr>`;
     }).join('');
-    return `${resumen}<div class="siigo-tabla-con-encabezado-fijo" tabindex="0" role="region" aria-label="Seguimiento de cartera"><table class="data-table"><thead><tr><th>Vendedor</th><th>Cliente</th><th>Cantidad</th><th>Valor total cliente</th><th>Estado del seguimiento</th><th>Seguimiento</th>${encabezados}</tr></thead><tbody>${filas}</tbody></table></div>`;
+    return `${resumen}<div class="siigo-tabla-con-encabezado-fijo" tabindex="0" role="region" aria-label="Seguimiento de cartera"><table class="data-table"><thead><tr><th>Vendedor</th><th>Cliente</th><th>Cantidad</th><th>Valor total cliente</th><th>Estado del seguimiento</th><th>Próximo seguimiento</th><th>Seguimiento</th>${encabezados}</tr></thead><tbody>${filas}</tbody></table></div>`;
 }
 
 async function consultarCarteraDinamicaSiigo(form, tipo) {

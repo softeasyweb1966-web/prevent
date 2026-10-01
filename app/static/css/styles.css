@@ -1029,18 +1029,41 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     font-weight: 700;
 }
 
-.siigo-alerta-card.siigo-proximo-hoy {
+.siigo-alerta-card.siigo-proximo-hoy,
+.siigo-alerta-cartera.siigo-proximo-hoy {
     color: #1d4ed8;
     background: #eff6ff;
 }
 
-.siigo-seguimiento-vencido-fila > td {
-    background: #fee2e2;
-    color: #7f1d1d;
+.siigo-alerta-card.siigo-vencido,
+.siigo-alerta-cartera.siigo-vencido {
+    color: #b91c1c;
+    background: #fef2f2;
 }
 
-.siigo-seguimiento-vencido-fila > td:first-child {
-    border-left: 4px solid #dc2626;
+.siigo-proximo-seguimiento-btn {
+    border: 1px solid currentColor;
+    border-radius: 6px;
+    padding: 5px 8px;
+    min-width: 52px;
+    font-weight: 700;
+    cursor: pointer;
+    background: #fff;
+}
+
+.siigo-proximo-seguimiento-btn.siigo-proximo-hoy {
+    color: #1d4ed8;
+    background: #eff6ff;
+}
+
+.siigo-proximo-seguimiento-btn.siigo-proximo-vencido {
+    color: #b91c1c;
+    background: #fee2e2;
+}
+
+.siigo-proximo-seguimiento-fecha {
+    color: #475569;
+    white-space: nowrap;
 }
 
 .siigo-cartera-resumen {
