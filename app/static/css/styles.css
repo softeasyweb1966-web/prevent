@@ -1034,6 +1034,15 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     background: #eff6ff;
 }
 
+.siigo-seguimiento-vencido-fila > td {
+    background: #fee2e2;
+    color: #7f1d1d;
+}
+
+.siigo-seguimiento-vencido-fila > td:first-child {
+    border-left: 4px solid #dc2626;
+}
+
 .siigo-cartera-resumen {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
