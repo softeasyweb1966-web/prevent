@@ -690,10 +690,30 @@ def consultar_clientes():
         query = _clientes_informe()
         if search:
             like = f'%{search}%'
-            query = query.filter(or_(SiigoCliente.identificacion.ilike(like), SiigoCliente.nombre.ilike(like)))
-        items = query.order_by(SiigoCliente.nombre).all()
-        clientes = [{'id': item.id, 'identificacion': item.identificacion, 'sucursal': item.sucursal, 'nombre': item.nombre, 'ciudad': item.ciudad, 'estado': item.estado,
-                     'vendedor_id': item.vendedor_id, 'vendedor_nombre': item.vendedor.nombre if item.vendedor else 'Sin vendedor asignado'} for item in items]
+            nit_normalizado = identificacion(search)
+            nit_maestro_normalizado = func.upper(func.regexp_replace(
+                func.split_part(func.coalesce(ClienteComercial.nit, ''), '-', 1),
+                '[^a-zA-Z0-9]', '', 'g',
+            ))
+            condiciones = [
+                ClienteComercial.nit.ilike(like),
+                ClienteComercial.razon_social.ilike(like),
+                ClienteComercial.nombre_comercial.ilike(like),
+            ]
+            if nit_normalizado:
+                condiciones.append(nit_maestro_normalizado.ilike(f'%{nit_normalizado}%'))
+            query = query.filter(or_(*condiciones))
+        items = query.order_by(ClienteComercial.razon_social).all()
+        clientes = [{
+            'id': item.id,
+            'identificacion': item.nit,
+            'sucursal': item.sucursal,
+            'nombre': item.razon_social,
+            'ciudad': item.ciudad,
+            'estado': item.estado_cliente,
+            'vendedor_id': item.vendedor_id,
+            'vendedor_nombre': item.vendedor.nombre if item.vendedor else 'Sin vendedor asignado',
+        } for item in items]
         return jsonify({'clientes': clientes})
     except PermissionError as exc:
         return jsonify({'error': str(exc)}), 403

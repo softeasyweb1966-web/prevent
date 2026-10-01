@@ -262,11 +262,10 @@ async function consultarComprobantesSiigo(event) {
     }
 }
 
-function configurarAutocompletadoTercerosSiigo() {
-    const input = document.getElementById('siigoClienteFiltro');
+function configurarAutocompletadoTercerosSiigo(input = document.getElementById('siigoClienteFiltro'), opciones = {}) {
     if (!input || input.dataset.autocompleteBound) return;
     const suggestions = document.createElement('div');
-    suggestions.id = 'siigoTerceroSugerencias';
+    suggestions.id = opciones.id || `${input.id || input.name || 'siigoTercero'}Sugerencias`;
     suggestions.className = 'table-container';
     suggestions.style.cssText = 'display:none; position:absolute; z-index:5; width:100%; max-height:220px; overflow:auto; background:#fff;';
     input.parentElement.style.position = 'relative';
@@ -281,26 +280,29 @@ function configurarAutocompletadoTercerosSiigo() {
             suggestions.style.display = 'none';
             return;
         }
-        timer = setTimeout(() => cargarSugerenciasTerceroSiigo(search, input, suggestions), 250);
+        timer = setTimeout(() => cargarSugerenciasTerceroSiigo(search, input, suggestions, opciones), 250);
     });
     input.addEventListener('blur', () => setTimeout(() => { suggestions.style.display = 'none'; }, 180));
     input.dataset.autocompleteBound = 'true';
 }
 
-async function cargarSugerenciasTerceroSiigo(search, input, suggestions) {
+async function cargarSugerenciasTerceroSiigo(search, input, suggestions, opciones = {}) {
     try {
         const response = await fetch(`/api/contable/clientes?q=${encodeURIComponent(search)}`, { credentials: 'include' });
         const data = await leerRespuestaSiigo(response);
         if (!response.ok) throw new Error(data.error || 'No fue posible buscar terceros.');
         const clientes = data.clientes || [];
         if (!clientes.length) {
-            suggestions.style.display = 'none';
+            suggestions.innerHTML = `<div style="padding:8px; color:#666;">No hay coincidencias para "${escapeSiigo(search)}".</div>`;
+            suggestions.style.display = 'block';
             return;
         }
         suggestions.innerHTML = clientes.slice(0, 12).map(cliente => `<button type="button" class="action-btn" style="display:block; width:100%; text-align:left; padding:8px; border:0; border-bottom:1px solid #eee;" data-id="${escapeSiigo(cliente.identificacion)}" data-name="${escapeSiigo(cliente.nombre)}">${escapeSiigo(cliente.nombre)} <span style="color:#666;">${escapeSiigo(cliente.identificacion)}</span></button>`).join('');
         suggestions.querySelectorAll('button').forEach(button => button.addEventListener('mousedown', () => {
             input.value = button.dataset.name;
             input.dataset.identificacion = button.dataset.id;
+            const identificacionInput = opciones.identificacionInput || input.closest('form')?.elements?.namedItem(opciones.identificacionName || '');
+            if (identificacionInput) identificacionInput.value = button.dataset.id || '';
             suggestions.style.display = 'none';
         }));
         suggestions.style.display = 'block';
@@ -441,6 +443,13 @@ function crearPanelFacturasVencidasSiigo() {
     clienteInput.type = 'search';
     clienteInput.autocomplete = 'off';
     clienteInput.placeholder = 'Nombre, NIT o cédula';
+    configurarAutocompletadoTercerosSiigo(clienteInput, { id: 'siigoVencidasClienteSugerencias' });
+    panel.querySelectorAll('[data-comprobante-recibido] input[name="cliente_nombre"]').forEach(input => {
+        configurarAutocompletadoTercerosSiigo(input, {
+            id: 'siigoComprobanteClienteSugerencias',
+            identificacionName: 'identificacion',
+        });
+    });
     crearPanelCarteraDinamicaSiigo('recaudo').insertAdjacentElement('afterend', panel);
     const tituloFiltros = panel.querySelector('[data-vencidas-filtros] h3');
     const cabeceraFiltros = document.createElement('div');
