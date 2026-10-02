@@ -1069,7 +1069,9 @@ async function consultarFacturasVencidasSiigo(form) {
         panel._filtrosConsultados = filtros;
         const estadoFacturas = form.elements.estado_facturas.selectedOptions[0].textContent;
         const nombre = filtros.cliente && (data.clientes?.length === 1 ? data.clientes[0].cliente : filtros.cliente);
-        const filtroExtra = panel._filtroProximoHoyCartera ? ' · Próximo seguimiento hoy' : '';
+        const filtroExtra = panel._filtroProximoHoyCartera
+            ? ' · Próximo seguimiento hoy'
+            : (panel._filtroSeguimientoVencidoCartera ? ' · Seguimientos vencidos' : '');
         panel.querySelector('[data-vencidas-meta]').textContent = `Cartera a corte: ${formatoSiigoFecha(data.fecha_corte)} | Días calculados al: ${formatoSiigoFecha(data.fecha_dias || data.fecha_corte)} | ${estadoFacturas}${nombre ? ` · Cliente: ${nombre}` : ''}${filtroExtra}`;
         panel._datosVencidas = data;
         actualizarAlertasCarteraSiigo(panel);
@@ -1337,7 +1339,9 @@ function actualizarAlertasCarteraSiigo(panel) {
     const hoy = fechaHoyCarteraSiigo();
     const proximosHoy = clientes.filter(cliente => tieneSeguimientoHoyCarteraSiigo(cliente, hoy)).length;
     const seguimientosVencidos = clientes.filter(cliente => tieneSeguimientoVencidoCarteraSiigo(cliente, hoy)).length;
-    panel.querySelector('[data-alertas-cartera]').innerHTML = `${ordenEstadosGestionCarteraSiigo.map(estado => `<button type="button" class="siigo-alerta-cartera siigo-${estado}" data-alerta-cartera="${estado}">${estadosGestionCarteraSiigo[estado]}: ${clientes.filter(c => estadoClienteCarteraSiigo(c) === estado).length}</button>`).join(' ')} <button type="button" class="siigo-alerta-cartera siigo-proximo-hoy" data-proximo-hoy>Próximo seguimiento hoy: ${proximosHoy}</button> <button type="button" class="siigo-alerta-cartera siigo-vencido" data-seguimiento-vencido>Seguimientos vencidos: ${seguimientosVencidos}</button>`;
+    const alertas = panel.querySelector('[data-alertas-cartera]');
+    if (!alertas) return;
+    alertas.innerHTML = `${ordenEstadosGestionCarteraSiigo.map(estado => `<button type="button" class="siigo-alerta-cartera siigo-${estado}" data-alerta-cartera="${estado}">${estadosGestionCarteraSiigo[estado]}: ${clientes.filter(c => estadoClienteCarteraSiigo(c) === estado).length}</button>`).join(' ')} <button type="button" class="siigo-alerta-cartera siigo-proximo-hoy" data-proximo-hoy>Próximo seguimiento hoy: ${proximosHoy}</button> <button type="button" class="siigo-alerta-cartera siigo-vencido" data-seguimiento-vencido>Seguimientos vencidos: ${seguimientosVencidos}</button>`;
     panel.querySelectorAll('[data-siigo-seguimiento-icono]').forEach(boton => {
         const cliente = clientes[Number(boton.dataset.siigoSeguimiento)];
         const estado = estadoClienteCarteraSiigo(cliente);
@@ -1346,7 +1350,7 @@ function actualizarAlertasCarteraSiigo(panel) {
         boton.title = etiqueta;
         boton.setAttribute('aria-label', etiqueta);
     });
-    panel.querySelectorAll('[data-alerta-cartera]').forEach(boton => {
+    alertas.querySelectorAll('[data-alerta-cartera]').forEach(boton => {
         boton.addEventListener('click', () => {
             panel._filtroAlertaCartera = boton.dataset.alertaCartera;
             panel._filtroProximoHoyCartera = false;
@@ -1356,7 +1360,7 @@ function actualizarAlertasCarteraSiigo(panel) {
             if (form) consultarFacturasVencidasSiigo(form);
         });
     });
-    panel.querySelector('[data-proximo-hoy]')?.addEventListener('click', () => {
+    alertas.querySelector('[data-proximo-hoy]')?.addEventListener('click', () => {
         panel._filtroAlertaCartera = '';
         panel._filtroProximoHoyCartera = true;
         panel._filtroSeguimientoVencidoCartera = false;
@@ -1364,7 +1368,7 @@ function actualizarAlertasCarteraSiigo(panel) {
         activarVistaInformeCarteraSiigo(panel);
         renderTablaFacturasVencidasSiigo(panel);
     });
-    panel.querySelector('[data-seguimiento-vencido]')?.addEventListener('click', () => {
+    alertas.querySelector('[data-seguimiento-vencido]')?.addEventListener('click', () => {
         panel._filtroAlertaCartera = '';
         panel._filtroProximoHoyCartera = false;
         panel._filtroSeguimientoVencidoCartera = true;
