@@ -667,6 +667,7 @@ async function cargarSelectorVendedorCarteraInicio(panel) {
         if (!data.es_administrador) return;
         select.replaceChildren(new Option('Todos los vendedores', ''));
         panel._vendedoresCartera.forEach(v => select.add(new Option(v.nombre, v.id)));
+        sincronizarOpcionSinVendedorCarteraSiigo(panel);
         caja.hidden = false;
         select.addEventListener('change', () => {
             panel._filtroVendedorCartera = select.value;
@@ -674,6 +675,28 @@ async function cargarSelectorVendedorCarteraInicio(panel) {
         });
     } catch (error) {
         console.error('Error cargando vendedores para Gestión de cartera:', error);
+    }
+}
+
+function clienteSinVendedorPendienteCarteraSiigo(cliente) {
+    const vendedor = normalizarBusquedaCarteraSiigo(cliente?.vendedor);
+    return tieneCarteraPendienteSiigo(cliente) && (!vendedor || vendedor === 'sin asignar' || vendedor === 'sin vendedor asignado');
+}
+
+function sincronizarOpcionSinVendedorCarteraSiigo(panel) {
+    const select = panel.querySelector('[data-cartera-vendedor]');
+    if (!select) return;
+    const existe = Array.from(select.options).some(option => option.value === 'sin_asignar');
+    const mostrar = (panel._datosVencidas?.clientes || []).some(clienteSinVendedorPendienteCarteraSiigo);
+    if (mostrar && !existe) {
+        select.add(new Option('Sin vendedor asignado', 'sin_asignar'));
+        panel._vendedoresCartera = [
+            ...(panel._vendedoresCartera || []).filter(v => String(v.id) !== 'sin_asignar'),
+            { id: 'sin_asignar', nombre: 'Sin vendedor asignado' },
+        ];
+    } else if (!mostrar && existe && select.value !== 'sin_asignar') {
+        select.querySelector('option[value="sin_asignar"]')?.remove();
+        panel._vendedoresCartera = (panel._vendedoresCartera || []).filter(v => String(v.id) !== 'sin_asignar');
     }
 }
 
@@ -737,6 +760,7 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
         if (!response.ok) throw new Error(data.error || 'No fue posible calcular las alertas.');
         if (!resumenResponse.ok) throw new Error(resumenData.error || 'No fue posible calcular el resumen del año.');
         panel._datosVencidas = data;
+        sincronizarOpcionSinVendedorCarteraSiigo(panel);
         panel._resumenInicioCartera = { anio: resumenData, anioSeleccionado: anio };
         const hoy = fechaHoyCarteraSiigo();
         const proximosHoy = (data.clientes || []).filter(cliente => tieneSeguimientoHoyCarteraSiigo(cliente, hoy)).length;
