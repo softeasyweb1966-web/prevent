@@ -810,7 +810,7 @@ class SiigoMovimiento(db.Model):
     identificacion = db.Column(db.String(50), index=True)
     sucursal = db.Column(db.String(30))
     nombre_tercero = db.Column(db.String(255), index=True)
-    descripcion = db.Column(db.String(255))
+    descripcion = db.Column(db.Text)
     detalle = db.Column(db.Text)
     centro_costo = db.Column(db.String(80))
     debito = db.Column(Numeric(18, 2), nullable=False, default=0)

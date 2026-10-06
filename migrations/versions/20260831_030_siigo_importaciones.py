@@ -108,7 +108,7 @@ def upgrade():
         sa.Column('identificacion', sa.String(length=50), nullable=True),
         sa.Column('sucursal', sa.String(length=30), nullable=True),
         sa.Column('nombre_tercero', sa.String(length=255), nullable=True),
-        sa.Column('descripcion', sa.String(length=255), nullable=True),
+        sa.Column('descripcion', sa.Text(), nullable=True),
         sa.Column('detalle', sa.Text(), nullable=True),
         sa.Column('centro_costo', sa.String(length=80), nullable=True),
         sa.Column('debito', sa.Numeric(precision=18, scale=2), nullable=False, server_default='0'),
