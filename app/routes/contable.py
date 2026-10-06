@@ -278,8 +278,11 @@ def _archivo_comprobante_pago(archivo):
 
 def _estado_actualizacion_comprobantes():
     """Resume la vigencia con base en la fecha contable, no en la del archivo."""
-    fecha_ultimo_comprobante = _comprobantes_visibles(db.session.query(func.max(SiigoComprobante.fecha_elaboracion))).scalar()
-    fecha_minima_requerida = datetime.now(ZoneInfo('America/Bogota')).date() - timedelta(days=1)
+    hoy = datetime.now(ZoneInfo('America/Bogota')).date()
+    fecha_ultimo_comprobante = _comprobantes_visibles(
+        db.session.query(func.max(SiigoComprobante.fecha_elaboracion))
+    ).filter(SiigoComprobante.fecha_elaboracion <= hoy).scalar()
+    fecha_minima_requerida = hoy - timedelta(days=1)
     al_dia = bool(
         fecha_ultimo_comprobante
         and fecha_ultimo_comprobante >= fecha_minima_requerida
