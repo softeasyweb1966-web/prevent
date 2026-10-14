@@ -531,6 +531,8 @@ function abrirGestionCarteraComercial() {
     if (destino && panel.parentElement !== destino) {
         destino.replaceChildren(panel);
     }
+    // Ventas puede haber ocultado este panel compartido al cambiar de informe.
+    panel.style.display = '';
     mostrarInicioGestionCarteraSiigo(panel);
 }
 
@@ -1916,7 +1918,11 @@ function configurarNavegacionVentasSiigo() {
     const pagos = crearPanelCarteraDinamicaSiigo('pagos');
     const cartera = crearPanelCarteraDinamicaSiigo('recaudo');
     const vencidas = crearPanelFacturasVencidasSiigo();
-    if (!cargas || !historial || !consulta || document.getElementById('siigoVentasNavegacion')) return;
+    if (!cargas || !historial || !consulta) return;
+    if (document.getElementById('siigoVentasNavegacion')) {
+        mostrarSeccionVentasSiigo(window._siigoSeccionActual || 'cargue');
+        return;
+    }
 
     cargas.id = 'siigoCarguePanel';
     historial.id = 'siigoHistorialCargasPanel';
@@ -1971,6 +1977,10 @@ function mostrarInformeSiigo(informe) {
     const panels = window._siigoPanels;
     if (!panels) return;
     if (panels.vencidas) {
+        // Cartera mueve el panel a su contenedor; devolverlo a Ventas al abrir informes.
+        if (panels.vencidas.parentElement !== panels.consulta.parentElement) {
+            panels.consulta.insertAdjacentElement('afterend', panels.vencidas);
+        }
         panels.vencidas.dataset.origen = 'ventas-informes';
         const volver = panels.vencidas.querySelector('[data-vencidas-informes]');
         if (volver) volver.textContent = 'Regresar a informes';
