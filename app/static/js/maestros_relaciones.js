@@ -131,11 +131,63 @@ function clientesFiltradosMaestro() {
     (revision==='revision' && c.revision_importacion)));
 }
 
+function nitFacturacionMaestro(valor) {
+  return String(valor || '').split('-')[0].normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+}
+
+function indexarFacturacionMaestro(data) {
+  const indice = new Map();
+  for (const cliente of data.cartera_clientes || []) {
+    const nit = nitFacturacionMaestro(cliente.identificacion);
+    if (!nit) continue;
+    const resumen = indice.get(nit) || { cantidad: 0, pendientes: 0, ultima: '', ultimaPendiente: '' };
+    for (const factura of cliente.facturas || []) {
+      resumen.cantidad++;
+      const fecha = factura.fecha_factura || '';
+      if (fecha > resumen.ultima) resumen.ultima = fecha;
+      if (Number(factura.saldo) > 0) {
+        resumen.pendientes++;
+        if (fecha > resumen.ultimaPendiente) resumen.ultimaPendiente = fecha;
+      }
+    }
+    indice.set(nit, resumen);
+  }
+  return indice;
+}
+
+async function cargarFacturacionListaMaestro() {
+  M.facturacion = null;
+  M.errorFacturacion = '';
+  renderClientes();
+  try {
+    // Sin desde/hasta: incluir el historial, incluso clientes que ya pagaron todo.
+    const data = await api('/api/contable/cartera-dinamica');
+    M.facturacion = indexarFacturacionMaestro(data);
+  } catch (error) {
+    M.errorFacturacion = error.message;
+  }
+}
+
+function ordenarClientesFacturadosMaestro(clientes, indice = M.facturacion) {
+  return clientes.filter(c => indice?.get(nitFacturacionMaestro(c.nit))?.cantidad > 0).sort((a, b) => {
+    const fa = indice.get(nitFacturacionMaestro(a.nit));
+    const fb = indice.get(nitFacturacionMaestro(b.nit));
+    return Number(fb.pendientes > 0) - Number(fa.pendientes > 0) ||
+      (fb.ultimaPendiente || fb.ultima).localeCompare(fa.ultimaPendiente || fa.ultima) ||
+      (a.razon_social || '').localeCompare(b.razon_social || '', 'es') || a.id - b.id;
+  });
+}
+
 function refrescarMaestro() {
   const clientes = clientesFiltradosMaestro();
   document.getElementById('maestroResumen').textContent = `${clientes.length} clientes en esta consulta · ${M.clientes.length} disponibles · ${M.clientes.filter(c=>!c.vendedor_id).length} sin vendedor · ${M.clientes.filter(c=>!c.paquetes_vigentes).length} sin paquete vigente`;
   if (panelMaestroActivo('servicios')) actualizarSelectorServiciosMaestro(clientes);
   renderClientes(); renderContactos(); renderGruposMaestro(); renderServiciosMaestro();
+  if (panelMaestroActivo('clientes')) {
+    document.getElementById('maestroResumen').textContent = M.facturacion
+      ? `${ordenarClientesFacturadosMaestro(clientes).length} clientes facturados en esta consulta · ${ordenarClientesFacturadosMaestro(M.clientes).length} facturados disponibles`
+      : (M.errorFacturacion ? 'No se pudo consultar la facturación.' : 'Consultando facturación de clientes…');
+  }
 }
 
 function actualizarSelectorServiciosMaestro(clientes) {

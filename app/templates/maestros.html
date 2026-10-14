@@ -107,6 +107,7 @@
   </section>
   <!-- CLIENTES -->
   <section class="maestros-panel active" id="panel-clientes">
+    <p class="m-hint">Solo clientes con facturas registradas en SIIGO. Primero quienes tienen saldo pendiente, por su factura pendiente m?s reciente; despu?s, los clientes al d?a.</p>
     <div class="maestros-toolbar">
       <input type="search" id="buscarCliente" placeholder="Buscar por nombre, NIT o vendedor..." oninput="renderClientes()">
       <button class="m-btn m-btn-primary" id="btnNuevoCliente" onclick="abrirModalCliente()">+ Nuevo cliente</button>
@@ -361,11 +362,17 @@ function opcionesVendedor(sel){
 }
 
 /* ===== CLIENTES ===== */
-async function cargarClientes(){ try { M.clientes = await api('/api/comercial/maestro/clientes'); renderClientes(); refrescarMaestro(); } catch(e){ document.getElementById('tbodyClientes').innerHTML=`<tr><td colspan="8" class="m-empty">${esc(e.message)}</td></tr>`; } }
+async function cargarClientes(){ try { M.clientes = await api('/api/comercial/maestro/clientes'); await cargarFacturacionListaMaestro(); refrescarMaestro(); } catch(e){ document.getElementById('tbodyClientes').innerHTML=`<tr><td colspan="8" class="m-empty">${esc(e.message)}</td></tr>`; } }
 function renderClientes(){
   if (!panelMaestroActivo('clientes')) return;
+  if (!M.facturacion) {
+    document.getElementById('tbodyClientes').innerHTML = `<tr><td colspan="8" class="m-empty">${M.errorFacturacion ? esc(M.errorFacturacion) + ' <button type="button" class="m-btn m-btn-secondary" onclick="cargarClientes()">Reintentar</button>' : 'Consultando facturaci?n?'}</td></tr>`;
+    const nav = document.getElementById('paginasClientesMaestro');
+    if (nav) nav.innerHTML = '';
+    return;
+  }
   const q=(document.getElementById('buscarCliente').value||'').toLowerCase();
-  const rows = clientesFiltradosMaestro().filter(c=>!q || [c.razon_social,c.nit,c.vendedor_nombre,c.responsable,...(c.contactos||[]).map(p=>p.nombre)].some(x=>(x||'').toLowerCase().includes(q)));
+  const rows = ordenarClientesFacturadosMaestro(clientesFiltradosMaestro()).filter(c=>!q || [c.razon_social,c.nit,c.vendedor_nombre,c.responsable,...(c.contactos||[]).map(p=>p.nombre)].some(x=>(x||'').toLowerCase().includes(q)));
   const canU = M.permisos.clientes && M.permisos.clientes.update;
   const canD = M.permisos.clientes && M.permisos.clientes.delete;
   const visibles = paginaClientesMaestro(rows);
@@ -381,7 +388,7 @@ function renderClientes(){
         ${canU?`<button class="m-btn m-btn-secondary m-btn-sm" onclick="abrirModalCliente(${c.id})">Editar</button>`:''}
         ${canD?`<button class="m-btn m-btn-danger m-btn-sm" onclick="borrarCliente(${c.id})">Borrar</button>`:''}
       </td>
-    </tr>`).join('') : '<tr><td colspan="8" class="m-empty">Sin clientes.</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="8" class="m-empty">Sin clientes con facturas registradas para estos filtros.</td></tr>';
 }
 function estadoTag(estado, activo){
   if(estado==='INACTIVO'||activo===false) return '<span class="mtag mtag-off">INACTIVO</span>';
