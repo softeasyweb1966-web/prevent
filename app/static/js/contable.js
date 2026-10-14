@@ -853,24 +853,54 @@ function totalesResumenCarteraSiigo(data) {
     return { ventas, recaudado, sinRecaudo: cartera, cartera };
 }
 
+function desgloseAjustesCarteraSiigo(data) {
+    const totales = totalesResumenCarteraSiigo(data);
+    const sumar = campo => (data?.periodos || []).reduce((total, periodo) => total + Number(periodo[campo] || 0), 0);
+    const ac = sumar('ajustes_ac');
+    const credito = sumar('notas_credito');
+    const debito = sumar('notas_debito');
+    const otros = sumar('otros_movimientos');
+    const neto = Math.round((totales.ventas - totales.recaudado - totales.cartera) * 100) / 100;
+    // El saldo por factura tiene piso cero: los abonos excedentes no son cartera negativa.
+    const excedentes = Math.round((ac + credito - debito + otros - neto) * 100) / 100;
+    return { ac, credito, debito, otros, neto, excedentes };
+}
+
+function resumenDetalleAjustesCarteraSiigo(data) {
+    const ajustes = desgloseAjustesCarteraSiigo(data);
+    const conceptos = [
+        ['Ajustes AC', ajustes.ac],
+        ['Notas crédito', ajustes.credito],
+        ['Notas débito (restan)', -ajustes.debito],
+        ['Otros cruces', ajustes.otros],
+    ];
+    if (Math.abs(ajustes.excedentes) >= 0.01) conceptos.push(['Abonos excedentes sobre facturas (restan)', -ajustes.excedentes]);
+    conceptos.push(['Ajustes netos', ajustes.neto]);
+    return `<p class="form-help">Ventas = recaudado + ajustes netos + cartera a corte. Un ajuste positivo reduce la cartera; uno negativo la aumenta. Se incluyen únicamente movimientos aplicados a las facturas del año y vendedor seleccionados.</p><table class="data-table"><thead><tr><th>Concepto</th><th>Valor</th></tr></thead><tbody>${conceptos.map(([nombre, valor]) => `<tr><td>${nombre}</td><td>${formatoSiigoNumero(valor)}</td></tr>`).join('')}</tbody></table>`;
+}
+
 function renderResumenInicioCarteraSiigo(anioData, anio) {
     const acumulado = totalesResumenCarteraSiigo(anioData);
     if (esVendedorCarteraSiigo()) {
         return `<section class="siigo-cartera-resumen-bloque"><div class="siigo-cartera-resumen-header"><h4>Cartera ${escapeSiigo(anio)}</h4></div><dl><div><dt>Total cartera</dt><dd>${formatoSiigoNumero(acumulado.cartera)}</dd></div></dl></section>`;
     }
-    const bloque = (titulo, datos, tipo) => `<section class="siigo-cartera-resumen-bloque"><div class="siigo-cartera-resumen-header"><h4>${escapeSiigo(titulo)}</h4><button type="button" class="btn btn-secondary" data-cartera-resumen-detalle="${tipo}">Ver detalle</button></div><dl><div><dt>Total ventas</dt><dd>${formatoSiigoNumero(datos.ventas)}</dd></div><div><dt>Total recaudado</dt><dd>${formatoSiigoNumero(datos.recaudado)}</dd></div><div><dt>Total sin recaudo</dt><dd>${formatoSiigoNumero(datos.sinRecaudo)}</dd></div><div><dt>Cartera a corte</dt><dd>${formatoSiigoNumero(datos.cartera)}</dd></div></dl></section>`;
+    const bloque = (titulo, datos, tipo) => `<section class="siigo-cartera-resumen-bloque"><div class="siigo-cartera-resumen-header"><h4>${escapeSiigo(titulo)}</h4><button type="button" class="btn btn-secondary" data-cartera-resumen-detalle="${tipo}">Ver detalle</button></div><dl><div><dt>Total ventas</dt><dd>${formatoSiigoNumero(datos.ventas)}</dd></div><div><dt>Total recaudado</dt><dd>${formatoSiigoNumero(datos.recaudado)}</dd></div><div><dt>Ajustes netos</dt><dd>${formatoSiigoNumero(desgloseAjustesCarteraSiigo(anioData).neto)}<button type="button" class="btn btn-secondary siigo-ajustes-detalle" data-cartera-resumen-detalle="ajustes">Ver detalle</button></dd></div><div><dt>Total sin recaudo</dt><dd>${formatoSiigoNumero(datos.sinRecaudo)}</dd></div><div><dt>Cartera a corte</dt><dd>${formatoSiigoNumero(datos.cartera)}</dd></div></dl></section>`;
     return bloque(`Año ${anio}`, acumulado, 'anio');
 }
 
 function abrirDetalleResumenInicioCarteraSiigo(panel, tipo) {
-    const data = panel?._resumenInicioCartera?.[tipo];
+    const esAjustes = tipo === 'ajustes';
+    const data = panel?._resumenInicioCartera?.[esAjustes ? 'anio' : tipo];
     if (!data) return;
     const anioSeleccionado = panel._resumenInicioCartera.anioSeleccionado;
-    const titulo = `Detalle año ${anioSeleccionado}`;
-    const clientes = data.cartera_clientes || [];
+    const titulo = `${esAjustes ? 'Detalle de ajustes' : 'Detalle'} año ${anioSeleccionado}`;
+    const clientes = (data.cartera_clientes || []).filter(cliente => !esAjustes ||
+        (cliente.facturas || [cliente]).some(factura =>
+            ['ajustes_ac', 'notas_credito', 'notas_debito', 'otros_movimientos'].some(campo => Number(factura[campo] || 0) !== 0) ||
+            Number(factura.recaudado || 0) > Number(factura.facturado || 0)));
     const dialogo = document.createElement('dialog');
     dialogo.className = 'siigo-seguimiento-dialogo siigo-cartera-detalle-dialogo';
-    dialogo.innerHTML = `<div class="siigo-seguimiento-cabecera"><h2>${escapeSiigo(titulo)}</h2></div><div class="button-group"><button type="button" class="btn btn-primary" data-cerrar>Cerrar</button></div><p class="form-help">Fecha de corte: ${escapeSiigo(formatoSiigoFecha(data.fecha_corte || ''))}. Clientes: ${clientes.length}.</p><div data-cartera-detalle-contenido>${tablaCarteraClientesSiigo(clientes) || '<p>No hay cartera para este periodo.</p>'}</div>`;
+    dialogo.innerHTML = `<div class="siigo-seguimiento-cabecera"><h2>${escapeSiigo(titulo)}</h2></div><div class="button-group"><button type="button" class="btn btn-primary" data-cerrar>Cerrar</button></div><p class="form-help">Fecha de corte: ${escapeSiigo(formatoSiigoFecha(data.fecha_corte || ''))}. Clientes: ${clientes.length}.</p><div data-cartera-detalle-contenido>${esAjustes ? resumenDetalleAjustesCarteraSiigo(data) : ''}${tablaCarteraClientesSiigo(clientes) || '<p>No hay cartera para este periodo.</p>'}</div>`;
     document.body.appendChild(dialogo);
     const contenido = dialogo.querySelector('[data-cartera-detalle-contenido]');
     contenido.querySelectorAll('[data-siigo-cliente-index]').forEach(button => button.addEventListener('click', () => {

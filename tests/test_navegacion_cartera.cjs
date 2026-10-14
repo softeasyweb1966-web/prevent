@@ -5,6 +5,43 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 
+function contextoResumen() {
+    const context = vm.createContext({ document: {
+        addEventListener() {},
+        createElement: () => ({ set textContent(value) { this.innerHTML = String(value); } }),
+    } });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../app/static/js/contable.js'), 'utf8'), context);
+    context.esVendedorCarteraSiigo = () => false;
+    return context;
+}
+
+test('Ajustes netos concilian ventas, recaudos y cartera con notas debito y excedentes', () => {
+    const context = contextoResumen();
+    const data = {
+        totales: { ventas: 1000, recaudado: 400, cartera: 250, sin_recaudo: 250 },
+        periodos: [{ ajustes_ac: 200, notas_credito: 180, notas_debito: 50, otros_movimientos: 40 }],
+    };
+    const ajustes = context.desgloseAjustesCarteraSiigo(data);
+    assert.equal(ajustes.neto, 350);
+    assert.equal(ajustes.excedentes, 20);
+    assert.equal(ajustes.ac + ajustes.credito - ajustes.debito + ajustes.otros - ajustes.excedentes, ajustes.neto);
+    assert.match(context.resumenDetalleAjustesCarteraSiigo(data), /Abonos excedentes/);
+    assert.match(context.renderResumenInicioCarteraSiigo(data, 2026), /data-cartera-resumen-detalle="ajustes"/);
+    context.esVendedorCarteraSiigo = () => true;
+    assert.doesNotMatch(context.renderResumenInicioCarteraSiigo(data, 2026), /data-cartera-resumen-detalle="ajustes"/);
+});
+
+test('Ajustes soportan ausencia de totales, valores negativos y centavos', () => {
+    const context = contextoResumen();
+    const data = { periodos: [{ facturado: 100, recaudado: 20, notas_debito: 30 }], cartera_clientes: [{ saldo: 110 }] };
+    assert.equal(context.desgloseAjustesCarteraSiigo(data).neto, -30);
+    assert.equal(context.desgloseAjustesCarteraSiigo(data).excedentes, 0);
+    assert.doesNotMatch(context.resumenDetalleAjustesCarteraSiigo(data), /Abonos excedentes/);
+    assert.equal(context.desgloseAjustesCarteraSiigo({ totales: {
+        ventas: 472046114.68, recaudado: 233721154.52, cartera: 203190970.78,
+    } }).neto, 35133989.38);
+});
+
 test('Cartera y Ventas recuperan el panel compartido al navegar repetidamente', () => {
     const element = () => ({
         style: {}, dataset: {}, hidden: false,
