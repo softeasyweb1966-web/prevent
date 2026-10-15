@@ -1307,8 +1307,12 @@ const estadosGestionCarteraSiigo = {
     en_proceso: 'En proceso',
     revision_interna: 'Revision Interna',
     con_compromiso: 'Con compromiso',
+    validado: 'Validado',
+    rechazado: 'Rechazado',
+    recibo_caja: 'Pendiente recibo de caja',
+    prejuridico: 'Prejurídico',
 };
-const ordenEstadosGestionCarteraSiigo = ['sin_gestion', 'no_localizado', 'en_proceso', 'revision_interna', 'con_compromiso'];
+const ordenEstadosGestionCarteraSiigo = ['sin_gestion', 'no_localizado', 'en_proceso', 'revision_interna', 'con_compromiso', 'prejuridico'];
 
 function normalizarEstadoGestionCarteraSiigo(valor) {
     return String(valor || '').toLowerCase();

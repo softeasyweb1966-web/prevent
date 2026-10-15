@@ -1142,7 +1142,7 @@ def _estado_compromiso(registro, hoy=None):
     return 'vencido' if dias < 0 else 'proximo' if dias <= 3 else 'pendiente'
 
 
-ESTADOS_GESTION_CARTERA = {'SIN_GESTION', 'NO_LOCALIZADO', 'EN_PROCESO', 'CON_COMPROMISO', 'REVISION_INTERNA'}
+ESTADOS_GESTION_CARTERA = {'SIN_GESTION', 'NO_LOCALIZADO', 'EN_PROCESO', 'CON_COMPROMISO', 'REVISION_INTERNA', 'VALIDADO', 'RECHAZADO', 'RECIBO_CAJA', 'PREJURIDICO'}
 ESTADOS_VALIDACION_ANEXO_CARTERA = {'PENDIENTE', 'VALIDADO', 'RECHAZADO'}
 TIPOS_CHAT_CARTERA = {'AUTORIZACION_ARREGLO', 'SOLICITUD_INFO', 'GENERAL'}
 ESTADOS_CHAT_CARTERA = {'ABIERTO', 'AUTORIZADO', 'RECHAZADO', 'CERRADO'}
@@ -1557,6 +1557,7 @@ def subir_comprobantes_cartera(seguimiento_id):
             db.session.add(SiigoComprobantePago(seguimiento=registro, nombre=nombre,
                 mime_type=mime, tamano_bytes=len(contenido), contenido=contenido,
                 usuario_id=current_user.id, usuario_nombre=current_user.nombre_completo))
+        registro.estado_gestion = 'REVISION_INTERNA'
         db.session.commit()
         return jsonify(seguimiento=_serializar_seguimiento_cartera(registro)), 201
     except (ValueError, PermissionError) as exc:
@@ -1597,6 +1598,13 @@ def validar_comprobante_cartera(adjunto_id):
         adjunto.validado_por_id = current_user.id if estado != 'PENDIENTE' else None
         adjunto.validado_por_nombre = current_user.nombre_completo if estado != 'PENDIENTE' else None
         adjunto.validado_at = datetime.utcnow() if estado != 'PENDIENTE' else None
+        soportes = list(adjunto.seguimiento.comprobantes_pago)
+        if estado == 'RECHAZADO':
+            adjunto.seguimiento.estado_gestion = 'RECHAZADO'
+        elif soportes and all(item.estado_validacion == 'VALIDADO' for item in soportes):
+            adjunto.seguimiento.estado_gestion = 'VALIDADO'
+        elif estado == 'PENDIENTE':
+            adjunto.seguimiento.estado_gestion = 'REVISION_INTERNA'
         db.session.commit()
         return jsonify(seguimiento=_serializar_seguimiento_cartera(adjunto.seguimiento))
     except (ValueError, PermissionError) as exc:
