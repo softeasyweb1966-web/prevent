@@ -1759,7 +1759,9 @@ def _clientes_facturas_vencidas(cartera_clientes, vendedores, estado_facturas='t
              and (estado_facturas == 'todos'
                   or (estado_facturas == 'vencidos' and factura['dias_vencido'] > 0)
                   or (estado_facturas == 'por_vencer' and factura['dias_vencido'] <= 0))),
-            key=lambda factura: (-factura['dias_vencido'], factura['referencia']),
+            # La prioridad operativa es cobrar primero la factura más antigua,
+            # tanto para vencidas como para las que aún están por vencer.
+            key=lambda factura: (factura['fecha_factura'] or '', factura['referencia']),
         )
         if not facturas:
             continue
