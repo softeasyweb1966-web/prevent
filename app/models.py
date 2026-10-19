@@ -684,6 +684,11 @@ class SiigoComprobantePago(db.Model):
     validado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
     validado_por_nombre = db.Column(db.String(200))
     validado_at = db.Column(db.DateTime)
+    motivo_rechazo = db.Column(db.Text)
+    contabilizado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
+    contabilizado_por_nombre = db.Column(db.String(200))
+    contabilizado_at = db.Column(db.DateTime)
+    numero_recibo_caja = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     seguimiento = db.relationship('SiigoSeguimientoCartera', back_populates='comprobantes_pago')
 

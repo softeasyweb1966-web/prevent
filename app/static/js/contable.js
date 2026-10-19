@@ -1153,7 +1153,7 @@ async function consultarFacturasVencidasSiigo(form) {
 function comprobantesPagoCarteraSiigo(item) {
     const archivos = item.comprobantes_pago || [];
     const opcionesAdmin = anexo => esAdministradorCarteraSiigo()
-        ? `<select data-validar-anexo="${anexo.id}" aria-label="Validar ${escapeSiigo(anexo.nombre)}"><option value="PENDIENTE"${(anexo.estado_validacion || 'PENDIENTE') === 'PENDIENTE' ? ' selected' : ''}>Pendiente</option><option value="VALIDADO"${anexo.estado_validacion === 'VALIDADO' ? ' selected' : ''}>Validado</option><option value="RECHAZADO"${anexo.estado_validacion === 'RECHAZADO' ? ' selected' : ''}>Rechazado</option></select>`
+        ? `<select data-validar-anexo="${anexo.id}" aria-label="Validar ${escapeSiigo(anexo.nombre)}"><option value="PENDIENTE"${(anexo.estado_validacion || 'PENDIENTE') === 'PENDIENTE' ? ' selected' : ''}>Pendiente</option><option value="VALIDADO"${anexo.estado_validacion === 'VALIDADO' ? ' selected' : ''}>Validado</option><option value="RECHAZADO"${anexo.estado_validacion === 'RECHAZADO' ? ' selected' : ''}>Rechazado</option></select>${anexo.estado_validacion === 'PENDIENTE_POR_CONTABILIZAR' || anexo.estado_validacion === 'VALIDADO' ? `<button type="button" data-contabilizar-anexo="${anexo.id}">Contabilizar</button>` : ''}`
         : '';
     const fila = anexo => `<li><div><strong>${escapeSiigo(anexo.nombre)}</strong> · ${Math.ceil(anexo.tamano_bytes / 1024)} KB <span class="siigo-validacion-anexo siigo-${String(anexo.estado_validacion || 'PENDIENTE').toLowerCase()}">${escapeSiigo(anexo.estado_validacion || 'PENDIENTE')}</span>${anexo.validado_por ? `<small>Validado por ${escapeSiigo(anexo.validado_por)}</small>` : ''}</div><div class="siigo-anexo-acciones"><a href="${escapeSiigo(anexo.url)}" target="_blank" rel="noopener">Ver</a><a href="${escapeSiigo(anexo.url)}?descargar=1">Descargar</a>${opcionesAdmin(anexo)}</div></li>`;
     return `<section class="siigo-comprobantes-pago"><h5>Comprobantes de pago</h5>${archivos.length ? `<ul>${archivos.map(fila).join('')}</ul>` : '<p>Sin comprobantes adjuntos.</p>'}<label for="siigoAdjuntos${item.id}">Subir comprobantes de pago</label><input id="siigoAdjuntos${item.id}" type="file" data-adjuntos-seguimiento="${item.id}" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple><small>PDF, JPG, PNG o WebP. Hasta 5 archivos, maximo 10 MB por archivo y 15 MB por carga.</small></section>`;
@@ -1324,12 +1324,13 @@ const estadosGestionCarteraSiigo = {
     con_compromiso: 'Con compromiso',
     cumplido: 'Cumplido',
     cumplido_parcialmente: 'Cumplido parcialmente',
+    pendiente_correccion: 'Pendiente corrección',
     validado: 'Validado',
     rechazado: 'Rechazado',
     recibo_caja: 'Pendiente recibo de caja',
     prejuridico: 'Prejurídico',
 };
-const ordenEstadosGestionCarteraSiigo = ['sin_gestion', 'no_localizado', 'en_proceso', 'revision_interna', 'con_compromiso', 'cumplido', 'cumplido_parcialmente', 'prejuridico'];
+const ordenEstadosGestionCarteraSiigo = ['sin_gestion', 'no_localizado', 'en_proceso', 'revision_interna', 'pendiente_correccion', 'con_compromiso', 'cumplido', 'cumplido_parcialmente', 'prejuridico'];
 
 function normalizarEstadoGestionCarteraSiigo(valor) {
     return String(valor || '').toLowerCase();
@@ -1688,6 +1689,25 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
             guardar.disabled = false;
         }
     });
+    historial.addEventListener('click', async event => {
+        const boton = event.target.closest('[data-contabilizar-anexo]');
+        if (!boton || guardando) return;
+        const numero = window.prompt('Número del recibo de caja SIIGO:');
+        if (!numero) return;
+        guardando = true;
+        try {
+            const response = await fetch(`/api/contable/seguimiento-cartera/comprobantes/${boton.dataset.contabilizarAnexo}/contabilizacion`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numero_recibo_caja: numero }) });
+            const data = await leerRespuestaSiigo(response);
+            if (!response.ok) throw new Error(data.error || 'No fue posible contabilizar el anexo.');
+            registros = registros.map(r => r.id === data.seguimiento.id ? data.seguimiento : r);
+            historial.innerHTML = historialSeguimientoCarteraSiigo(registros, cliente);
+            agregarAccionesComunicacionCompromisoSiigo(historial, registros, cliente);
+            vincularSeleccionHistorialSiigo();
+            estado.textContent = 'Anexo marcado como contabilizado.';
+        } catch (error) { estado.textContent = error.message; }
+        finally { guardando = false; }
+        return;
+    });
     historial.addEventListener('change', async event => {
         const selectorValidacion = event.target.closest('[data-validar-anexo]');
         if (selectorValidacion && !guardando) {
@@ -1695,11 +1715,13 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
             selectorValidacion.disabled = true;
             estado.textContent = 'Actualizando validacion del anexo...';
             try {
+                const motivoRechazo = selectorValidacion.value === 'RECHAZADO' ? window.prompt('Motivo del rechazo:') : '';
+                if (selectorValidacion.value === 'RECHAZADO' && !motivoRechazo) throw new Error('Debe indicar el motivo del rechazo.');
                 const response = await fetch(`/api/contable/seguimiento-cartera/comprobantes/${selectorValidacion.dataset.validarAnexo}/validacion`, {
                     method: 'PATCH',
                     credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ estado_validacion: selectorValidacion.value }),
+                    body: JSON.stringify({ estado_validacion: selectorValidacion.value, motivo_rechazo: motivoRechazo }),
                 });
                 const data = await leerRespuestaSiigo(response);
                 if (!response.ok) throw new Error(data.error || 'No fue posible validar el anexo.');
