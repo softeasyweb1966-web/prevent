@@ -1572,7 +1572,7 @@ def alertas_seguimiento_cartera():
         for registro in registros:
             cliente = datos_cliente.get(registro.identificacion)
             anexos = list(registro.comprobantes_pago)
-            if tipo == 'REVISION_INTERNA' and not (registro.estado_gestion == 'REVISION_INTERNA' and any((a.estado_validacion or 'PENDIENTE') == 'PENDIENTE' for a in anexos)):
+            if tipo == 'REVISION_INTERNA' and registro.estado_gestion != 'REVISION_INTERNA':
                 continue
             if tipo == 'PENDIENTE_CONTABILIZAR' and not any((a.estado_validacion or '') in {'VALIDADO', 'PENDIENTE_POR_CONTABILIZAR'} for a in anexos):
                 continue
