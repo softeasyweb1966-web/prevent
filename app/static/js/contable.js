@@ -1181,6 +1181,21 @@ function agregarAccionesComunicacionCompromisoSiigo(contenedor, registros, clien
     });
 }
 
+function codigoSeguimientoCarteraSiigo(id) {
+    return `GC-${String(id).padStart(6, '0')}`;
+}
+
+function mostrarCodigosSeguimientoCarteraSiigo(contenedor) {
+    contenedor.querySelectorAll('[data-seguimiento-id]').forEach(article => {
+        if (article.querySelector('[data-codigo-seguimiento]')) return;
+        const titulo = document.createElement('div');
+        titulo.dataset.codigoSeguimiento = 'true';
+        titulo.className = 'form-help';
+        titulo.textContent = codigoSeguimientoCarteraSiigo(article.dataset.seguimientoId);
+        article.prepend(titulo);
+    });
+}
+
 function historialSeguimientoCarteraSiigo(registros, cliente = null) {
     if (!registros.length) return '<p>Este cliente aún no tiene seguimientos registrados.</p>';
     return registros.map(item => `<article class="siigo-seguimiento-registro" data-seguimiento-id="${item.id}">${item.fecha_compromiso ? `<label class="siigo-seguimiento-seleccion"><input type="radio" name="siigoSeguimientoSeleccion" value="${item.id}"> Seleccionar este compromiso</label>` : ''}<h4>${escapeSiigo(formatoSiigoFechaHora(item.fecha_hora_gestion || item.created_at))} · ${escapeSiigo(item.medio)}</h4><p>Registrado por: <strong>${escapeSiigo(item.registrado_por)}</strong>${item.contacto ? ` · Contacto: ${escapeSiigo(item.contacto)}` : ''}</p><p class="siigo-seguimiento-nota">${escapeSiigo(item.observaciones)}</p>${item.fecha_compromiso ? `<p><span class="siigo-semaforo siigo-${item.estado_compromiso}">${estadosCompromisoSiigo[item.estado_compromiso]}</span> Compromiso de pago: ${escapeSiigo(formatoSiigoFecha(item.fecha_compromiso))}${item.valor_compromiso != null ? ` · ${formatoSiigoNumero(item.valor_compromiso)}` : ''}</p>` : ''}${item.compromiso_cumplido_at ? `<p>Cumplimiento registrado por ${escapeSiigo(item.compromiso_cumplido_por)} · ${escapeSiigo(formatoSiigoFecha(item.compromiso_cumplido_at.slice(0, 10)))}</p>` : ''}${item.proximo_seguimiento ? `<p>Próximo seguimiento: ${escapeSiigo(formatoSiigoFecha(item.proximo_seguimiento))}</p>` : ''}${comprobantesPagoCarteraSiigo(item)}</article>`).join('');
@@ -1452,6 +1467,11 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     const estadoSeguimiento = dialogo.querySelector('#siigoGestionEstado');
     estadoSeguimiento.insertAdjacentHTML('beforeend', '<option value="CUMPLIDO">Cumplido</option><option value="CUMPLIDO_PARCIALMENTE">Cumplido parcialmente</option>');
     dialogo.querySelector('.siigo-nuevo-seguimiento').insertAdjacentHTML('beforeend', '<input type="hidden" name="seguimiento_anterior_id"><div class="form-group"><label for="siigoGestionPagado">Valor pagado (COP)</label><input id="siigoGestionPagado" name="valor_pagado" type="text" inputmode="decimal" placeholder="0"></div>');
+    form.elements.seguimiento_anterior_id.insertAdjacentHTML('beforebegin', '<div class="form-group"><label for="siigoGestionAnterior">Seguimiento anterior (opcional)</label><select id="siigoGestionAnterior" name="seguimiento_anterior_id"><option value="">Sin relación</option></select></div>');
+    const seguimientoAnteriorSelect = form.elements.seguimiento_anterior_id;
+    const actualizarOpcionesRelacion = () => {
+        seguimientoAnteriorSelect.innerHTML = '<option value="">Sin relación</option>' + registros.map(item => `<option value="${item.id}">${codigoSeguimientoCarteraSiigo(item.id)} · ${escapeSiigo(item.estado_gestion)}</option>`).join('');
+    };
     const shellSeguimiento = dialogo.querySelector('.siigo-seguimiento-shell');
     const historialSection = dialogo.querySelector('.siigo-historial-cartera');
     historialSection.insertAdjacentHTML('beforebegin', estadoCuentaClienteCarteraSiigo(cliente));
@@ -1551,6 +1571,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
         enviarWhatsappBtn.disabled = !datos;
     };
     const vincularSeleccionHistorialSiigo = () => {
+        mostrarCodigosSeguimientoCarteraSiigo(historial);
         if (!registros.some(r => r.id === seleccionId)) seleccionId = null;
         historial.querySelectorAll('input[name="siigoSeguimientoSeleccion"]').forEach(radio => {
             radio.checked = Number(radio.value) === seleccionId;
@@ -1577,6 +1598,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
             const data = await leerRespuestaSiigo(response);
             if (!response.ok) throw new Error(data.error || 'No fue posible consultar el seguimiento.');
             registros = data.seguimientos;
+            actualizarOpcionesRelacion();
             historial.innerHTML = historialSeguimientoCarteraSiigo(registros, cliente);
             agregarAccionesComunicacionCompromisoSiigo(historial, registros, cliente);
             vincularSeleccionHistorialSiigo();
@@ -1641,6 +1663,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
             if (!response.ok) throw new Error(data.error || 'No fue posible guardar el seguimiento.');
             registros.push(data.seguimiento);
             registros.sort((a, b) => b.fecha_gestion.localeCompare(a.fecha_gestion) || b.created_at.localeCompare(a.created_at) || b.id - a.id);
+            actualizarOpcionesRelacion();
             historial.innerHTML = historialSeguimientoCarteraSiigo(registros, cliente);
             agregarAccionesComunicacionCompromisoSiigo(historial, registros, cliente);
             vincularSeleccionHistorialSiigo();
@@ -1734,6 +1757,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
         form.hidden = false;
         nuevo.hidden = true;
         form.elements.seguimiento_anterior_id.value = item.id;
+        seguimientoAnteriorSelect.value = item.id;
         form.elements.estado_gestion.value = 'CUMPLIDO';
         form.elements.observaciones.value = `Resultado del compromiso ${item.id}.`;
         form.elements.valor_compromiso.value = '';
