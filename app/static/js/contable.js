@@ -1175,7 +1175,8 @@ async function consultarFacturasVencidasSiigo(form) {
         const filtroExtra = panel._filtroProximoHoyCartera
             ? ' · Próximo seguimiento hoy'
             : (panel._filtroSeguimientoVencidoCartera ? ' · Seguimientos vencidos' : '');
-        panel.querySelector('[data-vencidas-meta]').textContent = `Cartera a corte: ${formatoSiigoFecha(data.fecha_corte)} | Días calculados al: ${formatoSiigoFecha(data.fecha_dias || data.fecha_corte)} | ${estadoFacturas}${nombre ? ` · Cliente: ${nombre}` : ''}${filtroExtra}`;
+        const faltantesMora = data.tasas_mora_faltantes?.length ? ` | ⚠️ Faltan tasas: ${data.tasas_mora_faltantes.join(', ')}` : '';
+        panel.querySelector('[data-vencidas-meta]').textContent = `Cartera a corte: ${formatoSiigoFecha(data.fecha_corte)} | Días calculados al: ${formatoSiigoFecha(data.fecha_dias || data.fecha_corte)} | ${estadoFacturas}${nombre ? ` · Cliente: ${nombre}` : ''}${filtroExtra}${faltantesMora}`;
         panel._datosVencidas = data;
         actualizarAlertasCarteraSiigo(panel);
         const buscadorResultado = panel.querySelector('#siigoVencidasBuscarResultado');

@@ -1169,6 +1169,32 @@ def _tasa_diaria_desde_anual(tasa_anual):
     return Decimal(str(math.pow(1 + float(tasa_anual), 1 / 365) - 1)).quantize(Decimal('0.00000000000001'))
 
 
+def _calcular_mora_por_tramos(saldo, vencimiento, fecha_corte):
+    """Calcula mora diaria aplicando la tasa del año/mes de cada tramo."""
+    saldo = Decimal(str(saldo or 0))
+    inicio = vencimiento + timedelta(days=1)
+    if saldo <= 0 or inicio > fecha_corte:
+        return Decimal('0.00'), []
+    tasas = {(item.anio, item.mes): item for item in TasaInteresMora.query.filter(
+        TasaInteresMora.anio.between(inicio.year, fecha_corte.year),
+    ).all()}
+    interes = Decimal('0')
+    faltantes = set()
+    cursor = inicio
+    while cursor <= fecha_corte:
+        clave = (cursor.year, cursor.month)
+        fin_mes = date(cursor.year + (1 if cursor.month == 12 else 0), 1 if cursor.month == 12 else cursor.month + 1, 1) - timedelta(days=1)
+        fin_tramo = min(fin_mes, fecha_corte)
+        tasa = tasas.get(clave)
+        dias = (fin_tramo - cursor).days + 1
+        if tasa is None:
+            faltantes.add(f'{cursor.year}-{cursor.month:02d}')
+        else:
+            interes += saldo * Decimal(str(tasa.tasa_diaria)) * dias
+        cursor = fin_tramo + timedelta(days=1)
+    return interes.quantize(Decimal('0.01')), sorted(faltantes)
+
+
 @contable_bp.route('/tasas-interes-mora', methods=['GET', 'POST', 'PATCH'])
 @login_required
 def tasas_interes_mora():
@@ -2343,6 +2369,7 @@ def cartera_dinamica():
             saldo = max(saldo_factura(item), Decimal('0'))
             vencimiento = item['fecha_vencimiento'] or item['fecha_factura']
             dias_vencido = (fecha_dias - vencimiento).days
+            interes_mora, tasas_mora_faltantes = _calcular_mora_por_tramos(saldo, vencimiento, fecha_dias)
             periodo = item['fecha_factura'].strftime('%Y-%m')
             resumen = periodos.setdefault(periodo, {
                 'periodo': periodo, 'facturado': Decimal('0'), 'recaudado': Decimal('0'), 'ajustes_ac': Decimal('0'), 'notas_credito': Decimal('0'), 'notas_debito': Decimal('0'), 'saldo': Decimal('0'),
@@ -2386,6 +2413,8 @@ def cartera_dinamica():
                 'vencido_31_60': Decimal('0'),
                 'vencido_61_90': Decimal('0'),
                 'vencido_91_mas': Decimal('0'),
+                'intereses_mora': Decimal('0'),
+                'total_con_mora': Decimal('0'),
                 'facturas': [],
             })
             resumen_cliente['facturado'] += item['valor_factura']
@@ -2395,6 +2424,8 @@ def cartera_dinamica():
             resumen_cliente['notas_debito'] += item['notas_debito']
             resumen_cliente['otros_movimientos'] += item['otros_movimientos']
             resumen_cliente['saldo'] += saldo
+            resumen_cliente['intereses_mora'] += interes_mora
+            resumen_cliente['total_con_mora'] += saldo + interes_mora
             if dias_vencido <= 0:
                 resumen_cliente['por_vencer'] += saldo
             elif dias_vencido <= 30:
@@ -2417,6 +2448,9 @@ def cartera_dinamica():
                 'otros_movimientos': item['otros_movimientos'],
                 'saldo': saldo,
                 'dias_vencido': dias_vencido,
+                'interes_mora': interes_mora,
+                'total_con_mora': saldo + interes_mora,
+                'tasas_mora_faltantes': tasas_mora_faltantes,
                 'movimientos': sorted(item['movimientos'], key=lambda mov: (mov['fecha'], mov['comprobante'], mov['secuencia'])),
             })
 
@@ -2490,6 +2524,7 @@ def cartera_dinamica():
             }
             estado_facturas = request.args.get('estado_facturas') or ('por_vencer' if request.args.get('solo_por_vencer') == '1' else 'todos')
             clientes = _clientes_facturas_vencidas(cartera_por_cliente.values(), vendedores, estado_facturas)
+            tasas_mora_faltantes = sorted({periodo for cliente in clientes for factura in cliente['facturas'] for periodo in factura.get('tasas_mora_faltantes', [])})
             agrupaciones = _clientes_agrupados_por_responsable(clientes_maestro_informe)
             claves = {_nit_cartera(c['identificacion']) for c in clientes}
             seguimientos = {}
@@ -2519,6 +2554,7 @@ def cartera_dinamica():
                 'notas_debito_sin_asignar': float(notas_debito_sin_asignar),
                 'otros_sin_asignar': float(otros_sin_asignar),
                 'movimientos_sin_asignar': movimientos_sin_asignar,
+                'tasas_mora_faltantes': tasas_mora_faltantes,
                 'pagos_sin_factura': pagos_sin_factura,
                 'ajustes_ac_sin_factura': ajustes_ac_sin_factura,
             })
