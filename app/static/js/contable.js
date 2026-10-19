@@ -1115,7 +1115,7 @@ function renderTablaFacturasVencidasSiigo(panel) {
     dataTabla._agruparPorVendedor = !!panel._filtroAnexoAdministrativo;
     panel._clientesSeguimientoVisibles = dataTabla.clientes || [];
     panel._clientesSeguimientoBase = panel._datosVencidas?.clientes || [];
-    resultado.innerHTML = tablaFacturasVencidasSiigo(dataTabla);
+    resultado.innerHTML = panel._filtroAnexoAdministrativo ? tablaSeguimientosAdministrativosCarteraSiigo(dataTabla, panel._filtroAnexoAdministrativo) : tablaFacturasVencidasSiigo(dataTabla);
     resultado.onclick = event => {
         const boton = event.target.closest('[data-siigo-seguimiento]');
         if (!boton) return;
@@ -1217,6 +1217,23 @@ function agregarAccionesComunicacionCompromisoSiigo(contenedor, registros, clien
 
 function codigoSeguimientoCarteraSiigo(id) {
     return `GC-${String(id).padStart(6, '0')}`;
+}
+
+function tablaSeguimientosAdministrativosCarteraSiigo(data, tipo) {
+    const filas = [];
+    (data.clientes || []).forEach((cliente, indice) => {
+        (cliente.seguimientos || []).forEach(seguimiento => {
+            const aplica = tipo === 'REVISION_INTERNA'
+                ? seguimiento.estado_gestion === 'REVISION_INTERNA'
+                : tipo === 'PENDIENTE_CONTABILIZAR'
+                    ? (seguimiento.comprobantes_pago || []).some(a => ['PENDIENTE_POR_CONTABILIZAR', 'VALIDADO'].includes(a.estado_validacion))
+                    : true;
+            if (!aplica) return;
+            filas.push(`<tr><td>${escapeSiigo(cliente.vendedor || 'Sin vendedor')}</td><td><strong>${escapeSiigo(codigoSeguimientoCarteraSiigo(seguimiento.id))}</strong></td><td>${escapeSiigo(cliente.cliente)}</td><td>${escapeSiigo(seguimiento.estado_gestion || '')}</td><td>${seguimiento.comprobantes_pago?.length || 0}</td><td>${escapeSiigo(formatoSiigoFecha(seguimiento.fecha_gestion))}</td><td><button type="button" class="siigo-seguimiento-icono" data-siigo-seguimiento="${indice}" aria-label="Abrir seguimiento">Abrir</button></td></tr>`);
+        });
+    });
+    if (!filas.length) return '<p class="siigo-vencidas-vacio">No hay seguimientos para esta alerta.</p>';
+    return `<div class="siigo-tabla-con-encabezado-fijo"><table class="data-table"><thead><tr><th>Vendedor</th><th>Seguimiento</th><th>Cliente</th><th>Estado</th><th>Anexos</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>${filas.join('')}</tbody></table></div>`;
 }
 
 function anexosAdministrativosClienteCarteraSiigo(cliente, estado) {
