@@ -1174,6 +1174,14 @@ def _serializar_seguimiento_cartera(registro):
         'fecha_compromiso': registro.fecha_compromiso.isoformat() if registro.fecha_compromiso else None,
         'valor_compromiso': float(registro.valor_compromiso) if registro.valor_compromiso is not None else None,
         'valor_pagado': float(registro.valor_pagado) if registro.valor_pagado is not None else None,
+        'prejuridico_estado': registro.prejuridico_estado,
+        'prejuridico_motivo': registro.prejuridico_motivo,
+        'prejuridico_aprobado_por': registro.prejuridico_aprobado_por,
+        'prejuridico_aprobado_at': registro.prejuridico_aprobado_at.isoformat() + 'Z' if registro.prejuridico_aprobado_at else None,
+        'prejuridico_enviado_por': registro.prejuridico_enviado_por,
+        'prejuridico_enviado_at': registro.prejuridico_enviado_at.isoformat() + 'Z' if registro.prejuridico_enviado_at else None,
+        'prejuridico_destinatario': registro.prejuridico_destinatario,
+        'prejuridico_referencia': registro.prejuridico_referencia,
         'proximo_seguimiento': registro.proximo_seguimiento.isoformat() if registro.proximo_seguimiento else None,
         'registrado_por': registro.usuario_nombre,
         'fecha_hora_gestion': (registro.fecha_hora_gestion or registro.created_at).isoformat(),
@@ -1530,6 +1538,7 @@ def seguimiento_cartera():
                 medio=medio, estado_gestion=estado_gestion, contacto=contacto or None,
                 observaciones=observaciones, valor_compromiso=valor,
                 valor_pagado=valor_pagado, seguimiento_anterior_id=anterior.id if anterior else None,
+                prejuridico_estado='PENDIENTE_APROBACION' if estado_gestion == 'PREJURIDICO' else None,
                 usuario_id=current_user.id, usuario_nombre=current_user.nombre_completo,
                 **fechas,
             )
@@ -1580,6 +1589,14 @@ def alertas_seguimiento_cartera():
                 continue
             if tipo.startswith('ESTADO_') and registro.estado_gestion != tipo[7:]:
                 continue
+            if tipo == 'PREJURIDICO_PENDIENTE' and registro.prejuridico_estado != 'PENDIENTE_APROBACION':
+                continue
+            if tipo == 'PREJURIDICO_ENVIO' and registro.prejuridico_estado != 'PENDIENTE_ENVIO_ABOGADO':
+                continue
+            if tipo == 'PREJURIDICO_DEVUELTO' and registro.prejuridico_estado != 'DEVUELTO_VENDEDOR':
+                continue
+            if tipo == 'OTROS' and registro.estado_gestion == 'PREJURIDICO':
+                continue
             item = _serializar_seguimiento_cartera(registro)
             vendedor = getattr(cliente, 'vendedor', None) if cliente else None
             item.update({'vendedor': getattr(vendedor, 'nombre', None) or 'Sin vendedor', 'cliente': registro.cliente_nombre, 'anexos': len(anexos)})
@@ -1587,6 +1604,50 @@ def alertas_seguimiento_cartera():
         return jsonify({'tipo': tipo, 'seguimientos': resultado})
     except PermissionError as exc:
         return jsonify(error=str(exc)), 403
+
+
+@contable_bp.route('/seguimiento-cartera/<int:seguimiento_id>/prejuridico', methods=['PATCH'])
+@login_required
+def gestionar_prejuridico_cartera(seguimiento_id):
+    try:
+        _requiere_ventas()
+        if not es_administrador():
+            raise PermissionError('Solo un administrador puede gestionar prejurídicos.')
+        registro = _seguimiento_cartera_visible(seguimiento_id)
+        if registro is None or registro.estado_gestion != 'PREJURIDICO':
+            return jsonify(error='Solicitud de prejurídico no encontrada.'), 404
+        datos = request.get_json(silent=True) or {}
+        accion = _texto(datos.get('accion')).upper()
+        motivo = _texto(datos.get('motivo'))
+        if accion == 'APROBAR':
+            registro.prejuridico_estado = 'PENDIENTE_ENVIO_ABOGADO'
+            registro.prejuridico_motivo = None
+            registro.prejuridico_aprobado_por = current_user.nombre_completo
+            registro.prejuridico_aprobado_at = datetime.utcnow()
+        elif accion == 'DEVOLVER':
+            if not motivo:
+                raise ValueError('Indique el motivo de la devolución.')
+            registro.prejuridico_estado = 'DEVUELTO_VENDEDOR'
+            registro.prejuridico_motivo = motivo
+        elif accion == 'ENVIAR_ABOGADO':
+            if registro.prejuridico_estado != 'PENDIENTE_ENVIO_ABOGADO':
+                raise ValueError('El prejurídico debe estar aprobado antes de enviarlo.')
+            destinatario = _texto(datos.get('destinatario'))
+            referencia = _texto(datos.get('referencia'))
+            if not destinatario:
+                raise ValueError('Indique el abogado o destinatario.')
+            registro.prejuridico_estado = 'ENVIADO_ABOGADO'
+            registro.prejuridico_enviado_por = current_user.nombre_completo
+            registro.prejuridico_enviado_at = datetime.utcnow()
+            registro.prejuridico_destinatario = destinatario
+            registro.prejuridico_referencia = referencia or None
+        else:
+            raise ValueError('Acción de prejurídico no válida.')
+        db.session.commit()
+        return jsonify(seguimiento=_serializar_seguimiento_cartera(registro))
+    except (ValueError, PermissionError) as exc:
+        db.session.rollback()
+        return jsonify(error=str(exc)), 403 if isinstance(exc, PermissionError) else 400
 
 
 @contable_bp.route('/seguimiento-cartera/<int:seguimiento_id>/comprobantes', methods=['POST'])
