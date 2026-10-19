@@ -1594,6 +1594,14 @@ def alertas_seguimiento_cartera():
                 continue
             if tipo == 'PREJURIDICO_PENDIENTE' and not (registro.estado_gestion == 'PREJURIDICO' and registro.prejuridico_estado in {None, 'PENDIENTE_APROBACION'}):
                 continue
+            if tipo == 'PREJURIDICO_GENERAR' and registro.prejuridico_estado != 'PENDIENTE_ENVIO_ABOGADO':
+                continue
+            if tipo == 'PREJURIDICO_ENVIAR' and registro.prejuridico_estado != 'GENERADO_PENDIENTE_ENVIO':
+                continue
+            if tipo == 'PREJURIDICO_ENVIADOS' and registro.prejuridico_estado != 'ENVIADO_ABOGADO':
+                continue
+            if tipo == 'PREJURIDICO_DEVUELTOS' and registro.prejuridico_estado != 'DEVUELTO_VENDEDOR':
+                continue
             if tipo == 'PREJURIDICO_ENVIO' and registro.prejuridico_estado != 'PENDIENTE_ENVIO_ABOGADO':
                 continue
             if tipo == 'PREJURIDICO_DEVUELTO' and registro.prejuridico_estado != 'DEVUELTO_VENDEDOR':
