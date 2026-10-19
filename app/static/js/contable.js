@@ -1270,7 +1270,7 @@ function abrirBandejaPrejuridicosCarteraSiigo(panel) {
     const opciones = [['PREJURIDICO_PENDIENTE', 'Pendientes por aprobar'], ['PREJURIDICO_GENERAR', 'Pendientes por generar'], ['PREJURIDICO_ENVIAR', 'Pendientes por enviar al abogado'], ['PREJURIDICO_ENVIADOS', 'Enviados al abogado'], ['PREJURIDICO_DEVUELTOS', 'Devueltos al vendedor']];
     const dialogo = document.createElement('dialog');
     dialogo.className = 'siigo-seguimiento-dialogo';
-    dialogo.innerHTML = `<div class="siigo-seguimiento-shell"><div class="siigo-seguimiento-cabecera"><div><h2>Bandeja de prejurídicos</h2><p>Seleccione la etapa que desea consultar.</p></div><button type="button" class="btn btn-primary" data-cerrar>Regresar</button></div><div class="siigo-cartera-alertas">${opciones.map(([tipo, nombre]) => `<button type="button" class="siigo-alerta-card siigo-pendiente" data-prejuridico-etapa="${tipo}"><span>${nombre}</span><small>Ver detalle</small></button>`).join('')}</div></div>`;
+    dialogo.innerHTML = `<div class="siigo-seguimiento-shell"><div class="siigo-seguimiento-cabecera"><div><h2>Bandeja de prejurídicos</h2><p>Seleccione la etapa que desea consultar.</p></div><button type="button" class="btn btn-primary" data-cerrar>Regresar</button></div><div class="siigo-cartera-alertas">${opciones.map(([tipo, nombre]) => `<button type="button" class="siigo-alerta-card siigo-pendiente" data-prejuridico-etapa="${tipo}"><span>${nombre}</span><small>Ver detalle</small></button>`).join('')}</div>${esAdministradorCarteraSiigo() ? '<div class="button-group"><button type="button" class="btn btn-secondary" data-tasas-mora>Administrar tasas de interés</button></div>' : ''}</div>`;
     document.body.appendChild(dialogo);
     dialogo.showModal();
     dialogo.querySelector('[data-cerrar]').addEventListener('click', () => dialogo.close());
@@ -1279,6 +1279,20 @@ function abrirBandejaPrejuridicosCarteraSiigo(panel) {
         dialogo.close();
         abrirDetalleAlertaAdministrativaCarteraSiigo(panel, boton.dataset.prejuridicoEtapa, true);
     }));
+    dialogo.querySelector('[data-tasas-mora]')?.addEventListener('click', () => abrirTasasInteresMoraCarteraSiigo(dialogo));
+}
+
+async function abrirTasasInteresMoraCarteraSiigo(bandeja) {
+    const dialogo = document.createElement('dialog');
+    dialogo.className = 'siigo-seguimiento-dialogo';
+    dialogo.innerHTML = `<div class="siigo-seguimiento-shell"><div class="siigo-seguimiento-cabecera"><div><h2>Tasas de interés de mora</h2><p>Importe el histórico o registre la tasa anual del mes actual.</p></div><button type="button" class="btn btn-primary" data-cerrar>Cerrar</button></div><p data-tasas-estado role="status"></p><form data-tasas-form enctype="multipart/form-data"><div class="form-group"><label>Importar Excel histórico</label><input name="archivo" type="file" accept=".xlsx"><button type="submit" class="btn btn-secondary">Cargar Excel</button></div><hr><div class="form-row siigo-form-dos"><div class="form-group"><label>Año</label><input name="anio" type="number" min="2000" required></div><div class="form-group"><label>Mes</label><input name="mes" type="number" min="1" max="12" required></div></div><div class="form-group"><label>Tasa anual (%)</label><input name="tasa_anual_porcentaje" type="number" min="0.0001" step="0.0001" required></div><button type="submit" class="btn btn-primary">Guardar tasa anual</button></form><div data-tasas-lista></div></div>`;
+    document.body.appendChild(dialogo); dialogo.showModal();
+    dialogo.querySelector('[data-cerrar]').addEventListener('click', () => dialogo.close());
+    dialogo.addEventListener('close', () => dialogo.remove(), { once: true });
+    const estado = dialogo.querySelector('[data-tasas-estado]');
+    const cargar = async () => { const r = await fetch('/api/contable/tasas-interes-mora', { credentials: 'include' }); const d = await leerRespuestaSiigo(r); if (!r.ok) throw new Error(d.error || 'No fue posible consultar las tasas.'); const nombreMes = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']; dialogo.querySelector('[data-tasas-lista]').innerHTML = `<h3>Histórico</h3><div class="siigo-tabla-con-encabezado-fijo"><table class="data-table"><thead><tr><th>Período</th><th>Tasa anual</th><th>Tasa diaria</th><th>Fuente</th></tr></thead><tbody>${(d.tasas || []).map(t => `<tr><td>${nombreMes[t.mes]} ${t.anio}</td><td>${Number(t.tasa_anual_porcentaje).toFixed(4)}%</td><td>${(Number(t.tasa_diaria_porcentaje) * 100).toFixed(6)}%</td><td>${escapeSiigo(t.fuente || '')}</td></tr>`).join('') || '<tr><td colspan="4">No hay tasas cargadas.</td></tr>'}</tbody></table></div>${d.vigente ? `<p class="form-help">Tasa vigente cargada: ${nombreMes[d.vigente.mes]} ${d.vigente.anio} · ${Number(d.vigente.tasa_anual_porcentaje).toFixed(4)}%</p>` : '<p class="siigo-alerta-cartera siigo-vencido">Falta la tasa del mes actual.</p>'}`; };
+    try { await cargar(); } catch (e) { estado.textContent = e.message; }
+    dialogo.querySelector('[data-tasas-form]').addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; const archivo = form.elements.archivo.files[0]; const datos = archivo ? new FormData(form) : Object.fromEntries(new FormData(form)); estado.textContent = 'Guardando...'; try { const r = await fetch('/api/contable/tasas-interes-mora', { method: 'POST', credentials: 'include', body: archivo ? datos : JSON.stringify(datos), headers: archivo ? {} : { 'Content-Type': 'application/json' } }); const d = await leerRespuestaSiigo(r); if (!r.ok) throw new Error(d.error || 'No fue posible guardar la tasa.'); form.reset(); estado.textContent = archivo ? `Se importaron ${d.importados} tasas.` : 'Tasa guardada y tasa diaria calculada.'; await cargar(); } catch (e) { estado.textContent = e.message; } });
 }
 
 function anexosAdministrativosClienteCarteraSiigo(cliente, estado) {

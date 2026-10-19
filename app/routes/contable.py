@@ -7,6 +7,7 @@ from io import BytesIO
 import re
 import threading
 import unicodedata
+import math
 from zoneinfo import ZoneInfo
 
 from flask import jsonify, request, send_file, current_app
@@ -14,6 +15,7 @@ from flask_login import current_user, login_required
 from markupsafe import escape
 from sqlalchemy import func, or_
 from werkzeug.utils import secure_filename
+from openpyxl import load_workbook
 
 # Estado en memoria de la importacion de clientes en segundo plano.
 _ESTADO_CARGA_CLIENTES = {}
@@ -32,6 +34,7 @@ from app.models import (
     SiigoSeguimientoCartera,
     SiigoComprobantePago,
     SiigoComprobantePagoRecibido,
+    TasaInteresMora,
     Vendedor,
     db,
 )
@@ -1147,6 +1150,82 @@ ESTADOS_GESTION_CARTERA = {'SIN_GESTION', 'NO_LOCALIZADO', 'EN_PROCESO', 'CON_CO
 ESTADOS_VALIDACION_ANEXO_CARTERA = {'PENDIENTE', 'VALIDADO', 'RECHAZADO', 'PENDIENTE_POR_CONTABILIZAR', 'CONTABILIZADO'}
 TIPOS_CHAT_CARTERA = {'AUTORIZACION_ARREGLO', 'SOLICITUD_INFO', 'GENERAL'}
 ESTADOS_CHAT_CARTERA = {'ABIERTO', 'AUTORIZADO', 'RECHAZADO', 'CERRADO'}
+FUENTE_TASA_USURA = 'https://www.larepublica.co/indicadores-economicos/bancos/tasa-de-usura'
+
+
+def _serializar_tasa_mora(tasa):
+    return {
+        'id': tasa.id, 'anio': tasa.anio, 'mes': tasa.mes,
+        'tasa_anual': float(tasa.tasa_anual), 'tasa_diaria': float(tasa.tasa_diaria),
+        'tasa_anual_porcentaje': float(tasa.tasa_anual) * 100,
+        'tasa_diaria_porcentaje': float(tasa.tasa_diaria) * 100,
+        'fuente': tasa.fuente, 'observaciones': tasa.observaciones,
+        'registrado_por': tasa.registrado_por,
+        'created_at': tasa.created_at.isoformat() + 'Z',
+    }
+
+
+def _tasa_diaria_desde_anual(tasa_anual):
+    return Decimal(str(math.pow(1 + float(tasa_anual), 1 / 365) - 1)).quantize(Decimal('0.00000000000001'))
+
+
+@contable_bp.route('/tasas-interes-mora', methods=['GET', 'POST', 'PATCH'])
+@login_required
+def tasas_interes_mora():
+    try:
+        _requiere_ventas()
+        if not es_administrador():
+            raise PermissionError('Solo un administrador puede mantener las tasas de interés.')
+        if request.method == 'GET':
+            anio = request.args.get('anio', type=int)
+            query = TasaInteresMora.query
+            if anio: query = query.filter_by(anio=anio)
+            tasas = query.order_by(TasaInteresMora.anio.desc(), TasaInteresMora.mes.desc()).all()
+            hoy = datetime.now(ZoneInfo('America/Bogota'))
+            vigente = TasaInteresMora.query.filter_by(anio=hoy.year, mes=hoy.month).first()
+            return jsonify({'tasas': [_serializar_tasa_mora(tasa) for tasa in tasas], 'vigente': _serializar_tasa_mora(vigente) if vigente else None, 'fuente_sugerida': FUENTE_TASA_USURA})
+
+        datos = request.form if request.files else (request.get_json(silent=True) or {})
+        archivo = request.files.get('archivo') if request.files else None
+        importados = 0
+        if archivo:
+            libro = load_workbook(archivo, data_only=True)
+            hoja = libro['anual'] if 'anual' in libro.sheetnames else libro.active
+            for fila in hoja.iter_rows(min_row=2, values_only=True):
+                mes = next((i for i in range(1, 13) if str(fila[0] or '').strip().lower() in [datetime(2020, i, 1).strftime('%B').lower(), ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'][i-1]]), None)
+                if not mes: continue
+                for columna in range(1, min(len(fila), 4)):
+                    valor = fila[columna]
+                    if not isinstance(valor, (int, float)) or valor <= 0: continue
+                    tasa = TasaInteresMora.query.filter_by(anio=2023 + columna, mes=mes).first()
+                    if tasa is None:
+                        tasa = TasaInteresMora(anio=2023 + columna, mes=mes, registrado_por=current_user.nombre_completo)
+                        db.session.add(tasa)
+                    tasa.tasa_anual = Decimal(str(valor))
+                    tasa.tasa_diaria = _tasa_diaria_desde_anual(tasa.tasa_anual)
+                    tasa.fuente = 'Importación Excel: ' + (archivo.filename or 'archivo')
+                    importados += 1
+            db.session.commit()
+            return jsonify({'importados': importados}), 201
+
+        anio = int(datos.get('anio'))
+        mes = int(datos.get('mes'))
+        porcentaje = Decimal(str(datos.get('tasa_anual_porcentaje')))
+        if anio < 2000 or not 1 <= mes <= 12 or porcentaje <= 0 or porcentaje >= 1000:
+            raise ValueError('Año, mes y tasa anual no válidos.')
+        tasa = TasaInteresMora.query.filter_by(anio=anio, mes=mes).first()
+        if tasa is None:
+            tasa = TasaInteresMora(anio=anio, mes=mes, registrado_por=current_user.nombre_completo)
+            db.session.add(tasa)
+        tasa.tasa_anual = porcentaje / 100
+        tasa.tasa_diaria = _tasa_diaria_desde_anual(tasa.tasa_anual)
+        tasa.fuente = _texto(datos.get('fuente')) or FUENTE_TASA_USURA
+        tasa.observaciones = _texto(datos.get('observaciones')) or None
+        db.session.commit()
+        return jsonify({'tasa': _serializar_tasa_mora(tasa)}), 201
+    except (ValueError, TypeError, InvalidOperation, PermissionError) as exc:
+        db.session.rollback()
+        return jsonify(error=str(exc)), 403 if isinstance(exc, PermissionError) else 400
 
 
 def _serializar_seguimiento_cartera(registro):
@@ -1657,6 +1736,9 @@ def gestionar_prejuridico_cartera(seguimiento_id):
         elif accion == 'GENERAR':
             if registro.prejuridico_estado != 'PENDIENTE_ENVIO_ABOGADO':
                 raise ValueError('El prejurídico debe estar aprobado antes de generar el documento.')
+            hoy = datetime.now(ZoneInfo('America/Bogota'))
+            if TasaInteresMora.query.filter_by(anio=hoy.year, mes=hoy.month).first() is None:
+                raise ValueError(f'No está registrada la tasa de interés de mora de {hoy.month:02d}/{hoy.year}. Actualícela desde Administrar tasas de interés.')
             registro.prejuridico_generado_por = current_user.nombre_completo
             registro.prejuridico_generado_at = datetime.utcnow()
             registro.prejuridico_documento_version = (registro.prejuridico_documento_version or 0) + 1

@@ -680,6 +680,23 @@ class SiigoSeguimientoCartera(db.Model):
     seguimientos_siguientes = db.relationship('SiigoSeguimientoCartera', back_populates='seguimiento_anterior', lazy='selectin')
 
 
+class TasaInteresMora(db.Model):
+    """Tasa anual mensual y su equivalente diario para cálculo de mora."""
+    __tablename__ = 'tasas_interes_mora'
+
+    id = db.Column(db.Integer, primary_key=True)
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    tasa_anual = db.Column(Numeric(12, 10), nullable=False)
+    tasa_diaria = db.Column(Numeric(16, 14), nullable=False)
+    fuente = db.Column(db.String(500))
+    observaciones = db.Column(db.Text)
+    registrado_por = db.Column(db.String(200), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    __table_args__ = (db.UniqueConstraint('anio', 'mes', name='uq_tasa_interes_mora_periodo'),)
+
+
 class SiigoComprobantePago(db.Model):
     """Soportes de cartera persistentes también cuando se redespliega la web."""
     __tablename__ = 'siigo_comprobantes_pago'
