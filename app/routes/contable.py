@@ -1142,7 +1142,7 @@ def _estado_compromiso(registro, hoy=None):
     return 'vencido' if dias < 0 else 'proximo' if dias <= 3 else 'pendiente'
 
 
-ESTADOS_GESTION_CARTERA = {'SIN_GESTION', 'NO_LOCALIZADO', 'EN_PROCESO', 'CON_COMPROMISO', 'REVISION_INTERNA', 'VALIDADO', 'RECHAZADO', 'RECIBO_CAJA', 'PREJURIDICO'}
+ESTADOS_GESTION_CARTERA = {'SIN_GESTION', 'NO_LOCALIZADO', 'EN_PROCESO', 'CON_COMPROMISO', 'CUMPLIDO', 'CUMPLIDO_PARCIALMENTE', 'REVISION_INTERNA', 'VALIDADO', 'RECHAZADO', 'RECIBO_CAJA', 'PREJURIDICO'}
 ESTADOS_VALIDACION_ANEXO_CARTERA = {'PENDIENTE', 'VALIDADO', 'RECHAZADO'}
 TIPOS_CHAT_CARTERA = {'AUTORIZACION_ARREGLO', 'SOLICITUD_INFO', 'GENERAL'}
 ESTADOS_CHAT_CARTERA = {'ABIERTO', 'AUTORIZADO', 'RECHAZADO', 'CERRADO'}
@@ -1151,6 +1151,7 @@ ESTADOS_CHAT_CARTERA = {'ABIERTO', 'AUTORIZADO', 'RECHAZADO', 'CERRADO'}
 def _serializar_seguimiento_cartera(registro):
     return {
         'id': registro.id,
+        'seguimiento_anterior_id': registro.seguimiento_anterior_id,
         'identificacion': registro.identificacion,
         'estado_gestion': registro.estado_gestion,
         'comprobantes_pago': [{'id': a.id, 'nombre': a.nombre, 'tamano_bytes': a.tamano_bytes,
@@ -1168,6 +1169,7 @@ def _serializar_seguimiento_cartera(registro):
         'observaciones': registro.observaciones,
         'fecha_compromiso': registro.fecha_compromiso.isoformat() if registro.fecha_compromiso else None,
         'valor_compromiso': float(registro.valor_compromiso) if registro.valor_compromiso is not None else None,
+        'valor_pagado': float(registro.valor_pagado) if registro.valor_pagado is not None else None,
         'proximo_seguimiento': registro.proximo_seguimiento.isoformat() if registro.proximo_seguimiento else None,
         'registrado_por': registro.usuario_nombre,
         'fecha_hora_gestion': (registro.fecha_hora_gestion or registro.created_at).isoformat(),
@@ -1418,11 +1420,7 @@ def seguimiento_cartera():
                 return jsonify({'error': 'Seguimiento no encontrado.'}), 404
             if not registro.fecha_compromiso:
                 raise ValueError('Este seguimiento no tiene compromiso de pago.')
-            if not registro.compromiso_cumplido_at:
-                registro.compromiso_cumplido_at = datetime.utcnow()
-                registro.compromiso_cumplido_por = current_user.nombre_completo
-                db.session.commit()
-            return jsonify({'seguimiento': _serializar_seguimiento_cartera(registro)})
+            raise ValueError('Los compromisos son inmodificables. Registre una nueva gestión con el resultado del pago.')
         if request.method == 'GET':
             registros = SiigoSeguimientoCartera.query.filter_by(identificacion=clave).order_by(
                 SiigoSeguimientoCartera.fecha_gestion.desc(),
@@ -1456,7 +1454,7 @@ def seguimiento_cartera():
             fechas[campo] = _fecha(datos[campo]) if datos.get(campo) else None
             if fechas[campo] and fechas[campo] < fecha_gestion:
                 raise ValueError('El compromiso y el próximo seguimiento no pueden ser anteriores a la gestión.')
-        if not fechas['proximo_seguimiento']:
+        if not fechas['proximo_seguimiento'] and estado_gestion not in {'CUMPLIDO', 'CUMPLIDO_PARCIALMENTE'}:
             raise ValueError('Indique la fecha del próximo seguimiento.')
         valor = None
         if datos.get('valor_compromiso') not in (None, ''):
@@ -1469,6 +1467,27 @@ def seguimiento_cartera():
                 raise ValueError('Indique la fecha del compromiso de pago.')
         if estado_gestion == 'CON_COMPROMISO' and (not fechas['fecha_compromiso'] or valor is None):
             raise ValueError('Para el estado Con compromiso indique fecha y valor del compromiso.')
+        anterior_id = datos.get('seguimiento_anterior_id')
+        anterior = None
+        if anterior_id not in (None, ''):
+            anterior = SiigoSeguimientoCartera.query.filter_by(id=anterior_id, identificacion=clave).first()
+            if anterior is None:
+                raise ValueError('La gestión anterior no pertenece a este cliente.')
+        valor_pagado = None
+        if datos.get('valor_pagado') not in (None, ''):
+            valor_pagado = _decimal(datos['valor_pagado'])
+            if not valor_pagado.is_finite() or valor_pagado < 0:
+                raise ValueError('El valor pagado no es válido.')
+            if valor_pagado != valor_pagado.quantize(Decimal('0.01')):
+                raise ValueError('El valor pagado admite hasta dos decimales.')
+        if estado_gestion in {'CUMPLIDO', 'CUMPLIDO_PARCIALMENTE'} and anterior is None:
+            raise ValueError('Relacione el resultado con el compromiso anterior.')
+        if estado_gestion in {'CUMPLIDO', 'CUMPLIDO_PARCIALMENTE'} and valor_pagado is None:
+            raise ValueError('Indique el valor pagado.')
+        if estado_gestion == 'CUMPLIDO' and anterior is not None and anterior.valor_compromiso is not None and valor_pagado != anterior.valor_compromiso:
+            raise ValueError('El valor pagado debe corresponder al valor total del compromiso.')
+        if estado_gestion == 'CUMPLIDO_PARCIALMENTE' and anterior is not None and anterior.valor_compromiso is not None and valor_pagado >= anterior.valor_compromiso:
+            raise ValueError('El pago parcial debe ser menor al valor del compromiso.')
         identificaciones = [clave]
         if datos.get('alcance') == 'grupo':
             solicitadas = {_nit_cartera(item) for item in (datos.get('identificaciones_grupo') or [])}
@@ -1498,6 +1517,7 @@ def seguimiento_cartera():
                 fecha_gestion=fecha_gestion, fecha_hora_gestion=_fecha_hora_gestion(fecha_gestion),
                 medio=medio, estado_gestion=estado_gestion, contacto=contacto or None,
                 observaciones=observaciones, valor_compromiso=valor,
+                valor_pagado=valor_pagado, seguimiento_anterior_id=anterior.id if anterior else None,
                 usuario_id=current_user.id, usuario_nombre=current_user.nombre_completo,
                 **fechas,
             )
