@@ -776,9 +776,9 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
             const adminAlertas = ['REVISION_INTERNA', 'PENDIENTE_CONTABILIZAR', 'PENDIENTE_CORRECCION'];
             const nombres = { REVISION_INTERNA: 'Revisión interna', PENDIENTE_CONTABILIZAR: 'Pendientes por contabilizar', PENDIENTE_CORRECCION: 'Pendientes de corrección' };
             alertas.insertAdjacentHTML('afterbegin', adminAlertas.map(tipo => `<button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-anexo="${tipo}"><span>${nombres[tipo]}:</span><strong>${(data.clientes || []).reduce((n, cliente) => n + anexosAdministrativosClienteCarteraSiigo(cliente, tipo), 0)}</strong></button>`).join(''));
-            const revision = (data.clientes || []).reduce((n, c) => n + anexosAdministrativosClienteCarteraSiigo(c, 'REVISION_INTERNA'), 0);
-            const contabilizar = (data.clientes || []).reduce((n, c) => n + anexosAdministrativosClienteCarteraSiigo(c, 'PENDIENTE_CONTABILIZAR'), 0);
-            const otros = (data.clientes || []).filter(c => !anexosAdministrativosClienteCarteraSiigo(c, 'REVISION_INTERNA') && !anexosAdministrativosClienteCarteraSiigo(c, 'PENDIENTE_CONTABILIZAR')).length;
+            const revision = (data.clientes || []).reduce((n, c) => n + seguimientosAdministrativosClienteCarteraSiigo(c, 'REVISION_INTERNA'), 0);
+            const contabilizar = (data.clientes || []).reduce((n, c) => n + seguimientosAdministrativosClienteCarteraSiigo(c, 'PENDIENTE_CONTABILIZAR'), 0);
+            const otros = (data.clientes || []).reduce((n, c) => n + (c.seguimientos || []).filter(s => !['REVISION_INTERNA', 'VALIDADO', 'PENDIENTE_CORRECCION'].includes(s.estado_gestion)).length, 0);
             alertas.innerHTML = `<button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-anexo="REVISION_INTERNA"><span>Revisión interna</span><strong>${revision}</strong><small>Ver detalle</small></button><button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-anexo="PENDIENTE_CONTABILIZAR"><span>Pendientes por contabilizar</span><strong>${contabilizar}</strong><small>Ver detalle</small></button><button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-otros><span>Otros</span><strong>${otros}</strong><small>Ver detalle</small></button>`;
         }
         if (resumen) resumen.innerHTML = renderResumenInicioCarteraSiigo(resumenData, anio);
@@ -1112,6 +1112,7 @@ function renderTablaFacturasVencidasSiigo(panel) {
     const resultado = panel.querySelector('.siigo-vencidas-datos');
     if (!resultado) return;
     const dataTabla = dataTablaFacturasVencidasSiigo(panel);
+    dataTabla._agruparPorVendedor = !!panel._filtroAnexoAdministrativo;
     panel._clientesSeguimientoVisibles = dataTabla.clientes || [];
     panel._clientesSeguimientoBase = panel._datosVencidas?.clientes || [];
     resultado.innerHTML = tablaFacturasVencidasSiigo(dataTabla);
@@ -1225,6 +1226,14 @@ function anexosAdministrativosClienteCarteraSiigo(cliente, estado) {
         if (estado === 'PENDIENTE_CORRECCION') return (seguimiento.estado_gestion || '') === 'PENDIENTE_CORRECCION' || anexo.estado_validacion === 'RECHAZADO';
         return false;
     }).length, 0);
+}
+
+function seguimientosAdministrativosClienteCarteraSiigo(cliente, estado) {
+    return (cliente?.seguimientos || []).filter(seguimiento => {
+        if (estado === 'REVISION_INTERNA') return (seguimiento.estado_gestion || '') === 'REVISION_INTERNA';
+        if (estado === 'PENDIENTE_CONTABILIZAR') return (seguimiento.comprobantes_pago || []).some(anexo => ['PENDIENTE_POR_CONTABILIZAR', 'VALIDADO'].includes(anexo.estado_validacion));
+        return false;
+    }).length;
 }
 
 function mostrarCodigosSeguimientoCarteraSiigo(contenedor) {
@@ -1866,9 +1875,10 @@ function movimientosSinAsignarSiigo(movimientos) {
 
 function tablaFacturasVencidasSiigo(data) {
     const clientesOriginales = data.clientes || [];
+    const agruparPorVendedor = !!data._agruparPorVendedor;
     const clientes = clientesOriginales.map((cliente, indiceOriginal) => ({ cliente, indiceOriginal: Number.isInteger(cliente._indiceOriginal) ? cliente._indiceOriginal : indiceOriginal })).sort((a, b) => {
-        const responsableA = a.cliente.agrupacion_responsable?.responsable || 'Sin responsable';
-        const responsableB = b.cliente.agrupacion_responsable?.responsable || 'Sin responsable';
+        const responsableA = agruparPorVendedor ? (a.cliente.vendedor || 'Sin vendedor') : (a.cliente.agrupacion_responsable?.responsable || 'Sin responsable');
+        const responsableB = agruparPorVendedor ? (b.cliente.vendedor || 'Sin vendedor') : (b.cliente.agrupacion_responsable?.responsable || 'Sin responsable');
         return responsableA.localeCompare(responsableB, 'es') || (a.cliente.cliente || '').localeCompare(b.cliente.cliente || '', 'es');
     });
     if (!clientes.length) return '<p class="siigo-vencidas-vacio">No hay facturas con saldo pendiente para esta consulta.</p>';
@@ -1879,7 +1889,7 @@ function tablaFacturasVencidasSiigo(data) {
     const encabezados = Array.from({ length: cantidad }, (_, indice) => `<th>N.º factura ${indice + 1}</th><th>Vencimiento</th><th>Valor</th>`).join('');
     let responsableActual = null;
     const filas = clientes.map(({ cliente, indiceOriginal }) => {
-        const responsable = cliente.agrupacion_responsable?.responsable || 'Sin responsable';
+        const responsable = agruparPorVendedor ? (cliente.vendedor || 'Sin vendedor') : (cliente.agrupacion_responsable?.responsable || 'Sin responsable');
         const totalResponsable = clientes
             .filter(item => (item.cliente.agrupacion_responsable?.responsable || 'Sin responsable') === responsable)
             .reduce((suma, item) => suma + Number(item.cliente.total_cliente || 0), 0);
