@@ -1246,14 +1246,15 @@ function abrirCategoriasOtrosCarteraSiigo(panel) {
     const conteo = tipo => (panel._datosVencidas?.clientes || []).reduce((n, cliente) => n + (cliente.seguimientos || []).filter(s => s.estado_gestion === tipo.slice(7)).length, 0);
     const dialogo = document.createElement('dialog');
     dialogo.className = 'siigo-seguimiento-dialogo';
-    dialogo.innerHTML = `<div class="siigo-seguimiento-shell"><div class="siigo-seguimiento-cabecera"><div><h2>Otros seguimientos</h2><p>Seleccione el tipo de alerta que desea consultar.</p></div><button type="button" class="btn btn-primary" data-cerrar>Regresar</button></div><div class="siigo-cartera-alertas">${categorias.map(([tipo, nombre]) => `<button type="button" class="siigo-alerta-card siigo-pendiente" data-categoria-otros="${tipo}"><span>${nombre}</span><strong>${conteo(tipo)}</strong><small>Ver detalle</small></button>`).join('')}</div></div>`;
+    const visibles = categorias.filter(([tipo]) => conteo(tipo) > 0);
+    dialogo.innerHTML = `<div class="siigo-seguimiento-shell"><div class="siigo-seguimiento-cabecera"><div><h2>Otros seguimientos</h2><p>Seleccione el tipo de alerta que desea consultar.</p></div><button type="button" class="btn btn-primary" data-cerrar>Regresar</button></div><div class="siigo-cartera-alertas">${visibles.map(([tipo, nombre]) => `<button type="button" class="siigo-alerta-card siigo-pendiente" data-categoria-otros="${tipo}"><span>${nombre}</span><strong>${conteo(tipo)}</strong><small>Ver detalle</small></button>`).join('') || '<p>No hay otras alertas pendientes.</p>'}</div></div>`;
     document.body.appendChild(dialogo);
     dialogo.showModal();
     dialogo.querySelector('[data-cerrar]').addEventListener('click', () => dialogo.close());
     dialogo.addEventListener('close', () => dialogo.remove(), { once: true });
     dialogo.querySelectorAll('[data-categoria-otros]').forEach(boton => boton.addEventListener('click', () => {
         dialogo.close();
-        abrirDetalleAlertaAdministrativaCarteraSiigo(panel, boton.dataset.categoriaOtros);
+        abrirDetalleAlertaAdministrativaCarteraSiigo(panel, boton.dataset.categoriaOtros, true);
     }));
 }
 
@@ -1266,13 +1267,13 @@ function anexosAdministrativosClienteCarteraSiigo(cliente, estado) {
     }).length, 0);
 }
 
-async function abrirDetalleAlertaAdministrativaCarteraSiigo(panel, tipo) {
+async function abrirDetalleAlertaAdministrativaCarteraSiigo(panel, tipo, volverACategorias = false) {
     const dialogo = document.createElement('dialog');
     dialogo.className = 'siigo-seguimiento-dialogo';
     dialogo.innerHTML = `<div class="siigo-seguimiento-shell"><div class="siigo-seguimiento-cabecera"><div><h2>Detalle: ${escapeSiigo(tipo === 'REVISION_INTERNA' ? 'Revisión interna' : tipo === 'PENDIENTE_CONTABILIZAR' ? 'Pendientes por contabilizar' : 'Otros')}</h2><p>Seguimientos agrupados por vendedor</p></div><button type="button" class="btn btn-primary" data-cerrar>Regresar</button></div><p data-carga>Consultando seguimientos...</p><div data-detalle></div></div>`;
     document.body.appendChild(dialogo);
     dialogo.showModal();
-    dialogo.querySelector('[data-cerrar]').addEventListener('click', () => dialogo.close());
+    dialogo.querySelector('[data-cerrar]').addEventListener('click', () => { dialogo.close(); if (volverACategorias) abrirCategoriasOtrosCarteraSiigo(panel); });
     dialogo.addEventListener('close', () => dialogo.remove(), { once: true });
     try {
         const response = await fetch(`/api/contable/seguimiento-cartera/alertas?tipo=${encodeURIComponent(tipo)}`, { credentials: 'include' });
