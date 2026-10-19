@@ -767,6 +767,8 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
         if (esAdministradorCarteraSiigo() && !panel._filtroVendedorCartera) {
             const conteoAdmin = await fetch('/api/contable/seguimiento-cartera/alertas?tipo=REVISION_INTERNA', { credentials: 'include' }).then(leerRespuestaSiigo);
             panel._conteoRevisionInterna = conteoAdmin.seguimientos?.length || 0;
+            const conteoPre = await fetch('/api/contable/seguimiento-cartera/alertas?tipo=PREJURIDICO_PENDIENTE', { credentials: 'include' }).then(leerRespuestaSiigo);
+            panel._conteoPrejuridicos = conteoPre.seguimientos?.length || 0;
         }
         sincronizarOpcionSinVendedorCarteraSiigo(panel);
         panel._resumenInicioCartera = { anio: resumenData, anioSeleccionado: anio };
@@ -783,7 +785,8 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
             const revision = panel._conteoRevisionInterna ?? (data.clientes || []).reduce((n, c) => n + seguimientosAdministrativosClienteCarteraSiigo(c, 'REVISION_INTERNA'), 0);
             const contabilizar = (data.clientes || []).reduce((n, c) => n + seguimientosAdministrativosClienteCarteraSiigo(c, 'PENDIENTE_CONTABILIZAR'), 0);
             const otros = (data.clientes || []).reduce((n, c) => n + (c.seguimientos || []).filter(s => !['REVISION_INTERNA', 'VALIDADO', 'PENDIENTE_CORRECCION'].includes(s.estado_gestion)).length, 0);
-            alertas.innerHTML = `<button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-anexo="REVISION_INTERNA"><span>Revisión interna</span><strong>${revision}</strong><small>Ver detalle</small></button><button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-anexo="PENDIENTE_CONTABILIZAR"><span>Pendientes por contabilizar</span><strong>${contabilizar}</strong><small>Ver detalle</small></button><button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-otros><span>Otros</span><strong>${otros}</strong><small>Ver detalle</small></button>`;
+            const prejuridicos = panel._conteoPrejuridicos || 0;
+            alertas.innerHTML = `<button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-anexo="REVISION_INTERNA"><span>Revisión interna</span><strong>${revision}</strong><small>Ver detalle</small></button><button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-anexo="PENDIENTE_CONTABILIZAR"><span>Pendientes por contabilizar</span><strong>${contabilizar}</strong><small>Ver detalle</small></button>${prejuridicos ? `<button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-prejuridico><span>Prejurídicos</span><strong>${prejuridicos}</strong><small>Ver detalle</small></button>` : ''}<button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-otros><span>Otros</span><strong>${otros}</strong><small>Ver detalle</small></button>`;
         }
         if (resumen) resumen.innerHTML = renderResumenInicioCarteraSiigo(resumenData, anio);
         resumen?.querySelectorAll('[data-cartera-resumen-detalle]').forEach(boton => {
@@ -815,6 +818,7 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
                 panel.querySelector('form')?.requestSubmit();
             });
         });
+        alertas.querySelector('[data-alerta-prejuridico]')?.addEventListener('click', () => abrirDetalleAlertaAdministrativaCarteraSiigo(panel, 'PREJURIDICO_PENDIENTE'));
         alertas.querySelector('[data-alerta-otros]')?.addEventListener('click', () => {
             abrirCategoriasOtrosCarteraSiigo(panel);
             return;

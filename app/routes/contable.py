@@ -1182,6 +1182,9 @@ def _serializar_seguimiento_cartera(registro):
         'prejuridico_enviado_at': registro.prejuridico_enviado_at.isoformat() + 'Z' if registro.prejuridico_enviado_at else None,
         'prejuridico_destinatario': registro.prejuridico_destinatario,
         'prejuridico_referencia': registro.prejuridico_referencia,
+        'prejuridico_generado_por': registro.prejuridico_generado_por,
+        'prejuridico_generado_at': registro.prejuridico_generado_at.isoformat() + 'Z' if registro.prejuridico_generado_at else None,
+        'prejuridico_documento_version': registro.prejuridico_documento_version,
         'proximo_seguimiento': registro.proximo_seguimiento.isoformat() if registro.proximo_seguimiento else None,
         'registrado_por': registro.usuario_nombre,
         'fecha_hora_gestion': (registro.fecha_hora_gestion or registro.created_at).isoformat(),
@@ -1630,7 +1633,7 @@ def gestionar_prejuridico_cartera(seguimiento_id):
             registro.prejuridico_estado = 'DEVUELTO_VENDEDOR'
             registro.prejuridico_motivo = motivo
         elif accion == 'ENVIAR_ABOGADO':
-            if registro.prejuridico_estado != 'PENDIENTE_ENVIO_ABOGADO':
+            if registro.prejuridico_estado not in {'PENDIENTE_ENVIO_ABOGADO', 'GENERADO_PENDIENTE_ENVIO'}:
                 raise ValueError('El prejurídico debe estar aprobado antes de enviarlo.')
             destinatario = _texto(datos.get('destinatario'))
             referencia = _texto(datos.get('referencia'))
@@ -1641,6 +1644,13 @@ def gestionar_prejuridico_cartera(seguimiento_id):
             registro.prejuridico_enviado_at = datetime.utcnow()
             registro.prejuridico_destinatario = destinatario
             registro.prejuridico_referencia = referencia or None
+        elif accion == 'GENERAR':
+            if registro.prejuridico_estado != 'PENDIENTE_ENVIO_ABOGADO':
+                raise ValueError('El prejurídico debe estar aprobado antes de generar el documento.')
+            registro.prejuridico_generado_por = current_user.nombre_completo
+            registro.prejuridico_generado_at = datetime.utcnow()
+            registro.prejuridico_documento_version = (registro.prejuridico_documento_version or 0) + 1
+            registro.prejuridico_estado = 'GENERADO_PENDIENTE_ENVIO'
         else:
             raise ValueError('Acción de prejurídico no válida.')
         db.session.commit()
