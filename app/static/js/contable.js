@@ -776,6 +776,10 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
             const adminAlertas = ['REVISION_INTERNA', 'PENDIENTE_CONTABILIZAR', 'PENDIENTE_CORRECCION'];
             const nombres = { REVISION_INTERNA: 'Revisión interna', PENDIENTE_CONTABILIZAR: 'Pendientes por contabilizar', PENDIENTE_CORRECCION: 'Pendientes de corrección' };
             alertas.insertAdjacentHTML('afterbegin', adminAlertas.map(tipo => `<button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-anexo="${tipo}"><span>${nombres[tipo]}:</span><strong>${(data.clientes || []).reduce((n, cliente) => n + anexosAdministrativosClienteCarteraSiigo(cliente, tipo), 0)}</strong></button>`).join(''));
+            const revision = (data.clientes || []).reduce((n, c) => n + anexosAdministrativosClienteCarteraSiigo(c, 'REVISION_INTERNA'), 0);
+            const contabilizar = (data.clientes || []).reduce((n, c) => n + anexosAdministrativosClienteCarteraSiigo(c, 'PENDIENTE_CONTABILIZAR'), 0);
+            const otros = (data.clientes || []).filter(c => !anexosAdministrativosClienteCarteraSiigo(c, 'REVISION_INTERNA') && !anexosAdministrativosClienteCarteraSiigo(c, 'PENDIENTE_CONTABILIZAR')).length;
+            alertas.innerHTML = `<button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-anexo="REVISION_INTERNA"><span>Revisión interna</span><strong>${revision}</strong><small>Ver detalle</small></button><button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-anexo="PENDIENTE_CONTABILIZAR"><span>Pendientes por contabilizar</span><strong>${contabilizar}</strong><small>Ver detalle</small></button><button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-otros><span>Otros</span><strong>${otros}</strong><small>Ver detalle</small></button>`;
         }
         if (resumen) resumen.innerHTML = renderResumenInicioCarteraSiigo(resumenData, anio);
         resumen?.querySelectorAll('[data-cartera-resumen-detalle]').forEach(boton => {
@@ -803,6 +807,15 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
                 aplicarFiltroVendedorCarteraInicio(panel);
                 panel.querySelector('form')?.requestSubmit();
             });
+        });
+        alertas.querySelector('[data-alerta-otros]')?.addEventListener('click', () => {
+            panel._filtroAnexoAdministrativo = '';
+            panel._filtroAlertaCartera = '';
+            panel._filtroAnexosPendientesCartera = false;
+            panel.querySelector('[data-cartera-inicio]').hidden = true;
+            mostrarFiltrosVencidasSiigo(true);
+            aplicarFiltroVendedorCarteraInicio(panel);
+            panel.querySelector('form')?.requestSubmit();
         });
         alertas.querySelector('[data-proximo-hoy]')?.addEventListener('click', () => {
             panel._filtroAlertaCartera = '';
