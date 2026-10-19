@@ -764,6 +764,10 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
         if (!response.ok) throw new Error(data.error || 'No fue posible calcular las alertas.');
         if (!resumenResponse.ok) throw new Error(resumenData.error || 'No fue posible calcular el resumen del año.');
         panel._datosVencidas = data;
+        if (esAdministradorCarteraSiigo() && !panel._filtroVendedorCartera) {
+            const conteoAdmin = await fetch('/api/contable/seguimiento-cartera/alertas?tipo=REVISION_INTERNA', { credentials: 'include' }).then(leerRespuestaSiigo);
+            panel._conteoRevisionInterna = conteoAdmin.seguimientos?.length || 0;
+        }
         sincronizarOpcionSinVendedorCarteraSiigo(panel);
         panel._resumenInicioCartera = { anio: resumenData, anioSeleccionado: anio };
         const hoy = fechaHoyCarteraSiigo();
@@ -776,7 +780,7 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
             const adminAlertas = ['REVISION_INTERNA', 'PENDIENTE_CONTABILIZAR', 'PENDIENTE_CORRECCION'];
             const nombres = { REVISION_INTERNA: 'Revisión interna', PENDIENTE_CONTABILIZAR: 'Pendientes por contabilizar', PENDIENTE_CORRECCION: 'Pendientes de corrección' };
             alertas.insertAdjacentHTML('afterbegin', adminAlertas.map(tipo => `<button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-anexo="${tipo}"><span>${nombres[tipo]}:</span><strong>${(data.clientes || []).reduce((n, cliente) => n + anexosAdministrativosClienteCarteraSiigo(cliente, tipo), 0)}</strong></button>`).join(''));
-            const revision = (data.clientes || []).reduce((n, c) => n + seguimientosAdministrativosClienteCarteraSiigo(c, 'REVISION_INTERNA'), 0);
+            const revision = panel._conteoRevisionInterna ?? (data.clientes || []).reduce((n, c) => n + seguimientosAdministrativosClienteCarteraSiigo(c, 'REVISION_INTERNA'), 0);
             const contabilizar = (data.clientes || []).reduce((n, c) => n + seguimientosAdministrativosClienteCarteraSiigo(c, 'PENDIENTE_CONTABILIZAR'), 0);
             const otros = (data.clientes || []).reduce((n, c) => n + (c.seguimientos || []).filter(s => !['REVISION_INTERNA', 'VALIDADO', 'PENDIENTE_CORRECCION'].includes(s.estado_gestion)).length, 0);
             alertas.innerHTML = `<button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-anexo="REVISION_INTERNA"><span>Revisión interna</span><strong>${revision}</strong><small>Ver detalle</small></button><button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-anexo="PENDIENTE_CONTABILIZAR"><span>Pendientes por contabilizar</span><strong>${contabilizar}</strong><small>Ver detalle</small></button><button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-otros><span>Otros</span><strong>${otros}</strong><small>Ver detalle</small></button>`;
