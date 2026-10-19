@@ -1467,11 +1467,6 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     const estadoSeguimiento = dialogo.querySelector('#siigoGestionEstado');
     estadoSeguimiento.insertAdjacentHTML('beforeend', '<option value="CUMPLIDO">Cumplido</option><option value="CUMPLIDO_PARCIALMENTE">Cumplido parcialmente</option>');
     dialogo.querySelector('.siigo-nuevo-seguimiento').insertAdjacentHTML('beforeend', '<input type="hidden" name="seguimiento_anterior_id"><div class="form-group"><label for="siigoGestionPagado">Valor pagado (COP)</label><input id="siigoGestionPagado" name="valor_pagado" type="text" inputmode="decimal" placeholder="0"></div>');
-    form.elements.seguimiento_anterior_id.insertAdjacentHTML('beforebegin', '<div class="form-group"><label for="siigoGestionAnterior">Seguimiento anterior (opcional)</label><select id="siigoGestionAnterior" name="seguimiento_anterior_id"><option value="">Sin relación</option></select></div>');
-    const seguimientoAnteriorSelect = form.elements.seguimiento_anterior_id;
-    const actualizarOpcionesRelacion = () => {
-        seguimientoAnteriorSelect.innerHTML = '<option value="">Sin relación</option>' + registros.map(item => `<option value="${item.id}">${codigoSeguimientoCarteraSiigo(item.id)} · ${escapeSiigo(item.estado_gestion)}</option>`).join('');
-    };
     const shellSeguimiento = dialogo.querySelector('.siigo-seguimiento-shell');
     const historialSection = dialogo.querySelector('.siigo-historial-cartera');
     historialSection.insertAdjacentHTML('beforebegin', estadoCuentaClienteCarteraSiigo(cliente));
@@ -1482,6 +1477,11 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
         alert('No fue posible abrir el formulario de seguimiento. Actualice la pagina e intente de nuevo.');
         return;
     }
+    form.elements.seguimiento_anterior_id.insertAdjacentHTML('beforebegin', '<div class="form-group"><label for="siigoGestionAnterior">Seguimiento anterior (opcional)</label><select id="siigoGestionAnterior" name="seguimiento_anterior_id"><option value="">Sin relación</option></select></div>');
+    const seguimientoAnteriorSelect = form.querySelector('#siigoGestionAnterior');
+    const actualizarOpcionesRelacion = () => {
+        seguimientoAnteriorSelect.innerHTML = '<option value="">Sin relación</option>' + registros.map(item => `<option value="${item.id}">${codigoSeguimientoCarteraSiigo(item.id)} · ${escapeSiigo(item.estado_gestion)}</option>`).join('');
+    };
     const estadoCuentaSection = dialogo.querySelector('.siigo-estado-cuenta');
     const chatSection = dialogo.querySelector('.siigo-chat-cartera');
     if (estadoCuentaSection) estadoCuentaSection.after(form);
