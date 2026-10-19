@@ -1562,6 +1562,12 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     const marcarCumplidoBtn = dialogo.querySelector('[data-marcar-cumplido]');
     const enviarCorreoBtn = dialogo.querySelector('[data-enviar-correo]');
     const enviarWhatsappBtn = dialogo.querySelector('[data-enviar-whatsapp]');
+    if (esAdministradorCarteraSiigo()) {
+        nuevo.hidden = true;
+        marcarCumplidoBtn.hidden = true;
+        enviarCorreoBtn.hidden = true;
+        enviarWhatsappBtn.hidden = true;
+    }
     // Las 3 acciones del toolbar operan sobre el seguimiento con compromiso elegido en el historial.
     let seleccionId = null;
     const actualizarBotonesSeleccionSiigo = () => {
@@ -1622,6 +1628,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
         try {
             const datos = Object.fromEntries(new FormData(chatForm));
             datos.identificacion = cliente.identificacion;
+            datos.seguimiento_id = seleccionId || '';
             datos.cliente_nombre = cliente.cliente;
             const response = await fetch('/api/contable/chat-cartera', {
                 method: 'POST',

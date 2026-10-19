@@ -726,6 +726,7 @@ class ChatCarteraHilo(db.Model):
     cliente_id = db.Column(db.Integer, db.ForeignKey('clientes_comerciales.id'), index=True)
     identificacion = db.Column(db.String(50), index=True)
     cliente_nombre = db.Column(db.String(255))
+    seguimiento_id = db.Column(db.Integer, db.ForeignKey('siigo_seguimientos_cartera.id'), index=True)
     vendedor_id = db.Column(db.Integer, db.ForeignKey('vendedores.id'), nullable=False, index=True)
     creado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False, index=True)
     autorizado_por_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), index=True)
@@ -740,6 +741,7 @@ class ChatCarteraHilo(db.Model):
     autorizado_por = db.relationship('Usuario', foreign_keys=[autorizado_por_id])
     mensajes = db.relationship('ChatCarteraMensaje', back_populates='hilo', lazy='selectin',
                                cascade='all, delete-orphan', passive_deletes=True)
+    seguimiento = db.relationship('SiigoSeguimientoCartera', foreign_keys=[seguimiento_id])
 
 
 class ChatCarteraMensaje(db.Model):

@@ -1233,6 +1233,7 @@ def _serializar_chat_cartera(hilo, incluir_mensajes=True):
         'cliente_id': hilo.cliente_id,
         'identificacion': hilo.identificacion,
         'cliente_nombre': hilo.cliente_nombre,
+        'seguimiento_id': hilo.seguimiento_id,
         'vendedor_id': hilo.vendedor_id,
         'vendedor_nombre': hilo.vendedor.nombre if hilo.vendedor else '',
         'creado_por': hilo.creado_por.nombre_completo if hilo.creado_por else '',
@@ -1332,6 +1333,12 @@ def chat_cartera():
         cliente = _cliente_maestro_por_identificacion(identificacion_raw) if identificacion_raw else None
         vendedor = _vendedor_chat_visible(datos.get('vendedor_id'), cliente)
         clave = _nit_cartera(identificacion_raw) if identificacion_raw else None
+        seguimiento_id = datos.get('seguimiento_id')
+        seguimiento = None
+        if seguimiento_id not in (None, ''):
+            seguimiento = SiigoSeguimientoCartera.query.filter_by(id=seguimiento_id, identificacion=clave).first()
+            if seguimiento is None:
+                raise ValueError('El seguimiento relacionado no pertenece a este cliente.')
         cliente_nombre = _texto(datos.get('cliente_nombre')) or (cliente.razon_social if cliente else None)
         hilo = ChatCarteraHilo(
             tipo=tipo,
@@ -1341,6 +1348,7 @@ def chat_cartera():
             identificacion=clave,
             cliente_nombre=cliente_nombre,
             vendedor_id=vendedor.id,
+            seguimiento_id=seguimiento.id if seguimiento else None,
             creado_por_id=current_user.id,
         )
         hilo.mensajes.append(ChatCarteraMensaje(
