@@ -645,6 +645,7 @@ class SiigoSeguimientoCartera(db.Model):
     __tablename__ = 'siigo_seguimientos_cartera'
 
     id = db.Column(db.Integer, primary_key=True)
+    seguimiento_anterior_id = db.Column(db.Integer, db.ForeignKey('siigo_seguimientos_cartera.id'), index=True)
     identificacion = db.Column(db.String(50), nullable=False, index=True)
     cliente_nombre = db.Column(db.String(255), nullable=False)
     fecha_gestion = db.Column(db.Date, nullable=False)
@@ -672,7 +673,6 @@ class SiigoComprobantePago(db.Model):
     """Soportes de cartera persistentes también cuando se redespliega la web."""
     __tablename__ = 'siigo_comprobantes_pago'
     id = db.Column(db.Integer, primary_key=True)
-    seguimiento_anterior_id = db.Column(db.Integer, db.ForeignKey('siigo_seguimientos_cartera.id'), index=True)
     seguimiento_id = db.Column(db.Integer, db.ForeignKey('siigo_seguimientos_cartera.id', ondelete='CASCADE'), nullable=False, index=True)
     nombre = db.Column(db.String(255), nullable=False)
     mime_type = db.Column(db.String(80), nullable=False)
