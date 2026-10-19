@@ -547,6 +547,7 @@ function asegurarInicioGestionCarteraSiigo(panel) {
         panel._filtroProximoHoyCartera = false;
         panel._filtroSeguimientoVencidoCartera = false;
         panel._filtroAnexosPendientesCartera = false;
+        panel._filtroAnexoAdministrativo = '';
         panel.querySelector('[data-cartera-inicio]').hidden = true;
         mostrarFiltrosVencidasSiigo(true);
         aplicarFiltroVendedorCarteraInicio(panel);
@@ -731,6 +732,7 @@ function mostrarInicioGestionCarteraSiigo(panel) {
     panel._filtroProximoHoyCartera = false;
     panel._filtroSeguimientoVencidoCartera = false;
     panel._filtroAnexosPendientesCartera = false;
+    panel._filtroAnexoAdministrativo = '';
     mostrarFiltrosVencidasSiigo(false);
     panel.querySelector('[data-cartera-inicio]').hidden = false;
     panel.querySelector('[data-vencidas-filtros]').hidden = true;
@@ -770,6 +772,11 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
         const anexosPendientes = (data.clientes || []).reduce((total, cliente) => total + anexosPendientesClienteCarteraSiigo(cliente), 0);
         alertas.innerHTML = `${ordenEstadosGestionCarteraSiigo.map(estadoClave => `<button type="button" class="siigo-alerta-card siigo-${estadoClave}" data-alerta-inicio="${estadoClave}"><span>${estadosGestionCarteraSiigo[estadoClave]}:</span><strong>${(data.clientes || []).filter(cliente => estadoClienteCarteraSiigo(cliente) === estadoClave).length}</strong></button>`).join('')}<button type="button" class="siigo-alerta-card siigo-proximo-hoy" data-proximo-hoy><span>Próximo seguimiento hoy:</span><strong>${proximosHoy}</strong></button>`;
         alertas.insertAdjacentHTML('beforeend', `<button type="button" class="siigo-alerta-card siigo-vencido" data-seguimiento-vencido><span>Seguimientos vencidos:</span><strong>${seguimientosVencidos}</strong></button><button type="button" class="siigo-alerta-card siigo-pendiente" data-anexos-pendientes><span>Anexos por validar:</span><strong>${anexosPendientes}</strong></button>`);
+        if (esAdministradorCarteraSiigo() && !panel._filtroVendedorCartera) {
+            const adminAlertas = ['REVISION_INTERNA', 'PENDIENTE_CONTABILIZAR', 'PENDIENTE_CORRECCION'];
+            const nombres = { REVISION_INTERNA: 'Revisión interna', PENDIENTE_CONTABILIZAR: 'Pendientes por contabilizar', PENDIENTE_CORRECCION: 'Pendientes de corrección' };
+            alertas.insertAdjacentHTML('afterbegin', adminAlertas.map(tipo => `<button type="button" class="siigo-alerta-card siigo-pendiente" data-alerta-anexo="${tipo}"><span>${nombres[tipo]}:</span><strong>${(data.clientes || []).reduce((n, cliente) => n + anexosAdministrativosClienteCarteraSiigo(cliente, tipo), 0)}</strong></button>`).join(''));
+        }
         if (resumen) resumen.innerHTML = renderResumenInicioCarteraSiigo(resumenData, anio);
         resumen?.querySelectorAll('[data-cartera-resumen-detalle]').forEach(boton => {
             boton.addEventListener('click', () => abrirDetalleResumenInicioCarteraSiigo(panel, boton.dataset.carteraResumenDetalle));
@@ -779,6 +786,17 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
                 panel._filtroAlertaCartera = boton.dataset.alertaInicio;
                 panel._filtroProximoHoyCartera = false;
                 panel._filtroSeguimientoVencidoCartera = false;
+                panel._filtroAnexosPendientesCartera = false;
+                panel.querySelector('[data-cartera-inicio]').hidden = true;
+                mostrarFiltrosVencidasSiigo(true);
+                aplicarFiltroVendedorCarteraInicio(panel);
+                panel.querySelector('form')?.requestSubmit();
+            });
+        });
+        alertas.querySelectorAll('[data-alerta-anexo]').forEach(boton => {
+            boton.addEventListener('click', () => {
+                panel._filtroAnexoAdministrativo = boton.dataset.alertaAnexo;
+                panel._filtroAlertaCartera = '';
                 panel._filtroAnexosPendientesCartera = false;
                 panel.querySelector('[data-cartera-inicio]').hidden = true;
                 mostrarFiltrosVencidasSiigo(true);
@@ -1014,6 +1032,8 @@ function dataTablaFacturasVencidasSiigo(panel) {
         clientes = clientes.filter(cliente => tieneSeguimientoVencidoCarteraSiigo(cliente));
     } else if (panel._filtroAnexosPendientesCartera) {
         clientes = clientes.filter(cliente => anexosPendientesClienteCarteraSiigo(cliente) > 0);
+    } else if (panel._filtroAnexoAdministrativo) {
+        clientes = clientes.filter(cliente => anexosAdministrativosClienteCarteraSiigo(cliente, panel._filtroAnexoAdministrativo) > 0);
     }
     return { ...data, clientes };
 }
@@ -1183,6 +1203,15 @@ function agregarAccionesComunicacionCompromisoSiigo(contenedor, registros, clien
 
 function codigoSeguimientoCarteraSiigo(id) {
     return `GC-${String(id).padStart(6, '0')}`;
+}
+
+function anexosAdministrativosClienteCarteraSiigo(cliente, estado) {
+    return (cliente?.seguimientos || []).reduce((total, seguimiento) => total + (seguimiento.comprobantes_pago || []).filter(anexo => {
+        if (estado === 'REVISION_INTERNA') return (seguimiento.estado_gestion || '') === 'REVISION_INTERNA' && (anexo.estado_validacion || 'PENDIENTE') === 'PENDIENTE';
+        if (estado === 'PENDIENTE_CONTABILIZAR') return ['PENDIENTE_POR_CONTABILIZAR', 'VALIDADO'].includes(anexo.estado_validacion);
+        if (estado === 'PENDIENTE_CORRECCION') return (seguimiento.estado_gestion || '') === 'PENDIENTE_CORRECCION' || anexo.estado_validacion === 'RECHAZADO';
+        return false;
+    }).length, 0);
 }
 
 function mostrarCodigosSeguimientoCarteraSiigo(contenedor) {
