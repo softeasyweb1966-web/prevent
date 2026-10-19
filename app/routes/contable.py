@@ -1592,7 +1592,7 @@ def alertas_seguimiento_cartera():
                 continue
             if tipo.startswith('ESTADO_') and registro.estado_gestion != tipo[7:]:
                 continue
-            if tipo == 'PREJURIDICO_PENDIENTE' and registro.prejuridico_estado != 'PENDIENTE_APROBACION':
+            if tipo == 'PREJURIDICO_PENDIENTE' and not (registro.estado_gestion == 'PREJURIDICO' and registro.prejuridico_estado in {None, 'PENDIENTE_APROBACION'}):
                 continue
             if tipo == 'PREJURIDICO_ENVIO' and registro.prejuridico_estado != 'PENDIENTE_ENVIO_ABOGADO':
                 continue
