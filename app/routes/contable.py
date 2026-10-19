@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from flask import jsonify, request, send_file, current_app
 from flask_login import current_user, login_required
+from markupsafe import escape
 from sqlalchemy import func, or_
 from werkzeug.utils import secure_filename
 
@@ -1185,6 +1186,7 @@ def _serializar_seguimiento_cartera(registro):
         'prejuridico_generado_por': registro.prejuridico_generado_por,
         'prejuridico_generado_at': registro.prejuridico_generado_at.isoformat() + 'Z' if registro.prejuridico_generado_at else None,
         'prejuridico_documento_version': registro.prejuridico_documento_version,
+        'prejuridico_documento_url': f'/api/contable/seguimiento-cartera/{registro.id}/prejuridico/documento',
         'proximo_seguimiento': registro.proximo_seguimiento.isoformat() if registro.proximo_seguimiento else None,
         'registrado_por': registro.usuario_nombre,
         'fecha_hora_gestion': (registro.fecha_hora_gestion or registro.created_at).isoformat(),
@@ -1666,6 +1668,53 @@ def gestionar_prejuridico_cartera(seguimiento_id):
     except (ValueError, PermissionError) as exc:
         db.session.rollback()
         return jsonify(error=str(exc)), 403 if isinstance(exc, PermissionError) else 400
+
+
+@contable_bp.route('/seguimiento-cartera/<int:seguimiento_id>/prejuridico/documento', methods=['GET'])
+@login_required
+def documento_prejuridico_cartera(seguimiento_id):
+    """Entrega el prejurídico en formato imprimible, con resumen y anexos."""
+    try:
+        _requiere_ventas()
+        if not es_administrador():
+            raise PermissionError('Solo un administrador puede consultar documentos prejurídicos.')
+        registro = _seguimiento_cartera_visible(seguimiento_id)
+        if registro is None or registro.estado_gestion != 'PREJURIDICO':
+            return current_app.response_class('Solicitud de prejurídico no encontrada.', status=404, mimetype='text/plain')
+
+        historial = SiigoSeguimientoCartera.query.filter_by(
+            identificacion=registro.identificacion,
+        ).order_by(
+            SiigoSeguimientoCartera.fecha_gestion.asc(),
+            SiigoSeguimientoCartera.fecha_hora_gestion.asc().nullslast(),
+            SiigoSeguimientoCartera.id.asc(),
+        ).all()
+        anexos = [anexo for item in historial for anexo in item.comprobantes_pago]
+        e = lambda value: escape(value or '')
+        fecha_corte = datetime.now(ZoneInfo('America/Bogota')).strftime('%d/%m/%Y %H:%M')
+        filas_historial = ''.join(
+            '<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>'.format(
+                e(item.fecha_gestion.strftime('%d/%m/%Y')),
+                e(item.medio), e(item.contacto), e(item.estado_gestion), e(item.observaciones),
+            ) for item in historial
+        ) or '<tr><td colspan="5">No hay seguimientos registrados.</td></tr>'
+        filas_anexos = ''.join(
+            '<li><a href="{}" target="_blank" rel="noopener">{}</a> · seguimiento del {} · {} KB</li>'.format(
+                e(f'/api/contable/seguimiento-cartera/comprobantes/{anexo.id}'), e(anexo.nombre),
+                e(anexo.seguimiento.fecha_gestion.strftime('%d/%m/%Y')), e(str(round(anexo.tamano_bytes / 1024))),
+            ) for anexo in anexos
+        ) or '<li>No se registraron soportes de archivo.</li>'
+        html = '''<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Prejurídico - {cliente}</title>
+<style>body{{font-family:Arial,sans-serif;color:#222;max-width:980px;margin:32px auto;line-height:1.4}}h1{{font-size:22px;text-align:center}}h2{{font-size:17px;border-bottom:1px solid #aaa;padding-bottom:5px;margin-top:28px}}table{{border-collapse:collapse;width:100%;font-size:12px}}th,td{{border:1px solid #bbb;padding:7px;vertical-align:top}}th{{background:#eee}}.meta{{display:grid;grid-template-columns:1fr 1fr;gap:6px 30px;font-size:13px}}.nota{{background:#f4f6f8;padding:10px}}@media print{{body{{margin:12mm}}.no-print{{display:none}}}}</style></head><body>
+<p class="no-print"><button onclick="window.print()">Imprimir / guardar como PDF</button></p><h1>DOCUMENTO PREJURÍDICO</h1>
+<div class="meta"><div><b>Cliente:</b> {cliente}</div><div><b>Identificación:</b> {identificacion}</div><div><b>Versión:</b> {version}</div><div><b>Fecha de generación:</b> {fecha_corte}</div></div>
+<h2>1. Resumen de gestión de cartera</h2><div class="nota"><b>Estado:</b> {estado}<br><b>Saldo / cartera:</b> Se adjunta el estado de cuenta disponible en el sistema.<br><b>Gestiones realizadas:</b> {cantidad}<br><b>Última gestión:</b> {ultima_fecha}<br><b>Resultado de la última gestión:</b> {ultima_nota}</div>
+<h2>2. Historial de gestiones</h2><table><thead><tr><th>Fecha</th><th>Medio</th><th>Contacto</th><th>Estado</th><th>Gestión y acuerdos</th></tr></thead><tbody>{filas_historial}</tbody></table>
+<h2>3. Anexos</h2><ol>{filas_anexos}</ol><p>Los anexos corresponden a los soportes cargados en el seguimiento de cartera y se consultan desde el sistema.</p>
+</body></html>'''.format(cliente=e(registro.cliente_nombre), identificacion=e(registro.identificacion), version=e(str(registro.prejuridico_documento_version or 0)), fecha_corte=e(fecha_corte), estado=e(registro.prejuridico_estado or 'PENDIENTE'), cantidad=e(str(len(historial))), ultima_fecha=e(historial[-1].fecha_gestion.strftime('%d/%m/%Y') if historial else ''), ultima_nota=e(historial[-1].observaciones if historial else ''), filas_historial=filas_historial, filas_anexos=filas_anexos)
+        return current_app.response_class(html, mimetype='text/html')
+    except PermissionError as exc:
+        return current_app.response_class(str(exc), status=403, mimetype='text/plain')
 
 
 @contable_bp.route('/seguimiento-cartera/<int:seguimiento_id>/comprobantes', methods=['POST'])
