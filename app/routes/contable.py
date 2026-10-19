@@ -1557,6 +1557,38 @@ def _seguimiento_cartera_visible(seguimiento_id):
     return registro
 
 
+@contable_bp.route('/seguimiento-cartera/alertas', methods=['GET'])
+@login_required
+def alertas_seguimiento_cartera():
+    try:
+        _requiere_ventas()
+        if not es_administrador():
+            raise PermissionError('Solo un administrador puede consultar la bandeja consolidada.')
+        tipo = _texto(request.args.get('tipo')).upper() or 'OTROS'
+        clientes = _clientes_informe().all()
+        datos_cliente = {_nit_cartera(item.nit): item for item in clientes if getattr(item, 'nit', None)}
+        registros = SiigoSeguimientoCartera.query.order_by(SiigoSeguimientoCartera.fecha_gestion.desc(), SiigoSeguimientoCartera.id.desc()).all()
+        resultado = []
+        for registro in registros:
+            cliente = datos_cliente.get(registro.identificacion)
+            anexos = list(registro.comprobantes_pago)
+            if tipo == 'REVISION_INTERNA' and not (registro.estado_gestion == 'REVISION_INTERNA' and any((a.estado_validacion or 'PENDIENTE') == 'PENDIENTE' for a in anexos)):
+                continue
+            if tipo == 'PENDIENTE_CONTABILIZAR' and not any((a.estado_validacion or '') in {'VALIDADO', 'PENDIENTE_POR_CONTABILIZAR'} for a in anexos):
+                continue
+            if tipo == 'OTROS' and (registro.estado_gestion == 'REVISION_INTERNA' or any((a.estado_validacion or '') in {'VALIDADO', 'PENDIENTE_POR_CONTABILIZAR'} for a in anexos)):
+                continue
+            if tipo.startswith('ESTADO_') and registro.estado_gestion != tipo[7:]:
+                continue
+            item = _serializar_seguimiento_cartera(registro)
+            vendedor = getattr(cliente, 'vendedor', None) if cliente else None
+            item.update({'vendedor': getattr(vendedor, 'nombre', None) or 'Sin vendedor', 'cliente': registro.cliente_nombre, 'anexos': len(anexos)})
+            resultado.append(item)
+        return jsonify({'tipo': tipo, 'seguimientos': resultado})
+    except PermissionError as exc:
+        return jsonify(error=str(exc)), 403
+
+
 @contable_bp.route('/seguimiento-cartera/<int:seguimiento_id>/comprobantes', methods=['POST'])
 @login_required
 def subir_comprobantes_cartera(seguimiento_id):

@@ -799,6 +799,9 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
         });
         alertas.querySelectorAll('[data-alerta-anexo]').forEach(boton => {
             boton.addEventListener('click', () => {
+                abrirDetalleAlertaAdministrativaCarteraSiigo(panel, boton.dataset.alertaAnexo);
+                return;
+                /* Legacy table filter retained below for non-administrative views. */
                 panel._filtroAnexoAdministrativo = boton.dataset.alertaAnexo;
                 panel._filtroAlertaCartera = '';
                 panel._filtroAnexosPendientesCartera = false;
@@ -809,6 +812,8 @@ async function cargarAlertasInicioCarteraSiigo(panel) {
             });
         });
         alertas.querySelector('[data-alerta-otros]')?.addEventListener('click', () => {
+            abrirCategoriasOtrosCarteraSiigo(panel);
+            return;
             panel._filtroAnexoAdministrativo = '';
             panel._filtroAlertaCartera = '';
             panel._filtroAnexosPendientesCartera = false;
@@ -1236,6 +1241,22 @@ function tablaSeguimientosAdministrativosCarteraSiigo(data, tipo) {
     return `<div class="siigo-tabla-con-encabezado-fijo"><table class="data-table"><thead><tr><th>Vendedor</th><th>Seguimiento</th><th>Cliente</th><th>Estado</th><th>Anexos</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>${filas.join('')}</tbody></table></div>`;
 }
 
+function abrirCategoriasOtrosCarteraSiigo(panel) {
+    const categorias = [['ESTADO_SIN_GESTION', 'Sin gestión'], ['ESTADO_NO_LOCALIZADO', 'No localizado'], ['ESTADO_EN_PROCESO', 'En proceso'], ['ESTADO_CON_COMPROMISO', 'Con compromiso'], ['ESTADO_CUMPLIDO_PARCIALMENTE', 'Cumplido parcialmente'], ['ESTADO_PREJURIDICO', 'Prejurídico'], ['ESTADO_PENDIENTE_CORRECCION', 'Pendiente de corrección'], ['ESTADO_VALIDADO', 'Validado']];
+    const conteo = tipo => (panel._datosVencidas?.clientes || []).reduce((n, cliente) => n + (cliente.seguimientos || []).filter(s => s.estado_gestion === tipo.slice(7)).length, 0);
+    const dialogo = document.createElement('dialog');
+    dialogo.className = 'siigo-seguimiento-dialogo';
+    dialogo.innerHTML = `<div class="siigo-seguimiento-shell"><div class="siigo-seguimiento-cabecera"><div><h2>Otros seguimientos</h2><p>Seleccione el tipo de alerta que desea consultar.</p></div><button type="button" class="btn btn-primary" data-cerrar>Regresar</button></div><div class="siigo-cartera-alertas">${categorias.map(([tipo, nombre]) => `<button type="button" class="siigo-alerta-card siigo-pendiente" data-categoria-otros="${tipo}"><span>${nombre}</span><strong>${conteo(tipo)}</strong><small>Ver detalle</small></button>`).join('')}</div></div>`;
+    document.body.appendChild(dialogo);
+    dialogo.showModal();
+    dialogo.querySelector('[data-cerrar]').addEventListener('click', () => dialogo.close());
+    dialogo.addEventListener('close', () => dialogo.remove(), { once: true });
+    dialogo.querySelectorAll('[data-categoria-otros]').forEach(boton => boton.addEventListener('click', () => {
+        dialogo.close();
+        abrirDetalleAlertaAdministrativaCarteraSiigo(panel, boton.dataset.categoriaOtros);
+    }));
+}
+
 function anexosAdministrativosClienteCarteraSiigo(cliente, estado) {
     return (cliente?.seguimientos || []).reduce((total, seguimiento) => total + (seguimiento.comprobantes_pago || []).filter(anexo => {
         if (estado === 'REVISION_INTERNA') return (seguimiento.estado_gestion || '') === 'REVISION_INTERNA' && (anexo.estado_validacion || 'PENDIENTE') === 'PENDIENTE';
@@ -1243,6 +1264,30 @@ function anexosAdministrativosClienteCarteraSiigo(cliente, estado) {
         if (estado === 'PENDIENTE_CORRECCION') return (seguimiento.estado_gestion || '') === 'PENDIENTE_CORRECCION' || anexo.estado_validacion === 'RECHAZADO';
         return false;
     }).length, 0);
+}
+
+async function abrirDetalleAlertaAdministrativaCarteraSiigo(panel, tipo) {
+    const dialogo = document.createElement('dialog');
+    dialogo.className = 'siigo-seguimiento-dialogo';
+    dialogo.innerHTML = `<div class="siigo-seguimiento-shell"><div class="siigo-seguimiento-cabecera"><div><h2>Detalle: ${escapeSiigo(tipo === 'REVISION_INTERNA' ? 'Revisión interna' : tipo === 'PENDIENTE_CONTABILIZAR' ? 'Pendientes por contabilizar' : 'Otros')}</h2><p>Seguimientos agrupados por vendedor</p></div><button type="button" class="btn btn-primary" data-cerrar>Regresar</button></div><p data-carga>Consultando seguimientos...</p><div data-detalle></div></div>`;
+    document.body.appendChild(dialogo);
+    dialogo.showModal();
+    dialogo.querySelector('[data-cerrar]').addEventListener('click', () => dialogo.close());
+    dialogo.addEventListener('close', () => dialogo.remove(), { once: true });
+    try {
+        const response = await fetch(`/api/contable/seguimiento-cartera/alertas?tipo=${encodeURIComponent(tipo)}`, { credentials: 'include' });
+        const data = await leerRespuestaSiigo(response);
+        if (!response.ok) throw new Error(data.error || 'No fue posible consultar el detalle.');
+        const grupos = {};
+        (data.seguimientos || []).forEach(item => (grupos[item.vendedor || 'Sin vendedor'] ||= []).push(item));
+        const filas = Object.entries(grupos).sort(([a], [b]) => a.localeCompare(b, 'es')).map(([vendedor, items]) => `<section class="siigo-responsable-grupo"><h3>Vendedor: ${escapeSiigo(vendedor)} · ${items.length} seguimientos</h3><div class="siigo-tabla-con-encabezado-fijo"><table class="data-table"><thead><tr><th>Seguimiento</th><th>Cliente</th><th>Estado</th><th>Anexos</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>${items.map(item => `<tr><td><strong>${escapeSiigo(codigoSeguimientoCarteraSiigo(item.id))}</strong></td><td>${escapeSiigo(item.cliente)}</td><td>${escapeSiigo(item.estado_gestion)}</td><td>${item.anexos}</td><td>${escapeSiigo(formatoSiigoFecha(item.fecha_gestion))}</td><td><button type="button" class="btn btn-secondary" data-abrir-seguimiento="${item.identificacion}">Abrir</button></td></tr>`).join('')}</tbody></table></div></section>`).join('');
+        dialogo.querySelector('[data-carga]').remove();
+        dialogo.querySelector('[data-detalle]').innerHTML = filas || '<p>No hay seguimientos para esta alerta.</p>';
+        dialogo.querySelectorAll('[data-abrir-seguimiento]').forEach(boton => boton.addEventListener('click', () => {
+            const cliente = (panel._datosVencidas?.clientes || []).find(item => item.identificacion === boton.dataset.abrirSeguimiento);
+            if (cliente) abrirSeguimientoCarteraSiigo(cliente);
+        }));
+    } catch (error) { dialogo.querySelector('[data-carga]').textContent = error.message; }
 }
 
 function seguimientosAdministrativosClienteCarteraSiigo(cliente, estado) {
