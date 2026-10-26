@@ -1,7 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime
-from sqlalchemy import Numeric, Float, LargeBinary
+from sqlalchemy import Numeric, Float, LargeBinary, Sequence
 from sqlalchemy.orm import synonym
 
 db = SQLAlchemy()
@@ -645,6 +645,7 @@ class SiigoSeguimientoCartera(db.Model):
     __tablename__ = 'siigo_seguimientos_cartera'
 
     id = db.Column(db.Integer, primary_key=True)
+    nro_pedido = db.Column(db.Integer, Sequence('optometria_pedido_nro_seq'), unique=True, nullable=False, index=True)
     seguimiento_anterior_id = db.Column(db.Integer, db.ForeignKey('siigo_seguimientos_cartera.id'), index=True)
     identificacion = db.Column(db.String(50), nullable=False, index=True)
     cliente_nombre = db.Column(db.String(255), nullable=False)

@@ -16,7 +16,7 @@ def _money(value):
 
 def _json(pedido):
     return {
-        'id': pedido.id, 'cliente': pedido.cliente, 'nombre_paciente': pedido.nombre_paciente,
+        'id': pedido.id, 'nro_pedido': pedido.nro_pedido, 'cliente': pedido.cliente, 'nombre_paciente': pedido.nombre_paciente,
         'cedula_paciente': pedido.cedula_paciente, 'celular_paciente': pedido.celular_paciente,
         'telefono_paciente': pedido.telefono_paciente, 'nro_cuotas': pedido.nro_cuotas,
         'valor_cuota': float(pedido.valor_cuota or 0), 'total_venta': float(pedido.total_venta or 0),

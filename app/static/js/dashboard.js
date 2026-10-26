@@ -869,6 +869,11 @@ function setupMenuNavigation() {
                 return;
             }
 
+            if (item.dataset.menuToggle) {
+                item.closest('.menu-group')?.classList.toggle('open');
+                return;
+            }
+
             const module = item.dataset.module;
             if (!module) {
                 return;
