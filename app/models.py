@@ -1,7 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime
-from sqlalchemy import Numeric, Float
+from sqlalchemy import Numeric, Float, LargeBinary
 from sqlalchemy.orm import synonym
 
 db = SQLAlchemy()
@@ -1262,6 +1262,38 @@ class ClienteVendedorHistorial(db.Model):
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
     fecha = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     origen = db.Column(db.String(50), nullable=False)
+
+
+class OptometriaPedido(db.Model):
+    """Pedido de optometria, incluidos sus adjuntos persistentes en PostgreSQL."""
+    __tablename__ = 'optometria_pedidos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    cliente = db.Column(db.String(200), nullable=False, index=True)
+    nombre_paciente = db.Column(db.String(200), nullable=False, index=True)
+    cedula_paciente = db.Column(db.String(50), nullable=False, index=True)
+    celular_paciente = db.Column(db.String(50))
+    telefono_paciente = db.Column(db.String(50))
+    nro_cuotas = db.Column(db.Integer, nullable=False, default=1)
+    valor_cuota = db.Column(Numeric(15, 2), nullable=False, default=0)
+    total_venta = db.Column(Numeric(15, 2), nullable=False, default=0)
+    estado_paciente = db.Column(db.String(30), nullable=False, default='PENDIENTE')
+    estado_gafas = db.Column(db.String(30), nullable=False, default='PENDIENTE')
+    estado_empresa = db.Column(db.String(30), nullable=False, default='PENDIENTE_COBRO')
+    trabajo_realizar = db.Column(db.Text)
+    autorizacion_nombre = db.Column(db.String(255))
+    autorizacion_mime = db.Column(db.String(120))
+    autorizacion_archivo = db.Column(LargeBinary)
+    formula_nombre = db.Column(db.String(255))
+    formula_mime = db.Column(db.String(120))
+    formula_archivo = db.Column(LargeBinary)
+    descripcion_marco = db.Column(db.Text)
+    marco_nombre = db.Column(db.String(255))
+    marco_mime = db.Column(db.String(120))
+    marco_archivo = db.Column(LargeBinary)
+    observaciones = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # Audita todos los escritores ORM del maestro, incluidos los dos formularios y Excel.

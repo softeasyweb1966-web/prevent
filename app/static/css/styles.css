@@ -6226,3 +6226,14 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
 .comision-recaudo-card-destacada .comision-recaudo-card-value {
     color: #047857;
 }
+/* Optometria: captura comoda desde celular */
+#optometriaView .form-row { align-items: flex-start; }
+#optometriaView input, #optometriaView select, #optometriaView textarea { width: 100%; box-sizing: border-box; }
+#optometriaView .status-badge { display: inline-block; margin: 2px; padding: 3px 7px; border-radius: 12px; background: #eef4ff; font-size: .78rem; white-space: nowrap; }
+#optometriaView .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+@media (max-width: 700px) {
+    #optometriaView .form-row { display: block; }
+    #optometriaView .form-group { margin-bottom: 12px; }
+    #optometriaView .btn { min-height: 44px; width: 100%; margin-bottom: 8px; }
+    #optometriaView .data-table { min-width: 760px; }
+}

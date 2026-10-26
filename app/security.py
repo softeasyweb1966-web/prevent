@@ -61,6 +61,13 @@ MENU_OPTION_DEFINITIONS = [
         'descripcion': 'Acceso al modulo de tablas',
         'orden': 70,
     },
+    {
+        'module': 'optometria',
+        'permiso': 'menu_optometria',
+        'nombre': 'Optometría',
+        'descripcion': 'Acceso al módulo de pedidos de optometría',
+        'orden': 35,
+    },
 ]
 
 def _build_commercial_crud_definitions(entity: str, nombre: str, orden_base: int):

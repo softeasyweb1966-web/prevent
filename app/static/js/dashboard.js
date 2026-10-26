@@ -960,6 +960,8 @@ function switchModule(moduleName) {
             } catch (e) {
                 console.error('Error inicializando modulo compras', e);
             }
+        } else if (moduleName === 'optometria') {
+            cargarPedidosOptometria();
         } else {
             // Attempt to fetch dashboard fragment for other modules
             loadModuleDashboardData(moduleName, fullView);
@@ -1945,6 +1947,33 @@ function actualizarArchivoSabanasPistas() {
         resultado.innerHTML = `<span style="color:#555;">Listo para procesar: <strong>${escapeHtml(archivo.name)}</strong></span>`;
     }
 }
+
+async function cargarPedidosOptometria() {
+    const tabla = document.getElementById('optometriaTable');
+    if (!tabla) return;
+    const r = await fetch('/api/optometria/pedidos', {credentials: 'include'});
+    const pedidos = await r.json();
+    tabla.innerHTML = pedidos.length ? pedidos.map(p => `<tr><td>${escapeHtml(p.cliente)}</td><td>${escapeHtml(p.nombre_paciente)}</td><td>${escapeHtml(p.cedula_paciente)}</td><td>${formatCurrency(p.total_venta)}</td><td><span class="status-badge">Paciente: ${escapeHtml(p.estado_paciente)}</span><span class="status-badge">Gafas: ${escapeHtml(p.estado_gafas)}</span><span class="status-badge">Empresa: ${escapeHtml(p.estado_empresa)}</span></td><td>${p.autorizacion_url ? `<a href="${p.autorizacion_url}" target="_blank">Autorización</a>` : ''}${p.formula_url ? ` · <a href="${p.formula_url}" target="_blank">Fórmula</a>` : ''}${p.marco_url ? ` · <a href="${p.marco_url}" target="_blank">Marco</a>` : ''}</td><td><button class="btn btn-danger btn-small" onclick="eliminarPedidoOptometria(${p.id})">Eliminar</button></td></tr>`).join('') : '<tr><td colspan="7">No hay pedidos registrados.</td></tr>';
+}
+
+async function eliminarPedidoOptometria(id) {
+    if (!confirm('¿Eliminar este pedido y sus soportes?')) return;
+    const r = await fetch(`/api/optometria/pedidos/${id}`, {method: 'DELETE', credentials: 'include'});
+    if (r.ok) { showSuccess('Pedido eliminado.'); cargarPedidosOptometria(); }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('optometriaForm');
+    if (!form) return;
+    form.addEventListener('submit', async e => {
+        e.preventDefault();
+        const r = await fetch('/api/optometria/pedidos', {method: 'POST', body: new FormData(form), credentials: 'include'});
+        const data = await r.json();
+        if (!r.ok) return showError(data.error || 'No fue posible guardar el pedido.');
+        showSuccess('Pedido guardado correctamente.'); form.reset(); cargarPedidosOptometria();
+    });
+    document.getElementById('optometriaCancelar')?.addEventListener('click', () => form.reset());
+});
 
 function limpiarArchivoSabanasPistas() {
     const archivoInput = document.getElementById('sabanasPistasArchivo');

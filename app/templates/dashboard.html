@@ -24,6 +24,9 @@
             <li><a href="#" class="menu-item" data-module="compras">
                 <span class="icon">🛒</span> Compras
             </a></li>
+            <li><a href="#" class="menu-item" data-module="optometria">
+                <span class="icon">OP</span> Optometría · Pedidos
+            </a></li>
             <li><a href="#" class="menu-item" data-module="comercial">
                 <span class="icon">🤝</span> Vendedores
             </a></li>
@@ -1528,6 +1531,41 @@
                 <div class="form-group"><label for="correccionesPeriodo">Periodo cargado</label><select id="correccionesPeriodo" onchange="aplicarPeriodoEnRango('correccionesPeriodo', 'correccionesPeriodoDesde', 'correccionesPeriodoHasta'); invalidarRevisionCorrecciones()"><option value="">Seleccione un periodo...</option></select></div>
                 <div class="form-group"><label for="correccionesPeriodoDesde">Atenciones desde</label><input type="date" id="correccionesPeriodoDesde" onchange="invalidarRevisionCorrecciones()"></div>
                 <div class="form-group"><label for="correccionesPeriodoHasta">Atenciones hasta</label><input type="date" id="correccionesPeriodoHasta" onchange="invalidarRevisionCorrecciones()"></div>
+            </div>
+
+            <div id="optometriaView" class="module-view">
+                <div class="module-header"><h2>Pedidos de Optometría</h2></div>
+                <form id="optometriaForm" class="recent-section" enctype="multipart/form-data">
+                    <input type="hidden" id="optometriaId">
+                    <div class="form-row">
+                        <div class="form-group"><label>Cliente / Empresa *</label><input name="cliente" required></div>
+                        <div class="form-group"><label>Nombre paciente *</label><input name="nombre_paciente" required></div>
+                        <div class="form-group"><label>Cédula paciente *</label><input name="cedula_paciente" required></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Estado paciente</label><select name="estado_paciente"><option value="PENDIENTE">Pendiente</option><option value="CONTACTADO">Contactado</option><option value="ENTREGADO">Entregado</option></select></div>
+                        <div class="form-group"><label>Estado gafas</label><select name="estado_gafas"><option value="PENDIENTE">Pendiente</option><option value="EN_LABORATORIO">En laboratorio</option><option value="LISTAS">Listas</option><option value="ENTREGADAS">Entregadas</option></select></div>
+                        <div class="form-group"><label>Estado empresa / cobro</label><select name="estado_empresa"><option value="PENDIENTE_COBRO">Pendiente de cobro</option><option value="AUTORIZADO">Autorizado</option><option value="COBRADO">Cobrado</option><option value="RECHAZADO">Rechazado</option></select></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Celular paciente</label><input name="celular_paciente"></div>
+                        <div class="form-group"><label>Teléfono paciente</label><input name="telefono_paciente"></div>
+                        <div class="form-group"><label>Nro. cuotas</label><input name="nro_cuotas" type="number" min="1" value="1"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Valor cuota</label><input name="valor_cuota" type="number" min="0" step="0.01"></div>
+                        <div class="form-group"><label>Total venta</label><input name="total_venta" type="number" min="0" step="0.01"></div>
+                        <div class="form-group"><label>Trabajo a realizar / fórmula</label><textarea name="trabajo_realizar" rows="2"></textarea></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Autorización firmada * (PDF o imagen)</label><input name="autorizacion" type="file" accept=".pdf,image/*" required></div>
+                        <div class="form-group"><label>Fórmula adjunta (opcional)</label><input name="formula" type="file" accept=".pdf,image/*"></div>
+                        <div class="form-group"><label>Foto del marco</label><input name="marco" type="file" accept="image/*"></div>
+                    </div>
+                    <div class="form-row"><div class="form-group"><label>Descripción marco</label><textarea name="descripcion_marco" rows="2"></textarea></div><div class="form-group"><label>Observaciones</label><textarea name="observaciones" rows="2"></textarea></div></div>
+                    <div class="button-group"><button class="btn btn-primary" type="submit">Guardar pedido</button><button class="btn btn-secondary" type="button" id="optometriaCancelar">Limpiar</button></div>
+                </form>
+                <div class="table-container"><table class="data-table"><thead><tr><th>Empresa</th><th>Paciente</th><th>Cédula</th><th>Total</th><th>Estados</th><th>Soportes</th><th>Acciones</th></tr></thead><tbody id="optometriaTable"><tr><td colspan="7" class="loading">Cargando pedidos...</td></tr></tbody></table></div>
             </div>
             <div class="form-group">
                 <label for="correccionesArchivos">Excel corregido</label>

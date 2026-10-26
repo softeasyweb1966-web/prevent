@@ -646,6 +646,7 @@ def register_blueprints(app):
         contable_bp,
         dashboard_bp,
         usuarios_bp,
+        optometria_bp,
     )
 
     @app.route('/')
@@ -685,6 +686,7 @@ def register_blueprints(app):
     app.register_blueprint(usuarios_bp)
     app.register_blueprint(comercial_bp)
     app.register_blueprint(contable_bp)
+    app.register_blueprint(optometria_bp)
 
 
 def setup_logging():

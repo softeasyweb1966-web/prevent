@@ -18,9 +18,10 @@ usuarios_bp = Blueprint('usuarios', __name__, url_prefix='/api/usuarios')
 # Blueprint de bancos / préstamos de empresa
 comercial_bp = Blueprint('comercial', __name__, url_prefix='/api/comercial')
 contable_bp = Blueprint('contable', __name__, url_prefix='/api/contable')
+optometria_bp = Blueprint('optometria', __name__, url_prefix='/api/optometria')
 
 # Importar las rutas
-from app.routes import auth, dashboard, usuarios, comercial, contable, cargue_atenciones, maestros
+from app.routes import auth, dashboard, usuarios, comercial, contable, cargue_atenciones, maestros, optometria
 
 
 from app.routes import clientes_acceso
