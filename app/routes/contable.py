@@ -14,6 +14,7 @@ from flask import jsonify, request, send_file, current_app
 from flask_login import current_user, login_required
 from markupsafe import escape
 from sqlalchemy import func, or_
+from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.utils import secure_filename
 from openpyxl import load_workbook
 
@@ -1175,9 +1176,16 @@ def _calcular_mora_por_tramos(saldo, vencimiento, fecha_corte):
     inicio = vencimiento + timedelta(days=1)
     if saldo <= 0 or inicio > fecha_corte:
         return Decimal('0.00'), []
-    tasas = {(item.anio, item.mes): item for item in TasaInteresMora.query.filter(
-        TasaInteresMora.anio.between(inicio.year, fecha_corte.year),
-    ).all()}
+    try:
+        tasas = {(item.anio, item.mes): item for item in TasaInteresMora.query.filter(
+            TasaInteresMora.anio.between(inicio.year, fecha_corte.year),
+        ).all()}
+    except SQLAlchemyError:
+        # La cartera debe seguir siendo consultable aunque Railway aun no haya
+        # aplicado la migracion de tasas; la mora queda en cero hasta cargarla.
+        db.session.rollback()
+        current_app.logger.exception('No fue posible consultar tasas de mora; se continua sin intereses.')
+        tasas = {}
     interes = Decimal('0')
     faltantes = set()
     cursor = inicio
