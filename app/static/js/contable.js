@@ -1349,6 +1349,47 @@ function mostrarCodigosSeguimientoCarteraSiigo(contenedor) {
     });
 }
 
+function agregarAccionesPrejuridicoCarteraSiigo(historial, registros, recargar) {
+    if (!esAdministradorCarteraSiigo()) return;
+    historial.querySelectorAll('[data-seguimiento-id]').forEach(article => {
+        const id = Number(article.dataset.seguimientoId);
+        const registro = registros.find(item => Number(item.id) === id);
+        if (!registro || registro.estado_gestion !== 'PREJURIDICO' || article.querySelector('[data-accion-prejuridico]')) return;
+        const acciones = document.createElement('div');
+        acciones.className = 'button-group prejuridico-acciones';
+        acciones.innerHTML = '<strong>Gestión prejurídica:</strong>';
+        const agregar = (accion, texto, visible) => {
+            const boton = document.createElement('button');
+            boton.type = 'button'; boton.className = 'btn btn-secondary'; boton.textContent = texto;
+            boton.dataset.accionPrejuridico = accion; boton.hidden = !visible;
+            boton.addEventListener('click', async () => {
+                boton.disabled = true;
+                const payload = { accion };
+                if (accion === 'ENVIAR_ABOGADO') {
+                    payload.destinatario = prompt('Indique el abogado o destinatario:');
+                    if (!payload.destinatario) { boton.disabled = false; return; }
+                    payload.referencia = prompt('Referencia del envío (opcional):') || '';
+                }
+                try {
+                    const response = await fetch(`/api/contable/seguimiento-cartera/${id}/prejuridico`, { method: 'PATCH', credentials: 'include', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+                    const data = await leerRespuestaSiigo(response);
+                    if (!response.ok) throw new Error(data.error || 'No fue posible actualizar el prejurídico.');
+                    await recargar();
+                } catch (error) { alert(error.message); boton.disabled = false; }
+            });
+            acciones.appendChild(boton);
+        };
+        const estado = registro.prejuridico_estado || 'PENDIENTE_APROBACION';
+        agregar('APROBAR', 'Aprobar', estado === 'PENDIENTE_APROBACION');
+        agregar('GENERAR', 'Generar documento', estado === 'PENDIENTE_ENVIO_ABOGADO');
+        agregar('ENVIAR_ABOGADO', 'Enviar al abogado', estado === 'GENERADO_PENDIENTE_ENVIO');
+        if (registro.prejuridico_documento_url) {
+            const enlace = document.createElement('a'); enlace.className = 'btn btn-secondary'; enlace.target = '_blank'; enlace.href = registro.prejuridico_documento_url; enlace.textContent = 'Ver documento'; acciones.appendChild(enlace);
+        }
+        article.appendChild(acciones);
+    });
+}
+
 function historialSeguimientoCarteraSiigo(registros, cliente = null) {
     if (!registros.length) return '<p>Este cliente aún no tiene seguimientos registrados.</p>';
     return registros.map(item => `<article class="siigo-seguimiento-registro" data-seguimiento-id="${item.id}">${item.fecha_compromiso ? `<label class="siigo-seguimiento-seleccion"><input type="radio" name="siigoSeguimientoSeleccion" value="${item.id}"> Seleccionar este compromiso</label>` : ''}<h4>${escapeSiigo(formatoSiigoFechaHora(item.fecha_hora_gestion || item.created_at))} · ${escapeSiigo(item.medio)}</h4><p>Registrado por: <strong>${escapeSiigo(item.registrado_por)}</strong>${item.contacto ? ` · Contacto: ${escapeSiigo(item.contacto)}` : ''}</p><p class="siigo-seguimiento-nota">${escapeSiigo(item.observaciones)}</p>${item.fecha_compromiso ? `<p><span class="siigo-semaforo siigo-${item.estado_compromiso}">${estadosCompromisoSiigo[item.estado_compromiso]}</span> Compromiso de pago: ${escapeSiigo(formatoSiigoFecha(item.fecha_compromiso))}${item.valor_compromiso != null ? ` · ${formatoSiigoNumero(item.valor_compromiso)}` : ''}</p>` : ''}${item.compromiso_cumplido_at ? `<p>Cumplimiento registrado por ${escapeSiigo(item.compromiso_cumplido_por)} · ${escapeSiigo(formatoSiigoFecha(item.compromiso_cumplido_at.slice(0, 10)))}</p>` : ''}${item.proximo_seguimiento ? `<p>Próximo seguimiento: ${escapeSiigo(formatoSiigoFecha(item.proximo_seguimiento))}</p>` : ''}${comprobantesPagoCarteraSiigo(item)}</article>`).join('');
@@ -1732,6 +1773,7 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     };
     const vincularSeleccionHistorialSiigo = () => {
         mostrarCodigosSeguimientoCarteraSiigo(historial);
+        agregarAccionesPrejuridicoCarteraSiigo(historial, registros, cargarHistorial);
         if (!registros.some(r => r.id === seleccionId)) seleccionId = null;
         historial.querySelectorAll('input[name="siigoSeguimientoSeleccion"]').forEach(radio => {
             radio.checked = Number(radio.value) === seleccionId;
