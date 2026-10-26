@@ -134,6 +134,13 @@ async function refreshCurrentUserContext() {
 })();
 
 document.addEventListener('DOMContentLoaded', () => {
+    // El bloque se conserva fuera del fragmento de Atenciones: evita que
+    // estilos de ese panel lo oculten al navegar desde el menu.
+    const optometriaView = document.getElementById('optometriaView');
+    const contentArea = document.querySelector('.content-area');
+    if (optometriaView && contentArea && optometriaView.parentElement !== contentArea) {
+        contentArea.appendChild(optometriaView);
+    }
     currentUser = checkAuth();
     updateCurrentUserDisplay();
     applySidebarAccess();
