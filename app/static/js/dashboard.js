@@ -973,6 +973,7 @@ function switchModule(moduleName) {
                 console.error('Error inicializando modulo compras', e);
             }
         } else if (moduleName === 'optometria') {
+            document.body.classList.add('modo-optometria');
             cargarPedidosOptometria();
         } else {
             // Attempt to fetch dashboard fragment for other modules
@@ -1959,6 +1960,19 @@ function actualizarArchivoSabanasPistas() {
         resultado.innerHTML = `<span style="color:#555;">Listo para procesar: <strong>${escapeHtml(archivo.name)}</strong></span>`;
     }
 }
+
+function salirDeOptometria() {
+    document.body.classList.remove('modo-optometria');
+    const banner = document.getElementById('appBannerView');
+    document.querySelectorAll('.module-view').forEach(view => view.classList.remove('active'));
+    banner?.classList.add('active');
+    document.querySelectorAll('.menu-item, .menu-subitem').forEach(item => item.classList.remove('active'));
+    document.getElementById('moduleTitle').textContent = 'PREVENT';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('optometriaVolverMenu')?.addEventListener('click', salirDeOptometria);
+});
 
 async function cargarPedidosOptometria() {
     const tabla = document.getElementById('optometriaTable');

@@ -6237,3 +6237,6 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     #optometriaView .btn { min-height: 44px; width: 100%; margin-bottom: 8px; }
     #optometriaView .data-table { min-width: 760px; }
 }
+.modo-optometria .sidebar { display: none; }
+.modo-optometria .main-content { margin-left: 0; width: 100%; }
+.modo-optometria .content-area { max-width: 1400px; margin: 0 auto; }
