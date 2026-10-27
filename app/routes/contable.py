@@ -1808,6 +1808,34 @@ def documento_prejuridico_cartera(seguimiento_id):
         anexos = [anexo for item in historial for anexo in item.comprobantes_pago]
         e = lambda value: escape(value or '')
         fecha_corte = datetime.now(ZoneInfo('America/Bogota')).strftime('%d/%m/%Y %H:%M')
+        # El PDF usa la misma fuente de datos que Facturas vencidas, incluida
+        # la liquidacion de intereses por tasa mensual.
+        detalle_financiero = '<p>No fue posible cargar el detalle financiero.</p>'
+        try:
+            contexto_cartera = current_app.test_request_context(
+                '/api/contable/cartera-dinamica',
+                query_string={'informe': 'vencidas', 'cliente': registro.identificacion, 'estado_facturas': 'todos'},
+            )
+            contexto_cartera.push()
+            try:
+                respuesta = cartera_dinamica()
+                respuesta = respuesta[0] if isinstance(respuesta, tuple) else respuesta
+                datos_cartera = respuesta.get_json(silent=True) or {}
+            finally:
+                contexto_cartera.pop()
+            cliente_cartera = next((item for item in datos_cartera.get('clientes', []) if _nit_cartera(item.get('identificacion')) == _nit_cartera(registro.identificacion)), None)
+            facturas = (cliente_cartera or {}).get('facturas', [])
+            filas_financieras = ''.join(
+                '<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>${:,.2f}</td><td>${:,.2f}</td><td>${:,.2f}</td></tr>'.format(
+                    e(f.get('referencia')), e(f.get('fecha_factura')), e(f.get('fecha_vencimiento')),
+                    e(str(f.get('dias_vencido', 0))), float(f.get('saldo', 0)), float(f.get('interes_mora', 0)), float(f.get('total_con_mora', 0)),
+                ) for f in facturas
+            ) or '<tr><td colspan="7">No hay facturas pendientes.</td></tr>'
+            detalle_financiero = '<h2>2. Facturas pendientes y liquidación de mora</h2><table><thead><tr><th>Factura</th><th>Fecha</th><th>Vencimiento</th><th>Días vencidos</th><th>Capital</th><th>Intereses</th><th>Total actualizado</th></tr></thead><tbody>{}</tbody></table><p><b>Total capital:</b> ${:,.2f} &nbsp; <b>Total vencido:</b> ${:,.2f} &nbsp; <b>Total actualizado:</b> ${:,.2f}</p>'.format(
+                filas_financieras, float((cliente_cartera or {}).get('total_cliente', 0)), float((cliente_cartera or {}).get('total_vencido', 0)), sum(float(f.get('total_con_mora', 0)) for f in facturas),
+            )
+        except Exception:
+            current_app.logger.exception('No fue posible incorporar la cartera al prejuridico.')
         filas_historial = ''.join(
             '<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>'.format(
                 e(item.fecha_gestion.strftime('%d/%m/%Y')),
@@ -1828,6 +1856,8 @@ def documento_prejuridico_cartera(seguimiento_id):
 <h2>2. Historial de gestiones</h2><table><thead><tr><th>Fecha</th><th>Medio</th><th>Contacto</th><th>Estado</th><th>Gestión y acuerdos</th></tr></thead><tbody>{filas_historial}</tbody></table>
 <h2>3. Anexos</h2><ol>{filas_anexos}</ol><p>Los anexos corresponden a los soportes cargados en el seguimiento de cartera y se consultan desde el sistema.</p>
 </body></html>'''.format(cliente=e(registro.cliente_nombre), identificacion=e(registro.identificacion), version=e(str(registro.prejuridico_documento_version or 0)), fecha_corte=e(fecha_corte), estado=e(registro.prejuridico_estado or 'PENDIENTE'), cantidad=e(str(len(historial))), ultima_fecha=e(historial[-1].fecha_gestion.strftime('%d/%m/%Y') if historial else ''), ultima_nota=e(historial[-1].observaciones if historial else ''), filas_historial=filas_historial, filas_anexos=filas_anexos)
+        html = html.replace('<h2>2. Historial de gestiones</h2>', detalle_financiero + '<h2>3. Historial de gestiones</h2>')
+        html = html.replace('<h2>3. Anexos</h2>', '<h2>4. Anexos</h2>')
         return current_app.response_class(html, mimetype='text/html')
     except PermissionError as exc:
         return current_app.response_class(str(exc), status=403, mimetype='text/plain')
