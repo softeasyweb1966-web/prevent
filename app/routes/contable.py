@@ -1920,7 +1920,10 @@ def documento_prejuridico_cartera(seguimiento_id):
         html = html.replace('149.486 del C. S. de la J.', e(abogado_tarjeta))
         html = html.replace('Abogada Especialista', e(abogado_cargo))
         html = html.replace('<div class="firma">Atentamente,<br><br>', '<div class="firma">Atentamente,<br>{firma_html}<br>')
-        return current_app.response_class(html.replace('{firma_html}', firma_html), mimetype='text/html')
+        respuesta = current_app.response_class(html.replace('{firma_html}', firma_html), mimetype='text/html')
+        respuesta.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        respuesta.headers['Pragma'] = 'no-cache'
+        return respuesta
     except PermissionError as exc:
         return current_app.response_class(str(exc), status=403, mimetype='text/plain')
 
