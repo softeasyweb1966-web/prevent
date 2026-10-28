@@ -1746,7 +1746,7 @@ def gestionar_prejuridico_cartera(seguimiento_id):
         abogado_identificacion = (config_abogado.abogado_identificacion if config_abogado else '') or 'C.C. No. 55.151.062 de Neiva'
         abogado_tarjeta = (config_abogado.abogado_tarjeta_profesional if config_abogado else '') or 'T.P. No. 149.486 del C. S. de la J.'
         abogado_cargo = (config_abogado.abogado_cargo if config_abogado else '') or 'Abogada Especialista'
-        firma_html = '<img class="firma-imagen" src="/api/contable/prejuridico/configuracion/firma" alt="Firma del abogado">' if config_abogado and config_abogado.firma_archivo else ''
+        firma_html = '<img class="firma-imagen" src="/api/contable/prejuridico/configuracion/firma" alt="Firma del abogado">' if config_abogado and config_abogado.firma_archivo else '<img class="firma-imagen" src="/static/prejuridico/firma_ana.png" alt="Firma de la abogada">'
         if registro is None or registro.estado_gestion != 'PREJURIDICO':
             return jsonify(error='Solicitud de prejurídico no encontrada.'), 404
         datos = request.get_json(silent=True) or {}
@@ -1842,7 +1842,7 @@ def documento_prejuridico_cartera(seguimiento_id):
         abogado_identificacion = (config_abogado.abogado_identificacion if config_abogado else '') or 'C.C. No. 55.151.062 de Neiva'
         abogado_tarjeta = (config_abogado.abogado_tarjeta_profesional if config_abogado else '') or 'T.P. No. 149.486 del C. S. de la J.'
         abogado_cargo = (config_abogado.abogado_cargo if config_abogado else '') or 'Abogada Especialista'
-        firma_html = '<img class="firma-imagen" src="/api/contable/prejuridico/configuracion/firma" alt="Firma del abogado">' if config_abogado and config_abogado.firma_archivo else ''
+        firma_html = '<img class="firma-imagen" src="/api/contable/prejuridico/configuracion/firma" alt="Firma del abogado">' if config_abogado and config_abogado.firma_archivo else '<img class="firma-imagen" src="/static/prejuridico/firma_ana.png" alt="Firma de la abogada">'
         if registro is None or registro.estado_gestion != 'PREJURIDICO':
             return current_app.response_class('Solicitud de prejurídico no encontrada.', status=404, mimetype='text/plain')
 
