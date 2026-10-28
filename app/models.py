@@ -885,6 +885,21 @@ class Empresa(db.Model):
         return f'<Empresa {self.nombre}>'
 
 
+class ConfiguracionPrejuridico(db.Model):
+    """Datos del abogado y firma usados en los documentos prejurídicos."""
+    __tablename__ = 'configuracion_prejuridico'
+
+    id = db.Column(db.Integer, primary_key=True)
+    abogado_nombre = db.Column(db.String(200), nullable=False, default='')
+    abogado_identificacion = db.Column(db.String(80), nullable=False, default='')
+    abogado_tarjeta_profesional = db.Column(db.String(80), nullable=False, default='')
+    abogado_cargo = db.Column(db.String(120), nullable=False, default='Abogada Especialista')
+    firma_archivo = db.Column(db.LargeBinary)
+    firma_mimetype = db.Column(db.String(100))
+    firma_nombre = db.Column(db.String(255))
+    actualizado_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class AuditLog(db.Model):
     """Log de auditoría de cambios"""
     __tablename__ = 'audit_logs'

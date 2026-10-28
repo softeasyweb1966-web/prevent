@@ -1259,6 +1259,7 @@ function abrirCategoriasOtrosCarteraSiigo(panel) {
     dialogo.innerHTML = `<div class="siigo-seguimiento-shell"><div class="siigo-seguimiento-cabecera"><div><h2>Otros seguimientos</h2><p>Seleccione el tipo de alerta que desea consultar.</p></div><button type="button" class="btn btn-primary" data-cerrar>Regresar</button></div><div class="siigo-cartera-alertas">${visibles.map(([tipo, nombre]) => `<button type="button" class="siigo-alerta-card siigo-pendiente" data-categoria-otros="${tipo}"><span>${nombre}</span><strong>${conteo(tipo)}</strong><small>Ver detalle</small></button>`).join('') || '<p>No hay otras alertas pendientes.</p>'}</div></div>`;
     document.body.appendChild(dialogo);
     dialogo.showModal();
+    if (esAdministradorCarteraSiigo()) dialogo.querySelector('.siigo-cartera-alertas')?.insertAdjacentHTML('afterend', '<div class="button-group"><button type="button" class="btn btn-secondary" data-config-abogado>Configurar abogado y firma</button></div>');
     dialogo.querySelector('[data-cerrar]').addEventListener('click', () => dialogo.close());
     dialogo.addEventListener('close', () => dialogo.remove(), { once: true });
     dialogo.querySelectorAll('[data-categoria-otros]').forEach(boton => boton.addEventListener('click', () => {
@@ -1281,6 +1282,16 @@ function abrirBandejaPrejuridicosCarteraSiigo(panel) {
         abrirDetalleAlertaAdministrativaCarteraSiigo(panel, boton.dataset.prejuridicoEtapa, true);
     }));
     dialogo.querySelector('[data-tasas-mora]')?.addEventListener('click', () => abrirTasasInteresMoraCarteraSiigo(dialogo));
+    dialogo.querySelector('[data-config-abogado]')?.addEventListener('click', () => abrirConfiguracionAbogadoPrejuridico(dialogo));
+}
+
+async function abrirConfiguracionAbogadoPrejuridico(bandeja) {
+    const dialogo = document.createElement('dialog'); dialogo.className = 'siigo-seguimiento-dialogo';
+    dialogo.innerHTML = `<div class="siigo-seguimiento-shell"><div class="siigo-seguimiento-cabecera"><h2>Abogado y firma del prejurídico</h2><button type="button" class="btn btn-primary" data-cerrar>Cerrar</button></div><p>Estos datos aparecerán en el encabezado y la firma del documento.</p><p data-estado role="status"></p><form data-form enctype="multipart/form-data"><div class="form-row siigo-form-dos"><div class="form-group"><label>Nombre completo *</label><input name="abogado_nombre" required></div><div class="form-group"><label>Identificación *</label><input name="abogado_identificacion" required></div></div><div class="form-row siigo-form-dos"><div class="form-group"><label>Tarjeta profesional *</label><input name="abogado_tarjeta_profesional" required></div><div class="form-group"><label>Cargo</label><input name="abogado_cargo" value="Abogada Especialista"></div></div><div class="form-group"><label>Firma (PNG, JPG o WebP; máximo 2 MB)</label><input name="firma" type="file" accept="image/png,image/jpeg,image/webp"></div><button class="btn btn-primary">Guardar configuración</button></form></div>`;
+    document.body.appendChild(dialogo); dialogo.showModal(); dialogo.querySelector('[data-cerrar]').addEventListener('click', () => dialogo.close());
+    const form = dialogo.querySelector('[data-form]'); const estado = dialogo.querySelector('[data-estado]');
+    try { const r = await fetch('/api/contable/prejuridico/configuracion', {credentials:'include'}); const d = await leerRespuestaSiigo(r); Object.entries(d).forEach(([k,v]) => { const el=form.elements[k]; if(el && v) el.value=v; }); } catch(e) { estado.textContent=e.message; }
+    form.addEventListener('submit', async e => { e.preventDefault(); try { const r=await fetch('/api/contable/prejuridico/configuracion',{method:'PATCH',body:new FormData(form),credentials:'include'}); const d=await leerRespuestaSiigo(r); if(!r.ok) throw new Error(d.error||'No fue posible guardar.'); estado.textContent='Configuración guardada correctamente.'; } catch(err) { estado.textContent=err.message; } });
 }
 
 async function abrirTasasInteresMoraCarteraSiigo(bandeja) {
