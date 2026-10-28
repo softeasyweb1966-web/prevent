@@ -1923,6 +1923,8 @@ def documento_prejuridico_cartera(seguimiento_id):
         html = html.replace('$4.060.000 M/CTE.', '${:,.0f} M/CTE.'.format(valor_obligacion))
         html = html.replace('149.486 del C. S. de la J.', e(abogado_tarjeta))
         html = html.replace('Abogada Especialista', e(abogado_cargo))
+        html = html.replace('C.C. No. C.C. No. ', 'C.C. No. ')
+        html = html.replace('T.P. No. T.P. No. ', 'T.P. No. ')
         html = html.replace('<div class="firma">Atentamente,<br><br>', '<div class="firma">Atentamente,<br>{firma_html}<br>')
         respuesta = current_app.response_class(html.replace('{firma_html}', firma_html), mimetype='text/html')
         respuesta.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
