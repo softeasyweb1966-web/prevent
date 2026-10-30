@@ -10715,4 +10715,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const valor = parseValorRetencion(input.value);
         if (Number.isFinite(valor)) input.value = formatoEntradaRetencion(valor);
     }));
+    const crud = document.getElementById('retencionesCrudForm');
+    if (crud) { cargarRetencionesCrud(); crud.addEventListener('submit', guardarRetencionCrud); }
 });
+
+async function cargarRetencionesCrud() {
+    const r = await fetch('/api/dashboard/retenciones-fuente'); const datos = await r.json();
+    document.getElementById('retencionesCrudTabla').innerHTML = `<table class="data-table"><thead><tr><th>Código</th><th>Categoría</th><th>Concepto</th><th>Base pesos</th><th>Tarifa %</th><th>Acciones</th></tr></thead><tbody>${datos.map(x => `<tr><td>${x.codigo}</td><td>${x.categoria}</td><td>${x.concepto}</td><td>${x.base_pesos ?? ''}</td><td>${x.tarifa_porcentaje ?? 'Tabla'}</td><td><button type="button" class="btn btn-secondary" onclick="eliminarRetencionCrud(${x.id})">Eliminar</button></td></tr>`).join('') || '<tr><td colspan="6">No hay tarifas cargadas.</td></tr>'}</tbody></table>`;
+}
+async function guardarRetencionCrud(event) { event.preventDefault(); const data = Object.fromEntries(new FormData(event.currentTarget)); const r = await fetch('/api/dashboard/retenciones-fuente', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) }); if (!r.ok) { alert((await r.json()).error || 'No se pudo guardar'); return; } event.currentTarget.reset(); cargarRetencionesCrud(); }
+async function eliminarRetencionCrud(id) { if (!confirm('¿Eliminar esta tarifa?')) return; await fetch(`/api/dashboard/retenciones-fuente/${id}`, { method: 'DELETE' }); cargarRetencionesCrud(); }

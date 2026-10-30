@@ -6,6 +6,26 @@ from sqlalchemy.orm import synonym
 
 db = SQLAlchemy()
 
+
+class RetencionFuente(db.Model):
+    __tablename__ = 'retenciones_fuente'
+    id = db.Column(db.Integer, primary_key=True)
+    codigo = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    categoria = db.Column(db.String(100), nullable=False)
+    concepto = db.Column(db.String(255), nullable=False)
+    base_uvt = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    base_pesos = db.Column(db.Numeric(16, 2), nullable=False, default=0)
+    tarifa_porcentaje = db.Column(db.Numeric(8, 4))
+    comparador = db.Column(db.String(20), nullable=False, default='>=')
+    aplicacion_automatica = db.Column(db.String(20), nullable=False, default='CONDICIONAL')
+    observaciones = db.Column(db.Text)
+    norma_referencia = db.Column(db.String(255))
+    vigencia_desde = db.Column(db.Date)
+    vigencia_hasta = db.Column(db.Date)
+    activo = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 # ==================== MODELOS DE USUARIOS Y ROLES ====================
 
 class Role(db.Model):
