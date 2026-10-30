@@ -10690,7 +10690,7 @@ async function cerrarLiquidacionComision() {
         showError('Error de conexion al cerrar la liquidacion.');
     }
 }
-function mostrarInformeRetencion() { document.getElementById('informeRetencionPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); document.getElementById('retencionNroFactura')?.focus(); }
+function mostrarInformeRetencion() { document.getElementById('informeRetencionPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); document.getElementById('retencionValorFactura')?.focus(); }
 function limpiarInformeRetencion() { document.getElementById('informeRetencionForm')?.reset(); document.getElementById('retencionResultado').style.display = 'none'; document.getElementById('retencionMensaje').textContent = ''; }
 function parseValorRetencion(valor) {
     const texto = String(valor ?? '').trim().replace(/\s/g, '');
@@ -10703,6 +10703,11 @@ function parseValorRetencion(valor) {
 function formatoRetencion(valor) { return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 2 }).format(valor); }
 function formatoEntradaRetencion(valor) { return new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(valor); }
 async function calcularInformeRetencion(event) {
+    event.preventDefault();
+    const vfSimple = parseValorRetencion(document.getElementById('retencionValorFactura').value);
+    const msgSimple = document.getElementById('retencionMensaje');
+    if (!Number.isFinite(vfSimple) || vfSimple <= 0) { msgSimple.textContent = 'Ingrese un valor de factura válido.'; document.getElementById('retencionResultadoSimple').style.display = 'none'; return; }
+    document.getElementById('retencionBase2').textContent = formatoRetencion(vfSimple); document.getElementById('retencionValor2').textContent = formatoRetencion(vfSimple * 0.02); document.getElementById('retencionBase11').textContent = formatoRetencion(vfSimple); document.getElementById('retencionValor11').textContent = formatoRetencion(vfSimple * 0.11); document.getElementById('retencionResultadoSimple').style.display = 'block'; msgSimple.textContent = 'Se calcularon los dos escenarios de retención.'; return;
     event.preventDefault(); const factura = document.getElementById('retencionNroFactura').value.trim(); const vf = parseValorRetencion(document.getElementById('retencionValorFactura').value); const vc = parseValorRetencion(document.getElementById('retencionValorCancelado').value); const ti = parseValorRetencion(document.getElementById('retencionTasaIca').value); const msg = document.getElementById('retencionMensaje');
     if (!factura || !Number.isFinite(vf) || vf <= 0 || !Number.isFinite(vc) || vc < 0 || vc > vf || !Number.isFinite(ti) || ti < 0) { msg.textContent = 'Complete los datos y verifique que el valor cancelado no sea mayor al valor de la factura.'; document.getElementById('retencionResultado').style.display = 'none'; return; }
     const totalRetenciones = vf - vc, ica = vf * ti / 1000, retfte = totalRetenciones - ica, porcentajeRetfte = retfte / vf * 100;

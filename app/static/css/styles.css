@@ -6253,6 +6253,8 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
 #informeRetencionPanel.retencion-panel-compact #retencionResultado h4 { margin: 8px 0 5px; }
 #informeRetencionPanel.retencion-panel-compact .data-table th,
 #informeRetencionPanel.retencion-panel-compact .data-table td { padding: 7px 10px; }
+.retencion-escenarios { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.retencion-escenario h4 { margin:4px 0; }
 @media (max-width: 800px) {
     #informeRetencionPanel.retencion-panel-compact .form-row { grid-template-columns: 1fr; }
 }
