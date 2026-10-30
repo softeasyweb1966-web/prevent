@@ -134,6 +134,8 @@ async function refreshCurrentUserContext() {
 })();
 
 document.addEventListener('DOMContentLoaded', () => {
+    const retencionAyuda = document.querySelector('#informeRetencionPanel > .form-help');
+    if (retencionAyuda) retencionAyuda.textContent = 'Ingrese el valor de la factura para comparar las retenciones del 2% y 11% y calcular la RETEICA por mil.';
     // El bloque se conserva fuera del fragmento de Atenciones: evita que
     // estilos de ese panel lo oculten al navegar desde el menu.
     const optometriaView = document.getElementById('optometriaView');
