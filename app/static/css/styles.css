@@ -6240,3 +6240,19 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
 .modo-optometria .sidebar { display: none; }
 .modo-optometria .main-content { margin-left: 0; width: 100%; }
 .modo-optometria .content-area { max-width: 1400px; margin: 0 auto; }
+#informeRetencionPanel.retencion-panel-compact { padding: 14px 18px; }
+#informeRetencionPanel.retencion-panel-compact h3 { margin: 0 0 6px; }
+#informeRetencionPanel.retencion-panel-compact .form-help { margin: 5px 0 8px; }
+#informeRetencionPanel.retencion-panel-compact .form-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 8px; }
+#informeRetencionPanel.retencion-panel-compact .form-group { margin-bottom: 0; }
+#informeRetencionPanel.retencion-panel-compact label { margin-bottom: 3px; }
+#informeRetencionPanel.retencion-panel-compact input { min-height: 34px; padding: 6px 9px; }
+#informeRetencionPanel.retencion-panel-compact .form-group:last-child { display: flex; align-items: end; gap: 8px; }
+#informeRetencionPanel.retencion-panel-compact .btn { width: auto; flex: 1; min-height: 34px; padding: 7px 12px; }
+#informeRetencionPanel.retencion-panel-compact #retencionResultado { margin-top: 10px !important; }
+#informeRetencionPanel.retencion-panel-compact #retencionResultado h4 { margin: 8px 0 5px; }
+#informeRetencionPanel.retencion-panel-compact .data-table th,
+#informeRetencionPanel.retencion-panel-compact .data-table td { padding: 7px 10px; }
+@media (max-width: 800px) {
+    #informeRetencionPanel.retencion-panel-compact .form-row { grid-template-columns: 1fr; }
+}
