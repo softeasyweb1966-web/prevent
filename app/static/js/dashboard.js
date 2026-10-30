@@ -10701,10 +10701,18 @@ function parseValorRetencion(valor) {
     return Number(texto);
 }
 function formatoRetencion(valor) { return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 2 }).format(valor); }
+function formatoEntradaRetencion(valor) { return new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 }).format(valor); }
 function calcularInformeRetencion(event) {
-    event.preventDefault(); const factura = document.getElementById('retencionNroFactura').value.trim(); const vf = parseValorRetencion(document.getElementById('retencionValorFactura').value); const vc = parseValorRetencion(document.getElementById('retencionValorCancelado').value); const ti = parseValorRetencion(document.getElementById('retencionTasaIca').value); const tr = parseValorRetencion(document.getElementById('retencionTasaRetfte').value); const msg = document.getElementById('retencionMensaje');
-    if (!factura || !Number.isFinite(vf) || vf < 0 || !Number.isFinite(vc) || vc < 0 || vc > vf || !Number.isFinite(ti) || ti < 0 || !Number.isFinite(tr) || tr < 0) { msg.textContent = 'Complete los datos y verifique que el valor cancelado no sea mayor al valor de la factura.'; document.getElementById('retencionResultado').style.display = 'none'; return; }
-    const saldo = vf - vc, ica = saldo * ti / 100, retfte = saldo * tr / 100, total = ica + retfte;
-    document.getElementById('retencionResultadoFactura').textContent = factura; document.getElementById('retencionSaldo').textContent = formatoRetencion(saldo); document.getElementById('retencionIca').textContent = formatoRetencion(ica); document.getElementById('retencionRetfte').textContent = formatoRetencion(retfte); document.getElementById('retencionTotal').textContent = formatoRetencion(total); document.getElementById('retencionNeto').textContent = formatoRetencion(saldo - total); document.getElementById('retencionResultado').style.display = 'block'; msg.textContent = 'Calculo actualizado correctamente.';
+    event.preventDefault(); const factura = document.getElementById('retencionNroFactura').value.trim(); const vf = parseValorRetencion(document.getElementById('retencionValorFactura').value); const vc = parseValorRetencion(document.getElementById('retencionValorCancelado').value); const ti = parseValorRetencion(document.getElementById('retencionTasaIca').value); const msg = document.getElementById('retencionMensaje');
+    if (!factura || !Number.isFinite(vf) || vf <= 0 || !Number.isFinite(vc) || vc < 0 || vc > vf || !Number.isFinite(ti) || ti < 0) { msg.textContent = 'Complete los datos y verifique que el valor cancelado no sea mayor al valor de la factura.'; document.getElementById('retencionResultado').style.display = 'none'; return; }
+    const totalRetenciones = vf - vc, ica = vf * ti / 100, retfte = totalRetenciones - ica, porcentajeRetfte = retfte / vf * 100;
+    if (retfte < 0) { msg.textContent = 'La RETEICA calculada supera el total retenido. Verifique la tasa ingresada.'; document.getElementById('retencionResultado').style.display = 'none'; return; }
+    document.getElementById('retencionResultadoFactura').textContent = factura; document.getElementById('retencionRetfte').textContent = formatoRetencion(retfte); document.getElementById('retencionPorcentajeRetfte').textContent = `${porcentajeRetfte.toFixed(3)}%`; document.getElementById('retencionIca').textContent = formatoRetencion(ica); document.getElementById('retencionPorcentajeIca').textContent = `${ti.toFixed(3)}%`; document.getElementById('retencionTotal').textContent = formatoRetencion(totalRetenciones); document.getElementById('retencionNeto').textContent = formatoRetencion(vc); document.getElementById('retencionResultado').style.display = 'block'; msg.textContent = 'Calculo actualizado correctamente.';
 }
-document.addEventListener('DOMContentLoaded', () => document.getElementById('informeRetencionForm')?.addEventListener('submit', calcularInformeRetencion));
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('informeRetencionForm')?.addEventListener('submit', calcularInformeRetencion);
+    document.querySelectorAll('.retencion-monetario').forEach(input => input.addEventListener('blur', () => {
+        const valor = parseValorRetencion(input.value);
+        if (Number.isFinite(valor)) input.value = formatoEntradaRetencion(valor);
+    }));
+});
