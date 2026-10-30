@@ -10690,3 +10690,13 @@ async function cerrarLiquidacionComision() {
         showError('Error de conexion al cerrar la liquidacion.');
     }
 }
+function mostrarInformeRetencion() { document.getElementById('informeRetencionPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); document.getElementById('retencionNroFactura')?.focus(); }
+function limpiarInformeRetencion() { document.getElementById('informeRetencionForm')?.reset(); document.getElementById('retencionResultado').style.display = 'none'; document.getElementById('retencionMensaje').textContent = ''; }
+function formatoRetencion(valor) { return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 2 }).format(valor); }
+function calcularInformeRetencion(event) {
+    event.preventDefault(); const factura = document.getElementById('retencionNroFactura').value.trim(); const vf = Number(document.getElementById('retencionValorFactura').value); const vc = Number(document.getElementById('retencionValorCancelado').value); const ti = Number(document.getElementById('retencionTasaIca').value); const tr = Number(document.getElementById('retencionTasaRetfte').value); const msg = document.getElementById('retencionMensaje');
+    if (!factura || !Number.isFinite(vf) || vf < 0 || !Number.isFinite(vc) || vc < 0 || vc > vf || !Number.isFinite(ti) || ti < 0 || !Number.isFinite(tr) || tr < 0) { msg.textContent = 'Complete los datos y verifique que el valor cancelado no sea mayor al valor de la factura.'; document.getElementById('retencionResultado').style.display = 'none'; return; }
+    const saldo = vf - vc, ica = saldo * ti / 100, retfte = saldo * tr / 100, total = ica + retfte;
+    document.getElementById('retencionResultadoFactura').textContent = factura; document.getElementById('retencionSaldo').textContent = formatoRetencion(saldo); document.getElementById('retencionIca').textContent = formatoRetencion(ica); document.getElementById('retencionRetfte').textContent = formatoRetencion(retfte); document.getElementById('retencionTotal').textContent = formatoRetencion(total); document.getElementById('retencionNeto').textContent = formatoRetencion(saldo - total); document.getElementById('retencionResultado').style.display = 'block'; msg.textContent = 'Calculo actualizado correctamente.';
+}
+document.addEventListener('DOMContentLoaded', () => document.getElementById('informeRetencionForm')?.addEventListener('submit', calcularInformeRetencion));

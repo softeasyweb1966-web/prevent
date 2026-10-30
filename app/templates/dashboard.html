@@ -1257,6 +1257,17 @@
             </div>
             
             <div id="informesView" class="module-view">
+                <div class="button-group module-actions" style="margin:16px 0;"><button type="button" class="btn btn-primary" onclick="mostrarInformeRetencion()">Calculo Retencion</button></div>
+                <section id="informeRetencionPanel" class="recent-section" style="max-width:900px;">
+                    <h3 style="margin-top:0;">Calculo de ICA y RETFTE</h3>
+                    <p class="form-help">Los valores se calculan sobre el saldo: valor factura menos valor cancelado. Verifique las tasas aplicables antes de usar el resultado.</p>
+                    <form id="informeRetencionForm" novalidate>
+                        <div class="form-row"><div class="form-group"><label for="retencionNroFactura">Nro Factura *</label><input id="retencionNroFactura" type="text" maxlength="60" required></div><div class="form-group"><label for="retencionValorFactura">Valor Factura *</label><input id="retencionValorFactura" type="number" min="0" step="0.01" required></div><div class="form-group"><label for="retencionValorCancelado">Valor Cancelado *</label><input id="retencionValorCancelado" type="number" min="0" step="0.01" value="0" required></div></div>
+                        <div class="form-row"><div class="form-group"><label for="retencionTasaIca">Tasa ICA (%)</label><input id="retencionTasaIca" type="number" min="0" step="0.001" value="0.966"></div><div class="form-group"><label for="retencionTasaRetfte">Tasa RETFTE (%)</label><input id="retencionTasaRetfte" type="number" min="0" step="0.01" value="4"></div><div class="form-group" style="align-self:end;"><button type="submit" class="btn btn-primary">Calcular</button><button type="button" class="btn btn-secondary" onclick="limpiarInformeRetencion()">Limpiar</button></div></div>
+                    </form>
+                    <div id="retencionResultado" style="display:none; margin-top:18px;"><h4>Resultado - Factura <span id="retencionResultadoFactura"></span></h4><div class="table-container"><table class="data-table"><tbody><tr><th>Saldo base</th><td id="retencionSaldo"></td></tr><tr><th>Valor ICA</th><td id="retencionIca"></td></tr><tr><th>Valor RETFTE</th><td id="retencionRetfte"></td></tr><tr><th>Total retenciones</th><td id="retencionTotal"></td></tr><tr><th>Valor neto a cancelar</th><td id="retencionNeto"></td></tr></tbody></table></div></div>
+                    <p id="retencionMensaje" role="status" class="form-help"></p>
+                </section>
                 <h2>Módulo Informes</h2>
                 <p class="placeholder">Este módulo está en desarrollo.</p>
             </div>
