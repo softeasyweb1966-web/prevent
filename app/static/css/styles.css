@@ -6255,6 +6255,7 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
 #informeRetencionPanel.retencion-panel-compact .data-table td { padding: 7px 10px; }
 .retencion-escenarios { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
 .retencion-escenario h4 { margin:4px 0; }
+.retencion-escenario .data-table { font-size: 0.9rem; }
 @media (max-width: 800px) {
     #informeRetencionPanel.retencion-panel-compact .form-row { grid-template-columns: 1fr; }
 }
