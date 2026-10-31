@@ -10699,6 +10699,7 @@ function parseValorRetencion(valor) {
     if (!texto) return NaN;
     if (texto.includes(',') && texto.includes('.')) return Number(texto.replace(/\./g, '').replace(',', '.'));
     if (texto.includes(',')) return Number(texto.replace(',', '.'));
+    if (/^\d+\.\d{3}$/.test(texto)) return Number(texto.replace('.', ''));
     if ((texto.match(/\./g) || []).length > 1) return Number(texto.replace(/\./g, ''));
     return Number(texto);
 }
