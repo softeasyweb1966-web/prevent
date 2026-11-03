@@ -1985,7 +1985,18 @@ function actualizarSeccionOptometria(seccion) {
     document.querySelectorAll('.optometria-tab').forEach(tab => tab.classList.toggle('active', tab.textContent.toLowerCase().startsWith(esCargue ? 'cargue' : esConsultar ? 'consultar' : 'nuevo')));
 }
 
-function cambiarSeccionOptometria(seccion) { window._optometriaSeccionActual = seccion; actualizarSeccionOptometria(seccion); }
+async function mostrarNumerosPedidosOptometria() {
+    const tabla = document.getElementById('optometriaTable');
+    if (!tabla) return;
+    const pedidos = await (await fetch('/api/optometria/pedidos', {credentials: 'include'})).json();
+    [...tabla.children].forEach((fila, i) => {
+        if (pedidos[i] && fila.children.length === 7) {
+            fila.insertAdjacentHTML('afterbegin', `<td><strong>#${escapeHtml(pedidos[i].nro_pedido)}</strong></td>`);
+        }
+    });
+}
+
+function cambiarSeccionOptometria(seccion) { window._optometriaSeccionActual = seccion; actualizarSeccionOptometria(seccion); if (seccion === 'consultar') setTimeout(mostrarNumerosPedidosOptometria, 300); }
 
 function cambiarSeccionOptometria(seccion) {
     window._optometriaSeccionActual = seccion;

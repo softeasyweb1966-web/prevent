@@ -39,7 +39,8 @@ def importar_excel():
             cedula = str(cedula).strip() if cedula not in (None, '') else None
             if not cedula:
                 errores.append(f'Fila {numero}: falta la cédula de {nombre}.'); continue
-            grupos.setdefault(str(numero).strip(), []).append((nombre, cedula, cuotas, valor_cuota, total, telefono, trabajo, observaciones, otros))
+            # El archivo representa un solo pedido; sus filas son los items/pacientes.
+            grupos.setdefault('1', []).append((nombre, cedula, cuotas, valor_cuota, total, telefono, trabajo, observaciones, otros))
         if errores:
             db.session.rollback(); return jsonify({'error': 'Hay registros sin cédula.', 'errores': errores}), 400
         for filas_pedido in grupos.values():
