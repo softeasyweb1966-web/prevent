@@ -1993,7 +1993,18 @@ async function mostrarNumerosPedidosOptometria() {
         if (pedidos[i] && fila.children.length === 7) {
             fila.insertAdjacentHTML('afterbegin', `<td><strong>#${escapeHtml(pedidos[i].nro_pedido)}</strong></td>`);
         }
+        if (pedidos[i] && !fila.nextElementSibling?.classList.contains('optometria-items-row')) {
+            const items = pedidos[i].items || [];
+            const detalle = items.length ? items.map(item => `<div style="display:flex;gap:10px;align-items:center;margin:6px 0;"><span style="min-width:240px;"><strong>${escapeHtml(item.descripcion)}</strong> (${item.cantidad})</span><input class="optometria-laboratorio" data-pedido="${pedidos[i].id}" data-item="${item.id}" value="${escapeHtml(item.laboratorio || '')}" placeholder="Laboratorio" style="max-width:260px;"><button type="button" class="btn btn-small" onclick="guardarLaboratorioOptometria(this)">Guardar</button></div>`).join('') : '<em>Sin ítems registrados.</em>';
+            fila.insertAdjacentHTML('afterend', `<tr class="optometria-items-row"><td colspan="8"><strong>Ítems y laboratorio:</strong>${items.length ? `<div style="margin-top:6px;">${detalle}</div>` : ` ${detalle}`}</td></tr>`);
+        }
     });
+}
+
+async function guardarLaboratorioOptometria(button) {
+    const input = button.parentElement.querySelector('.optometria-laboratorio');
+    const r = await fetch(`/api/optometria/pedidos/${input.dataset.pedido}/items/${input.dataset.item}`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({laboratorio: input.value}), credentials: 'include'});
+    if (r.ok) showSuccess('Laboratorio asignado.'); else showError('No fue posible asignar el laboratorio.');
 }
 
 function cambiarSeccionOptometria(seccion) { window._optometriaSeccionActual = seccion; actualizarSeccionOptometria(seccion); if (seccion === 'consultar') setTimeout(mostrarNumerosPedidosOptometria, 300); }

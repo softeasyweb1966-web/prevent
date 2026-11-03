@@ -1343,6 +1343,7 @@ class OptometriaPedidoItem(db.Model):
     valor_unitario = db.Column(Numeric(15, 2), nullable=False, default=0)
     total = db.Column(Numeric(15, 2), nullable=False, default=0)
     observaciones = db.Column(db.Text)
+    laboratorio = db.Column(db.String(200))
     pedido = db.relationship('OptometriaPedido', back_populates='items')
 
 

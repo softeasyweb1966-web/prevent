@@ -83,7 +83,7 @@ def _json(pedido):
         'autorizacion_nombre': pedido.autorizacion_nombre,
         'descripcion_marco': pedido.descripcion_marco, 'marco_nombre': pedido.marco_nombre,
         'observaciones': pedido.observaciones, 'created_at': pedido.created_at.isoformat(),
-        'items': [{'id': i.id, 'descripcion': i.descripcion, 'cantidad': i.cantidad, 'valor_unitario': float(i.valor_unitario or 0), 'total': float(i.total or 0), 'observaciones': i.observaciones} for i in pedido.items],
+        'items': [{'id': i.id, 'descripcion': i.descripcion, 'cantidad': i.cantidad, 'valor_unitario': float(i.valor_unitario or 0), 'total': float(i.total or 0), 'observaciones': i.observaciones, 'laboratorio': i.laboratorio} for i in pedido.items],
         'formula_url': f'/api/optometria/pedidos/{pedido.id}/archivo/formula' if pedido.formula_archivo else None,
         'autorizacion_url': f'/api/optometria/pedidos/{pedido.id}/archivo/autorizacion' if pedido.autorizacion_archivo else None,
         'marco_url': f'/api/optometria/pedidos/{pedido.id}/archivo/marco' if pedido.marco_archivo else None,
@@ -142,6 +142,15 @@ def pedido_detail(pedido_id):
         _apply(pedido, request.form, request.files); db.session.commit(); return jsonify(_json(pedido))
     except (ValueError, TypeError) as exc:
         db.session.rollback(); return jsonify({'error': str(exc)}), 400
+
+
+@optometria_bp.route('/pedidos/<int:pedido_id>/items/<int:item_id>', methods=['PATCH'])
+@login_required
+def actualizar_item(pedido_id, item_id):
+    item = OptometriaPedidoItem.query.filter_by(id=item_id, pedido_id=pedido_id).first_or_404()
+    item.laboratorio = (request.json or {}).get('laboratorio', '').strip() or None
+    db.session.commit()
+    return jsonify({'ok': True, 'laboratorio': item.laboratorio})
 
 
 @optometria_bp.route('/pedidos/<int:pedido_id>/archivo/<tipo>')
