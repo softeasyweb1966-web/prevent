@@ -51,7 +51,7 @@ def importar_excel():
             trabajos = [str(fila[6]).strip() for fila in filas_pedido if fila[6] not in (None, '')]
             notas = [' | '.join(str(v).strip() for v in (fila[7], fila[8]) if v not in (None, '')) for fila in filas_pedido]
             pedido = OptometriaPedido(
-                cliente=cliente, nombre_paciente=nombre, cedula_paciente=cedula,
+                nro_pedido=1, cliente=cliente, nombre_paciente=nombre, cedula_paciente=cedula,
                 celular_paciente=str(telefono).strip() if telefono not in (None, '') else None,
                 nro_cuotas=int(cuotas or 1), valor_cuota=_money(valor_cuota), total_venta=total_pedido,
                 estado_paciente='PENDIENTE', estado_gafas='PENDIENTE', estado_empresa='PENDIENTE_COBRO',
