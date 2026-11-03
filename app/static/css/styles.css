@@ -6236,6 +6236,7 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     #optometriaView .form-group { margin-bottom: 12px; }
     #optometriaView .btn { min-height: 44px; width: 100%; margin-bottom: 8px; }
 #optometriaView .data-table { min-width: 760px; }
+}
 #optometriaImportarForm.optometria-cargue-activo { max-width: 760px; margin: 28px auto; padding: 32px; border: 1px solid #dce5f0; border-radius: 18px; background: linear-gradient(145deg,#ffffff,#f4f8fc); box-shadow: 0 12px 30px rgba(35,65,100,.10); }
 #optometriaView:has(#optometriaImportarForm.optometria-cargue-activo) { background: #fff; }
 #optometriaView:has(#optometriaImportarForm.optometria-cargue-activo) .module-header { max-width: 760px; margin: 0 auto 24px; padding: 12px 0 18px; border-bottom: 1px solid #e7edf5; }
@@ -6246,7 +6247,6 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
 #optometriaImportarForm label { display: block; color: #17365d; font-weight: 600; margin-top: 18px; }
 #optometriaImportarForm label input { display: block; width: 100%; margin-top: 8px; box-sizing: border-box; border: 1px solid #c8d7e6; border-radius: 8px; padding: 11px 12px; font-size: 1rem; }
 #optometriaImportarForm button { min-width: 0; width: auto; padding: 11px 22px; border-radius: 8px; background: #1683c5; box-shadow: 0 5px 12px rgba(22,131,197,.20); }
-}
 .modo-optometria .sidebar { display: none; }
 .modo-optometria .main-content { margin-left: 0; width: 100%; }
 .modo-optometria .content-area { max-width: 1400px; margin: 0 auto; }
