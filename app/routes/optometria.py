@@ -29,6 +29,7 @@ def importar_excel():
         hoja = openpyxl.load_workbook(archivo, data_only=True, read_only=True).active
         filas = list(hoja.iter_rows(min_row=3, values_only=True))
         existentes = {str(p.cedula_paciente).strip() for p in OptometriaPedido.query.all()}
+        grupos = {}
         cargados = omitidos = 0
         errores = []
         for numero, nombre, cedula, cuotas, valor_cuota, total, telefono, trabajo, observaciones, otros in filas:
@@ -38,19 +39,31 @@ def importar_excel():
             cedula = str(cedula).strip() if cedula not in (None, '') else None
             if not cedula:
                 errores.append(f'Fila {numero}: falta la cédula de {nombre}.'); continue
+            grupos.setdefault(str(numero).strip(), []).append((nombre, cedula, cuotas, valor_cuota, total, telefono, trabajo, observaciones, otros))
+        if errores:
+            db.session.rollback(); return jsonify({'error': 'Hay registros sin cédula.', 'errores': errores}), 400
+        for filas_pedido in grupos.values():
+            nombre, cedula, cuotas, valor_cuota, total, telefono, trabajo, observaciones, otros = filas_pedido[0]
             if cedula in existentes:
-                omitidos += 1; continue
+                omitidos += len(filas_pedido); continue
+            total_pedido = sum((_money(fila[4]) for fila in filas_pedido), Decimal('0'))
+            trabajos = [str(fila[6]).strip() for fila in filas_pedido if fila[6] not in (None, '')]
+            notas = [' | '.join(str(v).strip() for v in (fila[7], fila[8]) if v not in (None, '')) for fila in filas_pedido]
             pedido = OptometriaPedido(
                 cliente=cliente, nombre_paciente=nombre, cedula_paciente=cedula,
                 celular_paciente=str(telefono).strip() if telefono not in (None, '') else None,
-                nro_cuotas=int(cuotas or 1), valor_cuota=_money(valor_cuota), total_venta=_money(total),
+                nro_cuotas=int(cuotas or 1), valor_cuota=_money(valor_cuota), total_venta=total_pedido,
                 estado_paciente='PENDIENTE', estado_gafas='PENDIENTE', estado_empresa='PENDIENTE_COBRO',
-                trabajo_realizar=str(trabajo).strip() if trabajo not in (None, '') else None,
-                observaciones=' | '.join(str(v).strip() for v in (observaciones, otros) if v not in (None, '')) or None,
+                trabajo_realizar=' | '.join(trabajos) or None,
+                observaciones=' | '.join(n for n in notas if n) or None,
                 created_at=datetime.utcnow(), updated_at=datetime.utcnow())
-            db.session.add(pedido); existentes.add(cedula); cargados += 1
-        if errores:
-            db.session.rollback(); return jsonify({'error': 'Hay registros sin cédula.', 'errores': errores}), 400
+            db.session.add(pedido); db.session.flush()
+            for fila in filas_pedido:
+                db.session.add(OptometriaPedidoItem(
+                    pedido_id=pedido.id, descripcion=str(fila[6] or 'Trabajo de optometria').strip(),
+                    cantidad=1, valor_unitario=_money(fila[4]), total=_money(fila[4]),
+                    observaciones=' | '.join(str(v).strip() for v in (fila[7], fila[8]) if v not in (None, '')) or None))
+            existentes.add(cedula); cargados += 1
         db.session.commit()
         return jsonify({'cargados': cargados, 'omitidos': omitidos, 'errores': []}), 201
     except Exception as exc:
