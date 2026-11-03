@@ -2,6 +2,8 @@ from decimal import Decimal, InvalidOperation
 from flask import jsonify, request, send_file
 from flask_login import login_required
 from io import BytesIO
+from datetime import datetime
+import openpyxl
 
 from app.models import OptometriaPedido, db
 from app.routes import optometria_bp
@@ -12,6 +14,47 @@ def _money(value):
         return Decimal(str(value or 0))
     except (InvalidOperation, ValueError):
         raise ValueError('Los valores monetarios deben ser numericos.')
+
+
+@optometria_bp.route('/pedidos/importar-excel', methods=['POST'])
+@login_required
+def importar_excel():
+    archivo = request.files.get('archivo')
+    cliente = (request.form.get('cliente') or '').strip()
+    if not archivo or not archivo.filename.lower().endswith('.xlsx'):
+        return jsonify({'error': 'Debe seleccionar un archivo Excel .xlsx.'}), 400
+    if not cliente:
+        return jsonify({'error': 'Debe indicar la empresa del archivo.'}), 400
+    try:
+        hoja = openpyxl.load_workbook(archivo, data_only=True, read_only=True).active
+        filas = list(hoja.iter_rows(min_row=3, values_only=True))
+        existentes = {str(p.cedula_paciente).strip() for p in OptometriaPedido.query.all()}
+        cargados = omitidos = 0
+        errores = []
+        for numero, nombre, cedula, cuotas, valor_cuota, total, telefono, trabajo, observaciones, otros in filas:
+            if not nombre and not cedula and not numero: continue
+            if not nombre or not numero: continue
+            nombre = str(nombre).strip()
+            cedula = str(cedula).strip() if cedula not in (None, '') else None
+            if not cedula:
+                errores.append(f'Fila {numero}: falta la cédula de {nombre}.'); continue
+            if cedula in existentes:
+                omitidos += 1; continue
+            pedido = OptometriaPedido(
+                cliente=cliente, nombre_paciente=nombre, cedula_paciente=cedula,
+                celular_paciente=str(telefono).strip() if telefono not in (None, '') else None,
+                nro_cuotas=int(cuotas or 1), valor_cuota=_money(valor_cuota), total_venta=_money(total),
+                estado_paciente='PENDIENTE', estado_gafas='PENDIENTE', estado_empresa='PENDIENTE_COBRO',
+                trabajo_realizar=str(trabajo).strip() if trabajo not in (None, '') else None,
+                observaciones=' | '.join(str(v).strip() for v in (observaciones, otros) if v not in (None, '')) or None,
+                created_at=datetime.utcnow(), updated_at=datetime.utcnow())
+            db.session.add(pedido); existentes.add(cedula); cargados += 1
+        if errores:
+            db.session.rollback(); return jsonify({'error': 'Hay registros sin cédula.', 'errores': errores}), 400
+        db.session.commit()
+        return jsonify({'cargados': cargados, 'omitidos': omitidos, 'errores': []}), 201
+    except Exception as exc:
+        db.session.rollback(); return jsonify({'error': f'No fue posible leer el Excel: {exc}'}), 400
 
 
 def _json(pedido):

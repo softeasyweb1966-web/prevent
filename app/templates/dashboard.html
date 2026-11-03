@@ -1583,6 +1583,14 @@
                     <div class="form-row"><div class="form-group"><label>Descripción marco</label><textarea name="descripcion_marco" rows="2"></textarea></div><div class="form-group"><label>Observaciones</label><textarea name="observaciones" rows="2"></textarea></div></div>
                     <div class="button-group"><button class="btn btn-primary" type="submit">Guardar pedido</button><button class="btn btn-secondary" type="button" id="optometriaCancelar">Limpiar</button></div>
                 </form>
+                <form id="optometriaImportarForm" class="recent-section" enctype="multipart/form-data">
+                    <h3>Cargar relación desde Excel</h3>
+                    <p class="form-help">La empresa y las cédulas deben venir diligenciadas en el archivo. El formato puede utilizarse para cualquier empresa.</p>
+                    <label>Empresa / cliente <input name="cliente" required></label>
+                    <input name="archivo" type="file" accept=".xlsx" required>
+                    <button class="btn btn-secondary" type="submit">Cargar Excel</button>
+                    <span id="optometriaImportarResultado" class="form-help"></span>
+                </form>
                 <div class="table-container"><table class="data-table"><thead><tr><th>Empresa</th><th>Paciente</th><th>Cédula</th><th>Total</th><th>Estados</th><th>Soportes</th><th>Acciones</th></tr></thead><tbody id="optometriaTable"><tr><td colspan="7" class="loading">Cargando pedidos...</td></tr></tbody></table></div>
             </div>
             <div class="form-group">

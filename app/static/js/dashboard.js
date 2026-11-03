@@ -2001,6 +2001,17 @@ document.addEventListener('DOMContentLoaded', () => {
         showSuccess('Pedido guardado correctamente.'); form.reset(); cargarPedidosOptometria();
     });
     document.getElementById('optometriaCancelar')?.addEventListener('click', () => form.reset());
+    const importar = document.getElementById('optometriaImportarForm');
+    importar?.addEventListener('submit', async e => {
+        e.preventDefault();
+        const resultado = document.getElementById('optometriaImportarResultado');
+        resultado.textContent = 'Cargando...';
+        const r = await fetch('/api/optometria/pedidos/importar-excel', {method: 'POST', body: new FormData(importar), credentials: 'include'});
+        const data = await r.json();
+        if (!r.ok) { resultado.textContent = data.error || 'No fue posible cargar el archivo.'; return; }
+        resultado.textContent = `Cargados: ${data.cargados}. Omitidos por duplicado: ${data.omitidos}.`;
+        importar.reset(); cargarPedidosOptometria();
+    });
 });
 
 function limpiarArchivoSabanasPistas() {
