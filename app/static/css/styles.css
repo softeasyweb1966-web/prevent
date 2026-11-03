@@ -6236,6 +6236,17 @@ body.body-siigo-vencidas-informe:not(.body-siigo-cartera-focus) .siigo-vencidas-
     #optometriaView .form-group { margin-bottom: 12px; }
     #optometriaView .btn { min-height: 44px; width: 100%; margin-bottom: 8px; }
 #optometriaView .data-table { min-width: 760px; }
+.optometria-top-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin: -10px 0 18px; }
+.optometria-tab, .optometria-back { width: auto !important; min-height: 0 !important; margin: 0 !important; padding: 9px 15px !important; border-radius: 8px !important; font-size: .9rem; font-weight: 700; cursor: pointer; }
+.optometria-tab { border: 1px solid #b8d7eb; background: #edf8ff; color: #146b9d; }
+.optometria-tab.active { background: #1683c5; color: #fff; border-color: #1683c5; }
+.optometria-back { border: 1px solid #c8d7e6; background: #fff; color: #5c7690; }
+#optometriaVolverMenu { width: auto !important; min-width: 0; padding: 10px 16px; border-radius: 8px; }
+#optometriaForm .button-group { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
+#optometriaForm .button-group .btn { width: auto; min-width: 0; padding: 10px 20px; border-radius: 8px; }
+#optometriaForm .button-group .btn-primary { background: #1683c5; }
+#optometriaForm .button-group .btn-secondary { background: #fff; color: #52708b; border: 1px solid #c5d5e3; }
+#optometriaView .data-table .btn-danger { width: auto; min-width: 0; padding: 7px 12px; border-radius: 7px; font-size: .82rem; }
 }
 #optometriaImportarForm.optometria-cargue-activo { max-width: 760px; margin: 28px auto; padding: 32px; border: 1px solid #dce5f0; border-radius: 18px; background: linear-gradient(145deg,#ffffff,#f4f8fc); box-shadow: 0 12px 30px rgba(35,65,100,.10); }
 #optometriaView:has(#optometriaImportarForm.optometria-cargue-activo) { background: #fff; }

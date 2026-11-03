@@ -1978,6 +1978,12 @@ function actualizarSeccionOptometria(seccion) {
     const ayuda = document.querySelector('#optometriaView .module-header p');
     if (titulo) titulo.textContent = esCargue ? 'Cargue de información' : 'Pedidos de Optometría';
     if (ayuda) ayuda.textContent = esCargue ? 'Importe pacientes y pedidos desde un archivo Excel.' : 'Registro y seguimiento de pedidos.';
+    document.querySelectorAll('.optometria-tab').forEach(tab => tab.classList.toggle('active', tab.textContent.toLowerCase().startsWith(esCargue ? 'cargue' : 'pedidos')));
+}
+
+function cambiarSeccionOptometria(seccion) {
+    window._optometriaSeccionActual = seccion;
+    actualizarSeccionOptometria(seccion);
 }
 
 function salirDeOptometria() {

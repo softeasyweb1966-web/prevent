@@ -1553,6 +1553,7 @@
 
             <div id="optometriaView" class="module-view">
                 <div class="module-header"><div><h2>Pedidos de Optometría</h2><p class="form-help">Registro y seguimiento de pedidos.</p></div><button type="button" class="btn btn-secondary" id="optometriaVolverMenu">Volver al menú principal</button></div>
+                <div class="optometria-top-actions"><button type="button" class="optometria-tab active" onclick="cambiarSeccionOptometria('pedidos')">Pedidos</button><button type="button" class="optometria-tab" onclick="cambiarSeccionOptometria('cargue')">Cargue de información</button><button type="button" class="optometria-back" onclick="document.getElementById('optometriaVolverMenu')?.click()">Volver al menú</button></div>
                 <form id="optometriaForm" class="recent-section" enctype="multipart/form-data">
                     <input type="hidden" id="optometriaId">
                     <div class="form-row">
