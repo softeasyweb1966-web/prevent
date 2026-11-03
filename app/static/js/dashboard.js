@@ -881,6 +881,7 @@ function setupMenuNavigation() {
                 return;
             }
             const section = item.dataset.section || '';
+            if (module === 'optometria') window._optometriaSeccionActual = section || 'pedidos';
             if (module === 'comercial') {
                 // Al entrar al modulo comercial desde el menu lateral siempre
                 // abrimos en 'inicio' (sin seccion seleccionada), para no
@@ -976,6 +977,7 @@ function switchModule(moduleName) {
             }
         } else if (moduleName === 'optometria') {
             document.body.classList.add('modo-optometria');
+            actualizarSeccionOptometria(window._optometriaSeccionActual || 'pedidos');
             cargarPedidosOptometria();
         } else {
             // Attempt to fetch dashboard fragment for other modules
@@ -1961,6 +1963,21 @@ function actualizarArchivoSabanasPistas() {
     if (resultado && archivo) {
         resultado.innerHTML = `<span style="color:#555;">Listo para procesar: <strong>${escapeHtml(archivo.name)}</strong></span>`;
     }
+}
+
+function actualizarSeccionOptometria(seccion) {
+    const esCargue = seccion === 'cargue';
+    const form = document.getElementById('optometriaForm');
+    const importForm = document.getElementById('optometriaImportarForm');
+    const tabla = document.getElementById('optometriaTable')?.closest('.table-container');
+    if (form) form.style.display = esCargue ? 'none' : '';
+    if (tabla) tabla.style.display = esCargue ? 'none' : '';
+    if (importForm) importForm.classList.toggle('optometria-cargue-activo', esCargue);
+    if (importForm) importForm.style.display = esCargue ? '' : 'none';
+    const titulo = document.querySelector('#optometriaView .module-header h2');
+    const ayuda = document.querySelector('#optometriaView .module-header p');
+    if (titulo) titulo.textContent = esCargue ? 'Cargue de información' : 'Pedidos de Optometría';
+    if (ayuda) ayuda.textContent = esCargue ? 'Importe pacientes y pedidos desde un archivo Excel.' : 'Registro y seguimiento de pedidos.';
 }
 
 function salirDeOptometria() {
