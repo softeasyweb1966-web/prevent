@@ -1967,19 +1967,22 @@ function actualizarArchivoSabanasPistas() {
 
 function actualizarSeccionOptometria(seccion) {
     const esCargue = seccion === 'cargue';
+    const esConsultar = seccion === 'consultar';
     const form = document.getElementById('optometriaForm');
     const importForm = document.getElementById('optometriaImportarForm');
     const tabla = document.getElementById('optometriaTable')?.closest('.table-container');
-    if (form) form.style.display = esCargue ? 'none' : '';
-    if (tabla) tabla.style.display = esCargue ? 'none' : '';
+    if (form) form.style.display = (esCargue || esConsultar) ? 'none' : '';
+    if (tabla) tabla.style.display = esConsultar ? '' : 'none';
     if (importForm) importForm.classList.toggle('optometria-cargue-activo', esCargue);
     if (importForm) importForm.style.display = esCargue ? '' : 'none';
     const titulo = document.querySelector('#optometriaView .module-header h2');
     const ayuda = document.querySelector('#optometriaView .module-header p');
-    if (titulo) titulo.textContent = esCargue ? 'Cargue de información' : 'Pedidos de Optometría';
-    if (ayuda) ayuda.textContent = esCargue ? 'Importe pacientes y pedidos desde un archivo Excel.' : 'Registro y seguimiento de pedidos.';
-    document.querySelectorAll('.optometria-tab').forEach(tab => tab.classList.toggle('active', tab.textContent.toLowerCase().startsWith(esCargue ? 'cargue' : 'pedidos')));
+    if (titulo) titulo.textContent = esCargue ? 'Cargue de información' : esConsultar ? 'Consultar pedidos' : 'Nuevo pedido';
+    if (ayuda) ayuda.textContent = esCargue ? 'Importe pacientes y pedidos desde un archivo Excel.' : esConsultar ? 'Consulte, edite o elimine pedidos registrados.' : 'Registre un nuevo pedido de optometría.';
+    document.querySelectorAll('.optometria-tab').forEach(tab => tab.classList.toggle('active', tab.textContent.toLowerCase().startsWith(esCargue ? 'cargue' : esConsultar ? 'consultar' : 'nuevo')));
 }
+
+function cambiarSeccionOptometria(seccion) { window._optometriaSeccionActual = seccion; actualizarSeccionOptometria(seccion); }
 
 function cambiarSeccionOptometria(seccion) {
     window._optometriaSeccionActual = seccion;
@@ -2016,12 +2019,31 @@ async function eliminarPedidoOptometria(id) {
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('optometriaForm');
     if (!form) return;
+    const topActions = document.querySelector('.optometria-top-actions');
+    if (topActions && !topActions.querySelector('[data-optometria-consultar]')) {
+        topActions.innerHTML = '<button type="button" class="optometria-tab" data-optometria-nuevo>Nuevo pedido</button><button type="button" class="optometria-tab" data-optometria-consultar>Consultar pedidos</button><button type="button" class="optometria-tab" data-optometria-cargue>Cargue de información</button><button type="button" class="optometria-back" onclick="document.getElementById(\'optometriaVolverMenu\')?.click()">Volver al menú</button>';
+        topActions.querySelector('[data-optometria-nuevo]').onclick = () => cambiarSeccionOptometria('nuevo');
+        topActions.querySelector('[data-optometria-consultar]').onclick = () => cambiarSeccionOptometria('consultar');
+        topActions.querySelector('[data-optometria-cargue]').onclick = () => cambiarSeccionOptometria('cargue');
+    }
+    const tablaPedidos = document.getElementById('optometriaTable');
+    if (tablaPedidos) {
+        const encabezado = tablaPedidos.closest('table')?.querySelector('thead tr');
+        if (encabezado && !encabezado.querySelector('.optometria-numero')) encabezado.insertAdjacentHTML('afterbegin', '<th class="optometria-numero">N.º pedido</th>');
+        const observer = new MutationObserver(async () => {
+            observer.disconnect();
+            const pedidos = await (await fetch('/api/optometria/pedidos', {credentials: 'include'})).json();
+            [...tablaPedidos.children].forEach((fila, i) => { if (pedidos[i]) { fila.insertAdjacentHTML('afterbegin', `<td><strong>#${escapeHtml(pedidos[i].nro_pedido)}</strong></td>`); fila.lastElementChild?.insertAdjacentHTML('afterbegin', `<button class="btn btn-outline btn-small" onclick="editarPedidoOptometria(${pedidos[i].id})">Editar</button>`); } });
+        });
+        observer.observe(tablaPedidos, {childList: true});
+    }
     form.addEventListener('submit', async e => {
         e.preventDefault();
-        const r = await fetch('/api/optometria/pedidos', {method: 'POST', body: new FormData(form), credentials: 'include'});
+        const id = document.getElementById('optometriaId').value;
+        const r = await fetch(id ? `/api/optometria/pedidos/${id}` : '/api/optometria/pedidos', {method: id ? 'PUT' : 'POST', body: new FormData(form), credentials: 'include'});
         const data = await r.json();
         if (!r.ok) return showError(data.error || 'No fue posible guardar el pedido.');
-        showSuccess('Pedido guardado correctamente.'); form.reset(); cargarPedidosOptometria();
+        showSuccess(id ? 'Pedido actualizado correctamente.' : 'Pedido guardado correctamente.'); form.reset(); document.getElementById('optometriaId').value = ''; cargarPedidosOptometria();
     });
     document.getElementById('optometriaCancelar')?.addEventListener('click', () => form.reset());
     const importar = document.getElementById('optometriaImportarForm');
@@ -2036,6 +2058,15 @@ document.addEventListener('DOMContentLoaded', () => {
         importar.reset(); cargarPedidosOptometria();
     });
 });
+
+async function editarPedidoOptometria(id) {
+    const pedidos = await (await fetch('/api/optometria/pedidos', {credentials: 'include'})).json();
+    const pedido = pedidos.find(p => p.id === id); if (!pedido) return;
+    const form = document.getElementById('optometriaForm');
+    document.getElementById('optometriaId').value = id;
+    Object.entries(pedido).forEach(([campo, valor]) => { if (form.elements[campo]) form.elements[campo].value = valor ?? ''; });
+    cambiarSeccionOptometria('nuevo'); form.scrollIntoView({behavior: 'smooth'});
+}
 
 function limpiarArchivoSabanasPistas() {
     const archivoInput = document.getElementById('sabanasPistasArchivo');
