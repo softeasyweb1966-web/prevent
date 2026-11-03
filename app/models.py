@@ -1330,6 +1330,20 @@ class OptometriaPedido(db.Model):
     observaciones = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    items = db.relationship('OptometriaPedidoItem', back_populates='pedido', cascade='all, delete-orphan', order_by='OptometriaPedidoItem.id')
+
+
+class OptometriaPedidoItem(db.Model):
+    __tablename__ = 'optometria_pedido_items'
+
+    id = db.Column(db.Integer, primary_key=True)
+    pedido_id = db.Column(db.Integer, db.ForeignKey('optometria_pedidos.id', ondelete='CASCADE'), nullable=False, index=True)
+    descripcion = db.Column(db.Text, nullable=False)
+    cantidad = db.Column(db.Integer, nullable=False, default=1)
+    valor_unitario = db.Column(Numeric(15, 2), nullable=False, default=0)
+    total = db.Column(Numeric(15, 2), nullable=False, default=0)
+    observaciones = db.Column(db.Text)
+    pedido = db.relationship('OptometriaPedido', back_populates='items')
 
 
 # Audita todos los escritores ORM del maestro, incluidos los dos formularios y Excel.

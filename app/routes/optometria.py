@@ -5,7 +5,7 @@ from io import BytesIO
 from datetime import datetime
 import openpyxl
 
-from app.models import OptometriaPedido, db
+from app.models import OptometriaPedido, OptometriaPedidoItem, db
 from app.routes import optometria_bp
 
 
@@ -69,6 +69,7 @@ def _json(pedido):
         'autorizacion_nombre': pedido.autorizacion_nombre,
         'descripcion_marco': pedido.descripcion_marco, 'marco_nombre': pedido.marco_nombre,
         'observaciones': pedido.observaciones, 'created_at': pedido.created_at.isoformat(),
+        'items': [{'id': i.id, 'descripcion': i.descripcion, 'cantidad': i.cantidad, 'valor_unitario': float(i.valor_unitario or 0), 'total': float(i.total or 0), 'observaciones': i.observaciones} for i in pedido.items],
         'formula_url': f'/api/optometria/pedidos/{pedido.id}/archivo/formula' if pedido.formula_archivo else None,
         'autorizacion_url': f'/api/optometria/pedidos/{pedido.id}/archivo/autorizacion' if pedido.autorizacion_archivo else None,
         'marco_url': f'/api/optometria/pedidos/{pedido.id}/archivo/marco' if pedido.marco_archivo else None,
@@ -107,7 +108,10 @@ def pedidos():
         try:
             pedido = OptometriaPedido()
             _apply(pedido, request.form, request.files)
-            db.session.add(pedido); db.session.commit()
+            db.session.add(pedido); db.session.flush()
+            if pedido.trabajo_realizar:
+                db.session.add(OptometriaPedidoItem(pedido_id=pedido.id, descripcion=pedido.trabajo_realizar, cantidad=1, valor_unitario=pedido.total_venta, total=pedido.total_venta, observaciones=pedido.observaciones))
+            db.session.commit()
             return jsonify(_json(pedido)), 201
         except (ValueError, TypeError) as exc:
             db.session.rollback(); return jsonify({'error': str(exc)}), 400

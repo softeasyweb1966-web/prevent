@@ -977,7 +977,7 @@ function switchModule(moduleName) {
             }
         } else if (moduleName === 'optometria') {
             document.body.classList.add('modo-optometria');
-            actualizarSeccionOptometria(window._optometriaSeccionActual || 'pedidos');
+            actualizarSeccionOptometria(window._optometriaSeccionActual || 'inicio');
             cargarPedidosOptometria();
         } else {
             // Attempt to fetch dashboard fragment for other modules
@@ -1966,19 +1966,21 @@ function actualizarArchivoSabanasPistas() {
 }
 
 function actualizarSeccionOptometria(seccion) {
+    const esInicio = seccion === 'inicio';
     const esCargue = seccion === 'cargue';
     const esConsultar = seccion === 'consultar';
     const form = document.getElementById('optometriaForm');
     const importForm = document.getElementById('optometriaImportarForm');
     const tabla = document.getElementById('optometriaTable')?.closest('.table-container');
-    if (form) form.style.display = (esCargue || esConsultar) ? 'none' : '';
+    if (form) form.style.display = (esInicio || esCargue || esConsultar) ? 'none' : '';
     if (tabla) tabla.style.display = esConsultar ? '' : 'none';
     if (importForm) importForm.classList.toggle('optometria-cargue-activo', esCargue);
     if (importForm) importForm.style.display = esCargue ? '' : 'none';
+    if (esInicio && tabla) tabla.style.display = 'none';
     const titulo = document.querySelector('#optometriaView .module-header h2');
     const ayuda = document.querySelector('#optometriaView .module-header p');
-    if (titulo) titulo.textContent = esCargue ? 'Cargue de información' : esConsultar ? 'Consultar pedidos' : 'Nuevo pedido';
-    if (ayuda) ayuda.textContent = esCargue ? 'Importe pacientes y pedidos desde un archivo Excel.' : esConsultar ? 'Consulte, edite o elimine pedidos registrados.' : 'Registre un nuevo pedido de optometría.';
+    if (titulo) titulo.textContent = esInicio ? 'Optometría' : esCargue ? 'Cargue de información' : esConsultar ? 'Consultar pedidos' : 'Nuevo pedido';
+    if (ayuda) ayuda.textContent = esInicio ? 'Seleccione una opción para comenzar.' : esCargue ? 'Importe pacientes y pedidos desde un archivo Excel.' : esConsultar ? 'Consulte, edite o elimine pedidos registrados.' : 'Registre un nuevo pedido de optometría.';
     document.querySelectorAll('.optometria-tab').forEach(tab => tab.classList.toggle('active', tab.textContent.toLowerCase().startsWith(esCargue ? 'cargue' : esConsultar ? 'consultar' : 'nuevo')));
 }
 
