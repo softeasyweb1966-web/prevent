@@ -1966,7 +1966,8 @@ function actualizarArchivoSabanasPistas() {
 }
 
 function actualizarSeccionOptometria(seccion) {
-    const esInicio = seccion === 'inicio';
+    // Al entrar desde el menu "Pedidos" solo se muestra el menu de acciones.
+    const esInicio = seccion === 'inicio' || seccion === 'pedidos';
     const esCargue = seccion === 'cargue';
     const esConsultar = seccion === 'consultar';
     const form = document.getElementById('optometriaForm');
