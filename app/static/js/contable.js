@@ -633,9 +633,17 @@ function agregarAccionesClientesCarteraSiigo(panel) {
     chat.textContent = 'Chat vendedor';
     chat.addEventListener('click', () => abrirChatVendedorCarteraSiigo(panel));
 
+    const nuevoSeguimiento = document.createElement('button');
+    nuevoSeguimiento.type = 'button';
+    nuevoSeguimiento.className = 'btn btn-primary';
+    nuevoSeguimiento.dataset.carteraNuevoSeguimiento = '1';
+    nuevoSeguimiento.textContent = 'Nuevo seguimiento';
+    nuevoSeguimiento.addEventListener('click', () => abrirSelectorNuevoSeguimientoCarteraSiigo(panel));
+
     acciones.insertBefore(nuevo, volver);
     acciones.insertBefore(maestro, volver);
     acciones.insertBefore(chat, volver);
+    acciones.insertBefore(nuevoSeguimiento, volver);
     actualizarAccionesClientesCarteraSiigo(panel);
 }
 
@@ -646,9 +654,32 @@ function actualizarAccionesClientesCarteraSiigo(panel = document.getElementById(
     const nuevo = panel.querySelector('[data-cartera-nuevo-cliente]');
     const maestro = panel.querySelector('[data-cartera-maestro-clientes]');
     const chat = panel.querySelector('[data-cartera-chat-vendedor]');
+    const nuevoSeguimiento = panel.querySelector('[data-cartera-nuevo-seguimiento]');
     if (nuevo) nuevo.style.display = puedeCrear ? '' : 'none';
     if (maestro) maestro.style.display = puedeLeer ? '' : 'none';
     if (chat) chat.style.display = puedeLeer ? '' : 'none';
+    if (nuevoSeguimiento) nuevoSeguimiento.style.display = esAdministradorCarteraSiigo() && puedeLeer ? '' : 'none';
+}
+
+function abrirSelectorNuevoSeguimientoCarteraSiigo(panel) {
+    if (!esAdministradorCarteraSiigo()) return;
+    const clientes = [...(panel?._datosVencidas?.clientes || [])]
+        .filter(cliente => cliente?.identificacion)
+        .sort((a, b) => String(a.cliente || '').localeCompare(String(b.cliente || ''), 'es'));
+    const dialogo = document.createElement('dialog');
+    dialogo.className = 'siigo-seguimiento-dialogo';
+    dialogo.innerHTML = `<div class="siigo-seguimiento-shell"><div class="siigo-seguimiento-cabecera"><div><h2>Nuevo seguimiento</h2><p>Seleccione el cliente. El administrador puede consultar su historial completo.</p></div><button type="button" class="btn btn-primary" data-cerrar>Regresar</button></div><div class="form-group"><label for="siigoNuevoSeguimientoCliente">Cliente</label><select id="siigoNuevoSeguimientoCliente" required><option value="">Seleccione un cliente</option>${clientes.map(cliente => `<option value="${escapeSiigo(cliente.identificacion)}">${escapeSiigo(cliente.cliente || 'Sin nombre')} · ${escapeSiigo(cliente.identificacion)}</option>`).join('')}</select></div><p class="form-help">Si no encuentra el cliente, actualice la consulta de cartera.</p><button type="button" class="btn btn-primary" data-continuar>Continuar</button></div>`;
+    document.body.appendChild(dialogo);
+    dialogo.showModal();
+    dialogo.querySelector('[data-cerrar]').addEventListener('click', () => dialogo.close());
+    dialogo.addEventListener('close', () => dialogo.remove(), { once: true });
+    dialogo.querySelector('[data-continuar]').addEventListener('click', () => {
+        const identificacion = dialogo.querySelector('select').value;
+        const cliente = clientes.find(item => item.identificacion === identificacion);
+        if (!cliente) return;
+        dialogo.close();
+        abrirSeguimientoCarteraSiigo(cliente);
+    });
 }
 
 function urlMaestroClientesCarteraSiigo(panel = document.getElementById('siigoFacturasVencidasPanel')) {
@@ -1768,7 +1799,6 @@ async function abrirSeguimientoCarteraSiigo(cliente) {
     const enviarCorreoBtn = dialogo.querySelector('[data-enviar-correo]');
     const enviarWhatsappBtn = dialogo.querySelector('[data-enviar-whatsapp]');
     if (esAdministradorCarteraSiigo()) {
-        nuevo.hidden = true;
         marcarCumplidoBtn.hidden = true;
         enviarCorreoBtn.hidden = true;
         enviarWhatsappBtn.hidden = true;
