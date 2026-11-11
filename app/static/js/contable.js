@@ -663,19 +663,46 @@ function actualizarAccionesClientesCarteraSiigo(panel = document.getElementById(
 
 function abrirSelectorNuevoSeguimientoCarteraSiigo(panel) {
     if (!esAdministradorCarteraSiigo()) return;
-    const clientes = [...(panel?._datosVencidas?.clientes || [])]
-        .filter(cliente => cliente?.identificacion)
-        .sort((a, b) => String(a.cliente || '').localeCompare(String(b.cliente || ''), 'es'));
     const dialogo = document.createElement('dialog');
     dialogo.className = 'siigo-seguimiento-dialogo';
-    dialogo.innerHTML = `<div class="siigo-seguimiento-shell"><div class="siigo-seguimiento-cabecera"><div><h2>Nuevo seguimiento</h2><p>Seleccione el cliente. El administrador puede consultar su historial completo.</p></div><button type="button" class="btn btn-primary" data-cerrar>Regresar</button></div><div class="form-group"><label for="siigoNuevoSeguimientoCliente">Cliente</label><select id="siigoNuevoSeguimientoCliente" required><option value="">Seleccione un cliente</option>${clientes.map(cliente => `<option value="${escapeSiigo(cliente.identificacion)}">${escapeSiigo(cliente.cliente || 'Sin nombre')} · ${escapeSiigo(cliente.identificacion)}</option>`).join('')}</select></div><p class="form-help">Si no encuentra el cliente, actualice la consulta de cartera.</p><button type="button" class="btn btn-primary" data-continuar>Continuar</button></div>`;
+    dialogo.innerHTML = `<div class="siigo-seguimiento-shell"><div class="siigo-seguimiento-cabecera"><div><h2>Nuevo seguimiento</h2><p>Busque y seleccione el cliente. El administrador puede consultar su historial completo.</p></div><button type="button" class="btn btn-primary" data-cerrar>Regresar</button></div><div class="form-group"><label for="siigoNuevoSeguimientoBuscar">Cliente, NIT o identificación</label><input id="siigoNuevoSeguimientoBuscar" type="search" autocomplete="off" placeholder="Digite al menos 2 caracteres"><select id="siigoNuevoSeguimientoCliente" size="6" required><option value="">Digite una búsqueda para consultar clientes</option></select></div><p class="form-help" data-busqueda-ayuda>Digite el nombre o identificación del cliente para cargar resultados.</p><button type="button" class="btn btn-primary" data-continuar disabled>Continuar</button></div>`;
     document.body.appendChild(dialogo);
     dialogo.showModal();
     dialogo.querySelector('[data-cerrar]').addEventListener('click', () => dialogo.close());
     dialogo.addEventListener('close', () => dialogo.remove(), { once: true });
+    const buscar = dialogo.querySelector('#siigoNuevoSeguimientoBuscar');
+    const selector = dialogo.querySelector('#siigoNuevoSeguimientoCliente');
+    const continuar = dialogo.querySelector('[data-continuar]');
+    let clientes = [];
+    let temporizador;
+    const consultar = async () => {
+        const texto = buscar.value.trim();
+        if (texto.length < 2) {
+            selector.innerHTML = '<option value="">Digite al menos 2 caracteres</option>';
+            continuar.disabled = true;
+            return;
+        }
+        selector.innerHTML = '<option value="">Consultando clientes...</option>';
+        try {
+            const response = await fetch(`/api/contable/clientes?q=${encodeURIComponent(texto)}`, { credentials: 'include' });
+            const data = await leerRespuestaSiigo(response);
+            if (!response.ok) throw new Error(data.error || 'No fue posible consultar los clientes.');
+            clientes = data.clientes || [];
+            selector.innerHTML = clientes.length
+                ? clientes.map(cliente => `<option value="${escapeSiigo(cliente.identificacion)}">${escapeSiigo(cliente.nombre || 'Sin nombre')} · ${escapeSiigo(cliente.identificacion)} · ${escapeSiigo(cliente.vendedor_nombre || 'Sin vendedor')}</option>`).join('')
+                : '<option value="">No se encontraron clientes</option>';
+            continuar.disabled = !clientes.length;
+            dialogo.querySelector('[data-busqueda-ayuda]').textContent = clientes.length ? 'Seleccione un resultado y continúe.' : 'No hay clientes que coincidan con la búsqueda.';
+        } catch (error) {
+            selector.innerHTML = `<option value="">${escapeSiigo(error.message)}</option>`;
+            continuar.disabled = true;
+        }
+    };
+    buscar.addEventListener('input', () => { clearTimeout(temporizador); temporizador = setTimeout(consultar, 250); });
     dialogo.querySelector('[data-continuar]').addEventListener('click', () => {
         const identificacion = dialogo.querySelector('select').value;
-        const cliente = clientes.find(item => item.identificacion === identificacion);
+        const encontrado = clientes.find(item => item.identificacion === identificacion);
+        const cliente = encontrado && { identificacion: encontrado.identificacion, cliente: encontrado.nombre, vendedor: encontrado.vendedor_nombre };
         if (!cliente) return;
         dialogo.close();
         abrirSeguimientoCarteraSiigo(cliente);
